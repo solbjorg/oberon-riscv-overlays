@@ -1,6 +1,6 @@
 # Project Norebo
 
-This version of Norebo is a fork of @pdewacht's Project Norebo.
+This version of Norebo is a fork of [pdewacht's Project Norebo](https://github.com/pdewacht/project-norebo).
 
 His version is a hack to run some _Project Oberon 2013_ software on the
 Unix command line. Programs that use the GUI obviously won't work, but
