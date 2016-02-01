@@ -28,7 +28,7 @@ END fmtI;
 
 
 PROCEDURE fmtU*(VAR code: ARRAY OF INTEGER; VAR loc: INTEGER;
-    opcode, rd, imm);
+    opcode, rd, imm: INTEGER);
 BEGIN
   code[loc] := (opcode MOD 128) + LSL(rd MOD 32, 7) + LSL(imm MOD 100000H, 12);
   INC(loc);
@@ -47,7 +47,7 @@ PROCEDURE fmtR*(VAR code: ARRAY OF INTEGER; VAR loc: INTEGER;
   that loc is in units of words, not bytes.
 *)
 BEGIN
-  fmtI(code, loc, opcode, fn3, rd, rs1, (rs MOD 32) + LSL(fn7, 5));
+  fmtI(code, loc, opcode, fn3, rd, rs1, (rs1 MOD 32) + LSL(fn7, 5));
 END fmtR;
 
 
@@ -63,12 +63,12 @@ PROCEDURE fmtSB*(VAR code: ARRAY OF INTEGER; VAR loc: INTEGER;
     opcode, fn3, rs1, rs2, imm: INTEGER);
 BEGIN
   fmtI(code, loc, opcode, fn3, ASR(imm, 11) MOD 2 + LSL(ASR(imm, 1) MOD 16, 1),
-      rs1, rs2, (imm DIV 32 MOD 64) + LSL(ASR(imm, 12), 7));
+      rs1, (rs2 MOD 32) + LSL(ASR(imm, 5) MOD 64, 5) + LSL(ASR(imm, 12), 11));
 END fmtSB;
 
 
 PROCEDURE fmtUJ*(VAR code: ARRAY OF INTEGER; VAR loc: INTEGER;
-    opcode, rd, imm);
+    opcode, rd, imm: INTEGER);
 BEGIN
   fmtU(code, loc, opcode, rd,
       LSL(ASR(imm, 20) MOD 2, 19) + LSL(ASR(imm, 1) MOD 1024, 9) +
@@ -82,79 +82,79 @@ END fmtUJ;
 *)
 
 
-PROCEDURE LUI*(VAR c: ARRAY OF INTEGER: VAR l: INTEGER; rd, imm: INTEGER);
+PROCEDURE lui*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm: INTEGER);
 BEGIN fmtU(c, l, 37H, rd, ASR(imm, 12));
-END LUI;
+END lui;
 
-PROCEDURE AUIPC*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm: INTEGER);
+PROCEDURE auipc*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm: INTEGER);
 BEGIN fmtU(c, l, 17H, rd, ASR(imm, 12));
-END AUIPC;
+END auipc;
 
-PROCEDURE JAL*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm: INTEGER);
+PROCEDURE jal*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm: INTEGER);
 BEGIN fmtUJ(c, l, 6FH, rd, imm MOD 200000H);
-END JAL;
+END jal;
 
-PROCEDURE JALR*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE jalr*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 67H, 0, rd, rs1, imm);
-END JALR;
+END jalr;
 
-PROCEDURE BEQ*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1, rs2, imm: INTEGER);
+PROCEDURE beq*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1, rs2, imm: INTEGER);
 BEGIN fmtSB(c, l, 63H, 0, rs1, rs2, imm);
-END BEQ;
+END beq;
 
-PROCEDURE BNE*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1, rs2, imm: INTEGER);
+PROCEDURE bne*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1, rs2, imm: INTEGER);
 BEGIN fmtSB(c, l, 63H, 1, rs1, rs2, imm);
-END BNE;
+END bne;
 
-PROCEDURE BLT*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1, rs2, imm: INTEGER);
+PROCEDURE blt*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1, rs2, imm: INTEGER);
 BEGIN fmtSB(c, l, 63H, 4, rs1, rs2, imm);
-END BLT;
+END blt;
 
-PROCEDURE BGE*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1, rs2, imm: INTEGER);
+PROCEDURE bge*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1, rs2, imm: INTEGER);
 BEGIN fmtSB(c, l, 63H, 5, rs1, rs2, imm);
-END BGE;
+END bge;
 
-PROCEDURE BLTU*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
+PROCEDURE bltu*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
     rs1, rs2, imm: INTEGER);
 BEGIN fmtSB(c, l, 63H, 6, rs1, rs2, imm);
-END BLTU;
+END bltu;
 
-PROCEDURE BGEU*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
+PROCEDURE bgeu*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
     rs1, rs2, imm: INTEGER);
 BEGIN fmtSB(c, l, 63H, 7, rs1, rs2, imm);
-END BGEU;
+END bgeu;
 
-PROCEDURE LB*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE lb*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 03H, 0, rd, rs1, imm);
-END LB;
+END lb;
 
-PROCEDURE LH*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE lh*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 03H, 1, rd, rs1, imm);
-END LH;
+END lh;
 
-PROCEDURE LW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE lw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 03H, 2, rd, rs1, imm);
-END LW;
+END lw;
 
-PROCEDURE LD*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE ld*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 03H, 3, rd, rs1, imm);
-END LD;
+END ld;
 
-PROCEDURE LBU*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE lbu*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 03H, 4, rd, rs1, imm);
-END LBU;
+END lbu;
 
-PROCEDURE LHU*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE lhu*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 03H, 5, rd, rs1, imm);
-END LHU;
+END lhu;
 
-PROCEDURE LWU*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE lwu*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 03H, 6, rd, rs1, imm);
-END LWU;
+END lwu;
 
-PROCEDURE LDU*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE ldu*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 03H, 7, rd, rs1, imm);
-END LDU;
+END ldu;
 
 (*
   NOTE: We reverse register arguments for memory stores to make the use
@@ -163,196 +163,196 @@ END LDU;
   then SB(c, l, 1, 2, 300); will store the byte in X1 back into 300(X2).
 *)
 
-PROCEDURE SB*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs2, rs1, imm: INTEGER);
+PROCEDURE sb*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs2, rs1, imm: INTEGER);
 BEGIN fmtS(c, l, 23H, 0, rs1, rs2, imm);
-END SB;
+END sb;
 
-PROCEDURE SH*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs2, rs1, imm: INTEGER);
+PROCEDURE sh*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs2, rs1, imm: INTEGER);
 BEGIN fmtS(c, l, 23H, 1, rs1, rs2, imm);
-END SH;
+END sh;
 
-PROCEDURE SW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs2, rs1, imm: INTEGER);
+PROCEDURE sw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs2, rs1, imm: INTEGER);
 BEGIN fmtS(c, l, 23H, 2, rs1, rs2, imm);
-END SW;
+END sw;
 
-PROCEDURE SD*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs2, rs1, imm: INTEGER);
+PROCEDURE sd*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs2, rs1, imm: INTEGER);
 BEGIN fmtS(c, l, 23H, 3, rs1, rs2, imm);
-END SD;
+END sd;
 
-PROCEDURE ADDI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE addi*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 0, rd, rs1, imm);
-END ADDI;
+END addi;
 
-PROCEDURE SLLI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE slli*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 1, rd, rs1, imm MOD 64);
-END SLLI;
+END slli;
 
-PROCEDURE SLTI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE slti*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 2, rd, rs1, imm);
-END SLTI;
+END slti;
 
-PROCEDURE SLTIU*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
+PROCEDURE sltiu*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
     rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 3, rd, rs1, imm);
-END SLTIU;
+END sltiu;
 
-PROCEDURE XORI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE xori*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 4, rd, rs1, imm);
-END XORI;
+END xori;
 
-PROCEDURE SRLI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE srli*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 5, rd, rs1, imm MOD 64);
-END SRLI;
+END srli;
 
-PROCEDURE SRAI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE srai*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 5, rd, rs1, imm MOD 64 + 40000000H);
-END SRAI;
+END srai;
 
-PROCEDURE ORI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE ori*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 6, rd, rs1, imm);
-END ORI;
+END ori;
 
-PROCEDURE ANDI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
+PROCEDURE andi*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 13H, 7, rd, rs1, imm);
-END ANDI;
+END andi;
 
-PROCEDURE ADD*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
+PROCEDURE add*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 0, 0, rd, rs1, rs2);
-END ADD;
+END add;
 
-PROCEDURE SLL*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
+PROCEDURE sll*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 1, 0, rd, rs1, rs2);
-END SLL;
+END sll;
 
-PROCEDURE SLT*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
+PROCEDURE slt*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 2, 0, rd, rs1, rs2);
-END SLT;
+END slt;
 
-PROCEDURE SLTU*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
+PROCEDURE sltu*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
     rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 3, 0, rd, rs1, rs2);
-END SLTU;
+END sltu;
 
-PROCEDURE XOR*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
+PROCEDURE xor*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 4, 0, rd, rs1, rs2);
-END XOR;
+END xor;
 
-PROCEDURE SRL*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
+PROCEDURE srl*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 5, 0, rd, rs1, rs2);
-END SRL;
+END srl;
 
-PROCEDURE SRA*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
+PROCEDURE sra*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 5, 0, rd, rs1, rs2 + 40000000H);
-END SRA;
+END sra;
 
-PROCEDURE OR*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
+PROCEDURE or*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 6, 0, rd, rs1, rs2);
-END OR;
+END or;
 
-PROCEDURE AND*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
+PROCEDURE and*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 33H, 7, 0, rd, rs1, rs2);
-END AND;
+END and;
 
-PROCEDURE FENCE*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
+PROCEDURE fence*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER;
     pred, succ: INTEGER);
 BEGIN fmtI(c, l, 0FH, 0, 0, 0, (succ MOD 16) + LSL(pred MOD 16, 4));
-END FENCE;
+END fence;
 
-PROCEDURE FENCEI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
+PROCEDURE fencei*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
 BEGIN fmtI(c, l, 0FH, 1, 0, 0, 0);
-END FENCEI;
+END fencei;
 
-PROCEDURE ECALL*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
+PROCEDURE ecall*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
 BEGIN fmtI(c, l, 73H, 0, 0, 0, 0);
-END ECALL;
+END ecall;
 
-PROCEDURE EBREAK*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
+PROCEDURE ebreak*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
 BEGIN fmtI(c, l, 73H, 0, 0, 0, 1);
-END EBREAK;
+END ebreak;
 
-PROCEDURE ERET*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
+PROCEDURE eret*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
 BEGIN fmtI(c, l, 73H, 0, 0, 0, 100H);
-END ERET;
+END eret;
 
-PROCEDURE ADDIW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm);
+PROCEDURE addiw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 1BH, 0, rd, rs1, imm);
-END ADDIW;
+END addiw;
 
-PROCEDURE SLLIW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm);
+PROCEDURE slliw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 1BH, 1, rd, rs1, imm MOD 64);
-END SLLIW;
+END slliw;
 
-PROCEDURE SRLIW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm);
+PROCEDURE srliw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 1BH, 5, rd, rs1, imm MOD 64);
-END SRLIW;
+END srliw;
 
-PROCEDURE SRAIW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm);
+PROCEDURE sraiw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, imm: INTEGER);
 BEGIN fmtI(c, l, 1BH, 5, rd, rs1, imm MOD 64 + 40000000H);
-END SRAIW;
+END sraiw;
 
-PROCEDURE ADDW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2);
+PROCEDURE addw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 3BH, 0, 0, rd, rs1, rs2);
-END ADDW;
+END addw;
 
-PROCEDURE SUBW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2);
+PROCEDURE subw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 3BH, 0, 20H, rd, rs1, rs2);
-END SUBW;
+END subw;
 
-PROCEDURE SLLW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2);
+PROCEDURE sllw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 3BH, 1, 0, rd, rs1, rs2);
-END SLLW;
+END sllw;
 
-PROCEDURE SRLW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2);
+PROCEDURE srlw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 3BH, 5, 0, rd, rs1, rs2);
-END SRLW;
+END srlw;
 
-PROCEDURE SRAW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2);
+PROCEDURE sraw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, rs2: INTEGER);
 BEGIN fmtR(c, l, 3BH, 5, 20H, rd, rs1, rs2);
-END SRAW;
+END sraw;
 
-PROCEDURE CSRRW*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, csr);
+PROCEDURE csrrw*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, csr: INTEGER);
 BEGIN fmtI(c, l, 73H, 1, rd, rs1, csr);
-END CSRRW;
+END csrrw;
 
-PROCEDURE CSRRS*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, csr);
+PROCEDURE csrrs*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, csr: INTEGER);
 BEGIN fmtI(c, l, 73H, 2, rd, rs1, csr);
-END CSRRS;
+END csrrs;
 
-PROCEDURE CSRRC*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, csr);
+PROCEDURE csrrc*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, rs1, csr: INTEGER);
 BEGIN fmtI(c, l, 73H, 3, rd, rs1, csr);
-END CSRRC;
+END csrrc;
 
-PROCEDURE CSRRWI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm, csr);
+PROCEDURE csrrwi*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm, csr: INTEGER);
 BEGIN fmtI(c, l, 73H, 5, rd, imm, csr);
-END CSRRWI;
+END csrrwi;
 
-PROCEDURE CSRRSI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm, csr);
+PROCEDURE csrrsi*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm, csr: INTEGER);
 BEGIN fmtI(c, l, 73H, 6, rd, imm, csr);
-END CSRRSI;
+END csrrsi;
 
-PROCEDURE CSRRCI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm, csr);
+PROCEDURE csrrci*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rd, imm, csr: INTEGER);
 BEGIN fmtI(c, l, 73H, 7, rd, imm, csr);
-END CSRRCI;
+END csrrci;
 
-PROCEDURE MRTS*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
+PROCEDURE mrts*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
 BEGIN fmtI(c, l, 73H, 0, 0, 0, 305H);
-END MRTS;
+END mrts;
 
-PROCEDURE MRTH*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
+PROCEDURE mrth*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
 BEGIN fmtI(c, l, 73H, 0, 0, 0, 306H);
-END MRTS;
+END mrth;
 
-PROCEDURE HRTS*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
+PROCEDURE hrts*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
 BEGIN fmtI(c, l, 73H, 0, 0, 0, 205H);
-END MRTS;
+END hrts;
 
-PROCEDURE WFI*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
+PROCEDURE wfi*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER);
 BEGIN fmtI(c, l, 73H, 0, 0, 0, 102H);
-END WFI;
+END wfi;
 
-PROCEDURE FENCEVM*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1: INTEGER);
+PROCEDURE fencevm*(VAR c: ARRAY OF INTEGER; VAR l: INTEGER; rs1: INTEGER);
 BEGIN fmtI(c, l, 73H, 0, 0, rs1, 101H);
-END FENCEVM;
+END fencevm;
 
 END RVAssem.
 
