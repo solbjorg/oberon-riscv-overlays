@@ -3,10 +3,7 @@
 *)
 
 MODULE RVDis;
-IMPORT SYSTEM, Texts;
-
-CONST
-  UnrecognizedInstruction* = 1;
+IMPORT Texts;
 
 TYPE
   WOP = PROCEDURE(VAR W: Texts.Writer; op, fn3: INTEGER);
