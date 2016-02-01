@@ -162,16 +162,22 @@ MODULE RVOTool;
   END Write;
 
   PROCEDURE DecObj*;   (*decode object file*)
-    VAR class, i, n, key, size, fix, adr, data, len: INTEGER;
+    VAR magic, class, i, n, key, size, fix, adr, data, len: INTEGER;
       ch: CHAR;
       name: ARRAY 32 OF CHAR;
       F: Files.File; R: Files.Rider;
       S: Texts.Scanner;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF S.class = Texts.Name THEN
-      Texts.WriteString(W, "decode "); Texts.WriteString(W, S.s); F := Files.Old(S.s);
+      Texts.WriteString(W, "decode "); Texts.WriteString(W, S.s); Texts.WriteLn(W);
+      F := Files.Old(S.s);
       IF F # NIL THEN
-        Files.Set(R, F, 0); Files.ReadString(R, name); Texts.WriteLn(W); Texts.WriteString(W, name);
+        Files.Set(R, F, 0); Files.ReadInt(R, magic);
+        IF magic # 00AA5500H THEN
+          Texts.WriteString(W, "Bad Magic!!"); Texts.WriteLn(W);
+          Files.Set(R, F, 0);
+        END;
+        Files.ReadString(R, name); Texts.WriteLn(W); Texts.WriteString(W, name);
         Files.ReadInt(R, key); Texts.WriteHex(W, key); Read(R, class); Texts.WriteInt(W, class, 4); (*version*)
         Files.ReadInt(R, size); Texts.WriteInt(W, size, 6); Texts.WriteLn(W);
         Texts.WriteString(W, "imports:"); Texts.WriteLn(W); Files.ReadString(R, name);
