@@ -2,7 +2,7 @@
 set -e
 make
 
-export NOREBO_PATH="$PWD/Norebo:$PWD/Oberon:$PWD/Bootstrap"
+export NOREBO_PATH="$PWD/Custom:$PWD/Oberon:$PWD/Bootstrap"
 
 mkdir -p build
 cd build

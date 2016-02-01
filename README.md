@@ -37,7 +37,8 @@ If Norebo's compiler and linker replaces my assembler,
 
 * `Runtime/` RISC5 emulator and operating system interface.
 * `Oberon/` Unmodified source code from Project Oberon 2013.
-* `Norebo/` Customized Norebo modules.
+* `OberonRV/` RISC-V modified source code.
+* `Custom/` Customized Norebo modules.
 * `Bootstrap/` Pre-compiled modules to bootstrap Norebo.
 * `build.sh` The build script. See Norebo in action.
 
