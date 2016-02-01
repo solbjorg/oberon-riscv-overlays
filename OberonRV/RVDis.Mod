@@ -204,15 +204,19 @@ END system;
 
 PROCEDURE alur(VAR W: Texts.Writer; op, fn3: INTEGER);
 BEGIN
-  IF ODD(op DIV 40000000H) THEN fmtR(W, op MOD 40000000H, fn3, alu3Table[fn3])
-  ELSE fmtR(W, op, fn3, alu4Table[fn3])
+  IF (fn3 IN {1, 5}) & ODD(op DIV 40000000H) THEN
+    fmtR(W, op MOD 40000000H, fn3, alu3Table[fn3])
+  ELSE
+    fmtR(W, op, fn3, alu4Table[fn3])
   END
 END alur;
 
 PROCEDURE alurw(VAR W: Texts.Writer; op, fn3: INTEGER);
 BEGIN
-  IF ODD(op DIV 40000000H) THEN fmtR(W, op MOD 40000000H, fn3, alu7Table[fn3])
-  ELSE fmtR(W, op, fn3, alu8Table[fn3])
+  IF (fn3 IN {1, 5}) & ODD(op DIV 40000000H) THEN
+    fmtR(W, op MOD 40000000H, fn3, alu7Table[fn3])
+  ELSE
+    fmtR(W, op, fn3, alu8Table[fn3])
   END
 END alurw;
 
