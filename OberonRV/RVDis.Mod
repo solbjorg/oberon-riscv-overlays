@@ -73,10 +73,8 @@ VAR
   offset, rd: INTEGER;
 BEGIN
   rd := op DIV 128 MOD 32;
-  offset := (ASR(op, 31)) * 100000H +
-            (ASR(op, 21) MOD 400H) * 2H +
-            (ASR(op, 20) MOD 2) * 200000H +
-            (ASR(op, 12) MOD 100H);
+  offset := LSL(ASR(op, 31), 20) + LSL(ASR(op, 21) MOD 1024, 1) +
+      LSL(ASR(op, 20) MOD 2, 11) + LSL(ASR(op, 12) MOD 256, 12);
   Texts.WriteString(W, insn);
   writeReg(W, rd);
   writeHex(W, offset)
@@ -128,7 +126,27 @@ BEGIN
   rs1 := ASR(op, 15) MOD 32;
   rs2 := ASR(op, 20) MOD 32;
   Texts.WriteString(W, insn);
-  writeReg(W, rs1); writeReg(W, rs2); Texts.WriteInt(W, offset, 0);
+  (*
+    We swap the register order for the store instructions, so that their
+    register layouts would correspond in an assembly language listing.
+    For example, given:
+
+      LH x1, 200(x2)
+
+    we expect X1 to contain the half-word at 200(X2).  To put X1 back there,
+    it's very convenient to write:
+
+      SH x1, 200(x2)
+
+    Otherwise, you'd have to read this, which I think you'll agree is more
+    difficult to read:
+
+      SH x2, x1, 200
+
+    Note that the assembler must be aware of this register swap as well.
+    See RVAssem.Mod.
+  *)
+  writeReg(W, rs2); writeReg(W, rs1); Texts.WriteInt(W, offset, 0);
 END fmtS;
 
 PROCEDURE lui(VAR W: Texts.Writer; op, fn3: INTEGER);
