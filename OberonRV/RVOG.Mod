@@ -731,7 +731,7 @@ MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
   END Here;
 
   PROCEDURE FJump*(VAR L: LONGINT);
-  BEGIN Put3(BC, 7, L); L := pc-1
+  BEGIN put(pc, RVAssem.jal(0, 0)); L := pc-1
   END FJump;
 
   PROCEDURE CFJump*(VAR x: Item);
@@ -741,7 +741,7 @@ MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
   END CFJump;
 
   PROCEDURE BJump*(L: LONGINT);
-  BEGIN Put3(BC, 7, L-pc-1)
+  BEGIN put(pc, RVAssem.jal(0, (L-pc)*4))
   END BJump;
 
   PROCEDURE CBJump*(VAR x: Item; L: LONGINT);
@@ -756,45 +756,46 @@ MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
 
   PROCEDURE SaveRegs(r: LONGINT);  (* R[0 .. r-1]*)
     VAR r0: LONGINT;
-  BEGIN (*r > 0*) r0 := 0;
-    Put1(Sub, SP, SP, r*4); INC(frame, 4*r);
-    REPEAT Put2(Str, r0, SP, (r-r0-1)*4); INC(r0) UNTIL r0 = r
+  BEGIN (*r > 0*) r0 := RHStart;
+    put(pc, RVAssem.addi(SP, SP, r*4)); INC(frame, 4*r);
+    REPEAT put(pc, RVAssem.sw(r0, SP, (r-r0-1)*4)); INC(r0) UNTIL r0 = r
   END SaveRegs;
 
   PROCEDURE RestoreRegs(r: LONGINT); (*R[0 .. r-1]*)
     VAR r0: LONGINT;
   BEGIN (*r > 0*) r0 := r;
-    REPEAT DEC(r0); Put2(Ldr, r0, SP, (r-r0-1)*4) UNTIL r0 = 0;
-    Put1(Add, SP, SP, r*4); DEC(frame, 4*r)
+    REPEAT DEC(r0); put(pc, RVAssem.lw(r0, SP, (r-r0-1)*4)) UNTIL r0 = RHStart;
+    put(pc, RVAssem.addi(SP, SP, r*4)); DEC(frame, 4*r)
   END RestoreRegs;
 
   PROCEDURE PrepCall*(VAR x: Item; VAR r: LONGINT);
   BEGIN (*x.type.form = ORB.Proc*)
     IF x.mode > ORB.Par THEN load(x) END ;
     r := RH;
-    IF RH > 0 THEN SaveRegs(RH); RH := RHStart END
+    IF RH > RHStart THEN SaveRegs(RH); RH := RHStart END
   END PrepCall;
 
   PROCEDURE Call*(VAR x: Item; r: LONGINT);
   BEGIN (*x.type.form = ORB.Proc*)
     IF x.mode = ORB.Const THEN
-      IF x.r >= 0 THEN Put3(BL, 7, (x.a DIV 4)-pc-1)
+      IF x.r >= 0 THEN put(pc, RVAssem.jal(LNK, x.a-(pc*4)))
       ELSE (*imported*)
         IF pc - fixorgP < 1000H THEN
+          ORS.Mark("fixup support needed");
           Put3(BL, 7, ((-x.r) * 100H + x.a) * 1000H + pc-fixorgP); fixorgP := pc-1
         ELSE ORS.Mark("fixup impossible")
         END
       END
     ELSE
       IF x.mode <= ORB.Par THEN load(x); DEC(RH)
-      ELSE Put2(Ldr, RH, SP, 0); Put1(Add, SP, SP, 4); DEC(r); DEC(frame, 4)
+      ELSE put(pc, RVAssem.lw(RH, SP, 0)); put(pc, RVAssem.addi(SP, SP, 4)); DEC(r); DEC(frame, 4)
       END ;
-      IF check THEN Trap(EQ, 5) END ;
-      Put3(BLR, 7, RH)
+      IF check THEN ORS.Mark("trap support needed"); Trap(EQ, 5) END ;
+      put(pc, RVAssem.jalr(LNK, RH, 0))
     END ;
     IF x.type.base.form = ORB.NoTyp THEN (*procedure*) RH := RHStart
     ELSE (*function*)
-      IF r > 0 THEN Put0(Mov, r, 0, 0); RestoreRegs(r) END ;
+      IF r > RHStart THEN put(pc, RVAssem.addi(r, r, 0)); RestoreRegs(r) END ;
       x.mode := Reg; x.r := r; RH := r+1
     END ;
     invalSB
@@ -805,10 +806,12 @@ MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
   BEGIN invalSB; frame := 0;
     IF ~int THEN (*procedure prolog*)
       a := 4; r := 0;
-      Put1(Sub, SP, SP, locblksize); Put2(Str, LNK, SP, 0);
-      WHILE a < parblksize DO Put2(Str, r, SP, a); INC(r); INC(a, 4) END
+      put(pc, RVAssem.addi(SP, SP, -locblksize));
+      put(pc, RVAssem.sw(LNK, SP, 0));
+      WHILE a < parblksize DO put(pc, RVAssem.sw(r, SP, a)); INC(r); INC(a, 4) END
     ELSE (*interrupt procedure*)
-      Put1(Sub, SP, SP, 12); Put2(Str, 0, SP, 0); Put2(Str, 1, SP, 4); Put2(Str, SB, SP, 8)
+      put(pc, RVAssem.addi(SP, SP, -12)); put(pc, RVAssem.sw(RHStart, SP, 0));
+      put(pc, RVAssem.sw(RHStart+1, SP, 4)); put(pc, RVAssem.sw(SB, SP, 8));
       (*R0, R1, SB saved os stack*)
     END
   END Enter;
@@ -817,9 +820,11 @@ MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
   BEGIN
     IF form # ORB.NoTyp THEN load(x) END ;
     IF ~int THEN (*procedure epilog*)
-      Put2(Ldr, LNK, SP, 0); Put1(Add, SP, SP, size); Put3(BR, 7, LNK)
+      put(pc, RVAssem.lw(LNK, SP, 0)); put(pc, RVAssem.addi(SP, SP, size)); put(pc, RVAssem.jalr(0, LNK, 0));
     ELSE (*interrupt return, restore SB, R1, R0*)
-      Put2(Ldr, SB, SP, 8); Put2(Ldr, 1, SP, 4); Put2(Ldr, 0, SP, 0); Put1(Add, SP, SP, 12); Put3(BR, 7, 10H)
+      put(pc, RVAssem.lw(SB, SP, 8)); put(pc, RVAssem.lw(RHStart+1, SP, 4));
+      put(pc, RVAssem.lw(RHStart, SP, 0)); put(pc, RVAssem.addi(SP, SP, 12));
+      put(pc, RVAssem.eret());
     END ;
     RH := RHStart
   END Return;
