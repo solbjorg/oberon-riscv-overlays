@@ -803,15 +803,15 @@ MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
 
   PROCEDURE Enter*(parblksize, locblksize: LONGINT; int: BOOLEAN);
     VAR a, r: LONGINT;
-  BEGIN invalSB; frame := 0;
+  BEGIN invalSB; frame := 0; r := RHStart;
     IF ~int THEN (*procedure prolog*)
-      a := 4; r := 0;
+      a := 4;
       put(pc, RVAssem.addi(SP, SP, -locblksize));
       put(pc, RVAssem.sw(LNK, SP, 0));
       WHILE a < parblksize DO put(pc, RVAssem.sw(r, SP, a)); INC(r); INC(a, 4) END
     ELSE (*interrupt procedure*)
-      put(pc, RVAssem.addi(SP, SP, -12)); put(pc, RVAssem.sw(RHStart, SP, 0));
-      put(pc, RVAssem.sw(RHStart+1, SP, 4)); put(pc, RVAssem.sw(SB, SP, 8));
+      put(pc, RVAssem.addi(SP, SP, -12)); put(pc, RVAssem.sw(r, SP, 0));
+      put(pc, RVAssem.sw(r+1, SP, 4)); put(pc, RVAssem.sw(SB, SP, 8));
       (*R0, R1, SB saved os stack*)
     END
   END Enter;
