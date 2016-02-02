@@ -2,31 +2,10 @@ MODULE RVOP; (* Oberon compiler for RISC-V in Oberon-07 *)
 IMPORT Texts, Oberon, ORS:=RVOS;
 
 
-TYPE
-  Symbol = POINTER TO SymDesc;
-  Constant = POINTER TO ConDesc;
-
-  (* All symbols are of type SymDesc *)
-
-  SymDesc = RECORD
-    next: Symbol
-  END;
-
-  (* Constants are of ConDesc type. *)
-
-  ConDesc = RECORD(SymDesc)
-    name: ORS.Ident;	(* Name of the const identifier *)
-    type: INTEGER;	(* Type of the value *)
-    value: LONGINT;	(* integer value, string address *)
-    exported: BOOLEAN;	(* TRUE if public *)
-  END;
-
-
 VAR
   W: Texts.Writer;    (* Output for logging/errors. *)
   newSF: BOOLEAN;     (* TRUE to replace/FALSE to validate against smb file *)
   sym: INTEGER;       (* Last fetched symbol classification *)
-  symbols: Symbol;    (* Symbols in current scope *)
 
 
 (*
@@ -38,33 +17,6 @@ PROCEDURE Check(s: INTEGER; msg: ARRAY OF CHAR);
 BEGIN
   IF sym = s THEN ORS.Get(sym) ELSE ORS.Mark(msg) END
 END Check;
-
-
-PROCEDURE expression(VAR v: LONGINT);
-BEGIN
-  IF sym = ORS.int THEN v := ORS.ival; ORS.Get(sym)
-  ELSE ORS.Mark("Integer value expected")
-  END
-END expression;
-
-
-PROCEDURE Constants;
-VAR
-  constName: ORS.Ident;
-  value: LONGINT;
-  c: Constant;
-  exported: BOOLEAN;
-BEGIN
-  WHILE sym = ORS.ident DO
-    ORS.CopyId(constName);  ORS.Get(sym);
-    exported := sym = ORS.times; IF exported THEN ORS.Get(sym) END;
-    Check(ORS.eql, "Equation expected");
-    expression(value);
-    Check(ORS.semicolon, "; expected");
-    NEW(c);  c.name := constName;  c.value := value;  c.exported := exported;
-    c.next := symbols;  symbols := c;
-  END
-END Constants;
 
 
 PROCEDURE Module;
@@ -90,7 +42,7 @@ BEGIN
     
     (* Imports *)
 
-    IF sym = ORS.const THEN ORS.Get(sym); Constants END;
+    (* Constants *)
 
     (* Procedures *)
 
