@@ -1,5 +1,5 @@
-MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07*)
-  IMPORT Texts, Oberon, ORS:=RVOS;
+MODULE RVOP; (* Oberon compiler for RISC-V in Oberon-07 *)
+IMPORT Texts, Oberon, ORS:=RVOS;
 
 
 TYPE
