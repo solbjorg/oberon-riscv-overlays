@@ -1,0 +1,5 @@
+MODULE* ROM;
+VAR
+  i, j, k: INTEGER;
+END ROM.
+
