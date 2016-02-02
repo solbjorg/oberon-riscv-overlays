@@ -1,26 +1,32 @@
 MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07*)
-  IMPORT Texts, Oberon, ORS:=RVOS, ORB:=RVOB, ORG:=RVOG;
+  IMPORT Texts, Oberon, ORS:=RVOS;
+
 
 TYPE
-  PtrBase = POINTER TO PtrBaseDesc;
-  PtrBaseDesc = RECORD  (*list of names of pointer base types*)
-    name: ORS.Ident; type: ORB.Type; next: PtrBase
-  END ;
-  
+  Symbol = POINTER TO SymDesc;
+  Constant = POINTER TO ConDesc;
+
+  (* All symbols are of type SymDesc *)
+
+  SymDesc = RECORD
+    next: Symbol
+  END;
+
+  (* Constants are of ConDesc type. *)
+
+  ConDesc = RECORD(SymDesc)
+    name: ORS.Ident;	(* Name of the const identifier *)
+    type: INTEGER;	(* Type of the value *)
+    value: LONGINT;	(* integer value, string address *)
+    exported: BOOLEAN;	(* TRUE if public *)
+  END;
+
+
 VAR
-  W: Texts.Writer;      (* Output for logging/errors. *)
-
-  newSF: BOOLEAN;       (* TRUE to generate a new symbol file; FALSE to validate *)
-  modid: ORS.Ident;     (* Module name *)
-  pbsList: PtrBase;     (* Track of forward type references for POINTER TO *)
-  dummy: ORB.Object;    (* Used for constructing qualified identifiers *)
-
-    sym,                (* Next symbol in source text *)
-    version,            (* 0 for ROM image; 1 for system image *)
-    dc,                 (* # of bytes taken by module-scope variables *)
-    exno,               (* ID of next export; aka # of exports so far *)
-    level               (* 0 for global scope; >0 for inner scopes *)
-  : INTEGER;
+  W: Texts.Writer;    (* Output for logging/errors. *)
+  newSF: BOOLEAN;     (* TRUE to replace/FALSE to validate against smb file *)
+  sym: INTEGER;       (* Last fetched symbol classification *)
+  symbols: Symbol;    (* Symbols in current scope *)
 
 
 (*
@@ -34,155 +40,77 @@ BEGIN
 END Check;
 
 
-PROCEDURE Declarations(VAR varsize: LONGINT);
-VAR obj, first: ORB.Object;
-    x: ORG.Item; tp: ORB.Type; ptbase: PtrBase;
-    expo: BOOLEAN; id: ORS.Ident;
+PROCEDURE expression(VAR v: LONGINT);
 BEGIN
-  pbsList := NIL;
-  IF (sym < ORS.const) & (sym # ORS.end) THEN (* try to sync w/ next decl *)
-    ORS.Mark("Missing declaration?");
-    REPEAT ORS.Get(sym) UNTIL (sym >= ORS.const) OR (sym = ORS.end)
-  END ;
+  IF sym = ORS.int THEN v := ORS.ival; ORS.Get(sym)
+  ELSE ORS.Mark("Integer value expected")
+  END
+END expression;
 
-  (*
-    CONST declarations
-  *)
 
-  IF sym = ORS.const THEN
-    ORS.Get(sym);
-    WHILE sym = ORS.ident DO
-      ORS.CopyId(id); ORS.Get(sym); CheckExport(expo); Check(ORS.eql, "= ?");
-      expression(x);
-      IF (x.type.form = ORB.String) & (x.b = 2) THEN ORG.StrToChar(x) END;
-      ORB.NewObj(obj, id, ORB.Const); obj.expo := expo;
-      IF x.mode = ORB.Const THEN
-        obj.val := x.a; obj.lev := x.b; obj.type := x.type
-      ELSE
-        ORS.Mark("expression not constant"); obj.type := ORB.intType
-      END;
-      Check(ORS.semicolon, "; missing")
-    END
-  END ;
-
-(*
-  (*
-    TYPE declarations
-    
-    These MUST appear ahead of VAR declarations because these will actually
-    allocate type descriptors in data space.
-  *)
-
-  IF sym = ORS.type THEN
-    ORS.Get(sym);
-    WHILE sym = ORS.ident DO
-      ORS.CopyId(id); ORS.Get(sym); CheckExport(expo);
-      IF sym = ORS.eql THEN ORS.Get(sym) ELSE ORS.Mark("=?") END ;
-      Type(tp);
-      ORB.NewObj(obj, id, ORB.Typ); obj.type := tp; obj.expo := expo; obj.lev := level; tp.typobj := obj;
-      IF expo & (obj.type.form = ORB.Record) THEN obj.exno := exno; INC(exno) ELSE obj.exno := 0 END ;
-      IF tp.form = ORB.Record THEN
-        ptbase := pbsList;  (*check whether this is base of a pointer type; search and fixup*)
-        WHILE ptbase # NIL DO
-          IF obj.name = ptbase.name THEN ptbase.type.base := obj.type END ;
-          ptbase := ptbase.next
-        END ;
-        IF level = 0 THEN ORG.BuildTD(tp, dc) END    (*type descriptor; len used as its address*)
-      END ;
-      Check(ORS.semicolon, "; missing")
-    END
-  END ;
-
-  (* VAR declarations *)
-
-  IF sym = ORS.var THEN
-    ORS.Get(sym);
-    WHILE sym = ORS.ident DO
-      IdentList(ORB.Var, first); Type(tp);
-      obj := first;
-      WHILE obj # NIL DO
-        obj.type := tp; obj.lev := level;
-        IF tp.size > 1 THEN varsize := (varsize + 3) DIV 4 * 4 (*align*) END ;
-        obj.val := varsize; varsize := varsize + obj.type.size;
-        IF obj.expo THEN obj.exno := exno; INC(exno) END ;
-        obj := obj.next
-      END ;
-      Check(ORS.semicolon, "; missing")
-    END
-  END ;
-  varsize := (varsize + 3) DIV 4 * 4;
-  ptbase := pbsList;
-  WHILE ptbase # NIL DO
-    IF ptbase.type.base.form = ORB.Int THEN ORS.Mark("undefined pointer base of") END ;
-    ptbase := ptbase.next
-  END ;
-  IF (sym >= ORS.const) & (sym <= ORS.var) THEN ORS.Mark("declaration in bad order") END
-*)
-END Declarations;
+PROCEDURE Constants;
+VAR
+  constName: ORS.Ident;
+  value: LONGINT;
+  c: Constant;
+  exported: BOOLEAN;
+BEGIN
+  WHILE sym = ORS.ident DO
+    ORS.CopyId(constName);  ORS.Get(sym);
+    exported := sym = ORS.times; IF exported THEN ORS.Get(sym) END;
+    Check(ORS.eql, "Equation expected");
+    expression(value);
+    Check(ORS.semicolon, "; expected");
+    NEW(c);  c.name := constName;  c.value := value;  c.exported := exported;
+    c.next := symbols;  symbols := c;
+  END
+END Constants;
 
 
 PROCEDURE Module;
-  VAR key: LONGINT;
-    obj: ORB.Object;
-    impid, impid1: ORS.Ident;
+VAR
+  modid: ORS.Ident;
 BEGIN
-  Texts.WriteString(W, "  compiling "); ORS.Get(sym);
-  IF sym = ORS.module THEN
-    ORS.Get(sym);
-    IF sym = ORS.times THEN version := 0; Texts.Write(W, "*"); ORS.Get(sym) ELSE version := 1 END ;
-    ORB.Init; ORB.OpenScope;
+  Texts.WriteString(W, "  compiling ");
+  ORS.Get(sym); IF sym # ORS.module THEN
+    ORS.Mark("MODULE expected");
+  ELSE
+    ORS.Get(sym); IF sym = ORS.times THEN
+      Texts.Write(W, "*"); ORS.Get(sym)
+    ELSE ORS.Mark("Only ROM ABI modules supported right now.");
+    END;
+
     IF sym = ORS.ident THEN
       ORS.CopyId(modid); ORS.Get(sym);
-      Texts.WriteString(W, modid); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
+      Texts.WriteString(W, modid); Texts.WriteLn(W);
+      Texts.Append(Oberon.Log, W.buf)
     ELSE ORS.Mark("identifier expected")
-    END ;
-    Check(ORS.semicolon, "no ;"); level := 0; dc := 0; exno := 1; key := 0;
-    IF sym = ORS.import THEN
-      ORS.Get(sym);
-      WHILE sym = ORS.ident DO
-        ORS.CopyId(impid); ORS.Get(sym);
-        IF sym = ORS.becomes THEN
-          ORS.Get(sym);
-          IF sym = ORS.ident THEN ORS.CopyId(impid1); ORS.Get(sym)
-          ELSE ORS.Mark("id expected")
-          END
-        ELSE impid1 := impid
-        END ;
-        ORB.Import(impid, impid1);
-        IF sym = ORS.comma THEN ORS.Get(sym)
-        ELSIF sym = ORS.ident THEN ORS.Mark("comma missing")
-        END
-      END ;
-      Check(ORS.semicolon, "no ;")
-    END ;
-    obj := ORB.topScope.next;
-    ORG.Open(version); Declarations(dc); (* ORG.SetDataSize((dc + 3) DIV 4 * 4); *)
-    (*TODO WHILE sym = ORS.procedure DO ProcedureDecl; Check(ORS.semicolon, "no ;") END ; *)
-    ORG.Header;
-    (*TODO IF sym = ORS.begin THEN ORS.Get(sym); StatSequence END ; *)
-    Check(ORS.end, "no END");
+    END;
+    Check(ORS.semicolon, "; expected");
+    
+    (* Imports *)
+
+    IF sym = ORS.const THEN ORS.Get(sym); Constants END;
+
+    (* Procedures *)
+
+    (* Module initialization *)
+
+    Check(ORS.end, "END expected");
     IF sym = ORS.ident THEN
-      IF ORS.id # modid THEN ORS.Mark("no match") END ;
+      IF ORS.id # modid THEN ORS.Mark("END name must match MODULE name.") END;
       ORS.Get(sym)
     ELSE ORS.Mark("identifier missing")
-    END ;
-    IF sym # ORS.period THEN ORS.Mark("period missing") END ;
-    IF (ORS.errcnt = 0) & (version # 0) THEN
-      ORB.Export(modid, newSF, key);
-      IF newSF THEN Texts.WriteString(W, " new symbol file") END
-    END ;
-    IF ORS.errcnt = 0 THEN
-      ORG.Close(modid, key, exno);
-      Texts.WriteString(W, "PC: "); Texts.WriteInt(W, ORG.pc, 6);
-      Texts.WriteString(W, "  DC: "); Texts.WriteInt(W, dc, 6);
-      Texts.WriteString(W, "  Key: "); Texts.WriteHex(W, key)
-    ELSE Texts.WriteLn(W); Texts.WriteString(W, "compilation FAILED")
-    END ;
+    END;
+    Check(ORS.period, "MODULE..END terminates with a period.");
+
+    IF ORS.errcnt # 0 THEN
+      Texts.WriteLn(W); Texts.WriteString(W, "compilation FAILED");
+    END;
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-    ORB.CloseScope; pbsList := NIL
-  ELSE ORS.Mark("must start with MODULE")
   END
 END Module;
+
 
 PROCEDURE Option(VAR S: Texts.Scanner);
 BEGIN newSF := FALSE;
@@ -191,6 +119,7 @@ BEGIN newSF := FALSE;
     IF (S.class = Texts.Name) & (S.s[0] = "s") THEN newSF := TRUE END
   END
 END Option;
+
 
 PROCEDURE Compile*;
   VAR beg, end, time: LONGINT;
@@ -224,8 +153,8 @@ BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
   Oberon.Collect(0)
 END Compile;
 
-BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "OR Compiler  7.6.2014");
+
+BEGIN
+  Texts.OpenWriter(W); Texts.WriteString(W, "RVO Compiler  2016 Feb");
   Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-  NEW(dummy); dummy.class := ORB.Var; dummy.type := ORB.intType;
-  (*TODO expression := expression0; Type := Type0; FormalType := FormalType0 *)
 END RVOP.
