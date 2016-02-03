@@ -359,10 +359,10 @@ BEGIN
   IF x.loc = reg THEN (* do nothing; we're already loaded *)
   ELSIF x.loc = mem THEN
     IF x.kind = lvar THEN
-      put(RVAssem.ld(RH, SP, x.offset));
+      put(RVAssem.ld(RH, SP, x.offset*DWordSize));
       x.offset := RH; incR
     ELSIF x.kind = gvar THEN
-      put(RVAssem.ld(RH, SB, x.offset));
+      put(RVAssem.ld(RH, SB, x.offset*DWordSize));
       x.offset := RH; incR
     ELSE ORS.Mark("Don't know how to load this in a register")
     END
@@ -402,9 +402,16 @@ END negate;
 
 
 PROCEDURE factor(VAR x: Item);
+VAR
+  s: Symbol;
 BEGIN
   x := NIL;
   IF sym = ORS.int THEN NewItemFromInteger(x, ORS.ival); ORS.Get(sym)
+  ELSIF sym = ORS.ident THEN
+    LookupSymbol(s, ORS.id); ORS.Get(sym);
+    IF s = NIL THEN ORS.Mark("Unknown identifier")
+    ELSE NewItemFromSymbol(x, s)
+    END
   ELSE ORS.Mark("Factor expected")
   END
 END factor;
@@ -451,11 +458,23 @@ BEGIN
 END emitStore;
 
 
+PROCEDURE emitBranchFalse(label: INTEGER; x: Item);
+BEGIN
+  IF x.loc = reg THEN put(RVAssem.beq(x.offset, 0, label)); decR
+  ELSIF x.loc = mem THEN emitLoad(x); emitBranchFalse(label, x)
+  ELSIF (x.loc = lit) & (x.offset = 0) THEN put(RVAssem.jal(0, label))
+  ELSIF (x.loc = lit) THEN (* do nothing; it's true *)
+  ELSE ORS.Mark("Don't know how to interpret branch for UNTIL")
+  END
+END emitBranchFalse;
+
+
 PROCEDURE statements;
 VAR
   s: Symbol;
   l, r: Item;
   done: BOOLEAN;
+  L0: INTEGER; (* Label address *)
 BEGIN
   done := FALSE;
   REPEAT
@@ -474,9 +493,16 @@ BEGIN
       ELSE
         ORS.Mark("Unknown construct")
       END
-    ELSE ORS.Mark("Not yet implemented");
+    ELSIF sym = ORS.repeat THEN (* REPEAT ... UNTIL cond *)
+      L0 := cp; ORS.Get(sym); statements;
+      IF sym # ORS.until THEN ORS.Mark("UNTIL expected");
+      ELSE
+        ORS.Get(sym); expression(l);
+        IF l.type # bool THEN ORS.Mark("BOOLEAN expression needed")
+        ELSE emitBranchFalse(L0, l);
+        END
+      END
     END;
-Texts.WriteInt(W, sym, 0); appendLog;
     IF sym = ORS.semicolon THEN ORS.Get(sym)
     ELSE done := TRUE
     END

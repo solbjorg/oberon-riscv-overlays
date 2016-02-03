@@ -7,17 +7,18 @@ VAR
 PROCEDURE ramCheck;
 VAR
   a: LONGINT;
-  fixed: BOOLEAN;
+  immutable: BOOLEAN;
   probe1, probe2: LONGINT;
 BEGIN
   probe1 := 55555555H;
   probe2 := 0AAAAAAAAH;
-  a := -512
+  a := -512;
+  REPEAT
+  UNTIL immutable;
 END ramCheck;
 
 END ROM.
 
-  REPEAT
     INC(a, 1024);
     S.PUT(a, probe1);
     S.GET(a, metric1);
@@ -25,6 +26,6 @@ END ROM.
     S.PUT(a, probe2);
     S.GET(a, metric2);
     immutable := immutable OR (probe2 # metric2);
-  UNTIL immutable;
+
   ramTop := a - 512;
 
