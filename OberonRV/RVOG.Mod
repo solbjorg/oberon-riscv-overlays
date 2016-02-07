@@ -360,7 +360,7 @@ END FitsIn32Bits;
 
 PROCEDURE LuiForXorIn(dest, n: INTEGER);
 BEGIN
-  IF ~SYSTEM.BIT(n, 11) THEN   (* Account for sign-extension of next insn *)
+  IF ~SYSTEM.BIT(SYSTEM.ADR(n), 11) THEN   (* Account for sign-extension of next insn *)
     put(RVAssem.lui(dest, n));
   ELSE
     put(RVAssem.lui(dest, SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, n) / {12..31})));
@@ -373,7 +373,7 @@ END LuiForXor;
 
 PROCEDURE LuiForAddIn(dest, n: INTEGER);  (* assuming ADDI, Lx, Sx follows *)
 BEGIN
-  IF ~SYSTEM.BIT(n, 11) THEN   (* Account for sign-extension of next insn *)
+  IF ~SYSTEM.BIT(SYSTEM.ADR(n), 11) THEN   (* Account for sign-extension of next insn *)
     put(RVAssem.lui(dest, n));
   ELSE
     put(RVAssem.lui(dest, n + 1000H))
@@ -583,7 +583,7 @@ BEGIN
       IF x.a # 0 THEN x.r := ALW ELSE x.r := NEV END
     ELSE
       load(x);
-      x.r := NE; x.cl := RH; x.cr := 0; DEC(RH)
+      x.r := NE; x.cl := RH-1; x.cr := 0; DEC(RH)
     END ;
     x.mode := Cond; x.a := 0; x.b := 0
   ELSE ORS.Mark("not Boolean?")
@@ -1163,7 +1163,7 @@ BEGIN x.type := ORB.charType; DEC(strx, 4); x.a := ORD(str[x.a])
 END StrToChar;
 
 PROCEDURE Store*(VAR x, y: Item); (* x := y *)
-  VAR op: INTEGER;
+VAR op: INTEGER;
 BEGIN  load(y);
   IF x.type.size = 1 THEN op := 0 ELSE op := 3 END ;
   IF x.mode = ORB.Var THEN
