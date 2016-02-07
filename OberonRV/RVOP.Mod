@@ -6,6 +6,10 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
     RVOG to produce binary code. RVOP performs type checking and data allocation.
     Parser is target-independent, except for part of the handling of allocations.*)
 
+  CONST
+    IntegerSize = RVOG.IntegerSize;
+    InsnSize = RVOG.InsnSize;
+
   TYPE PtrBase = POINTER TO PtrBaseDesc;
     PtrBaseDesc = RECORD  (*list of names of pointer base types*)
       name: ORS.Ident; type: ORB.Type; next: PtrBase
@@ -22,6 +26,10 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
     pbsList: PtrBase;   (*list of names of pointer base types*)
     dummy: ORB.Object;
     W: Texts.Writer;
+
+PROCEDURE RoundUp(x: INTEGER): INTEGER;
+BEGIN RETURN (x + (IntegerSize-1)) DIV IntegerSize * IntegerSize
+END RoundUp;
 
   PROCEDURE Check(s: INTEGER; msg: ARRAY OF CHAR);
   BEGIN
@@ -255,9 +263,9 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
           IF x.type.form = ORB.Array THEN RVOG.Len(x) ELSE ORS.Mark("not an array") END
       ELSIF fct IN {7, 8, 9} THEN (*LSL, ASR, ROR*) CheckInt(y);
         IF x.type.form IN {ORB.Int, ORB.Set} THEN RVOG.Shift(fct-7, x, y); restyp := x.type ELSE ORS.Mark("bad type") END
-      ELSIF fct = 11 THEN (*ADC*) RVOG.ADC(x, y)
-      ELSIF fct = 12 THEN (*SBC*) RVOG.SBC(x, y)
-      ELSIF fct = 13 THEN (*UML*) RVOG.UML(x, y)
+      ELSIF fct = 11 THEN (*ADC*) ORS.Mark("no ADC")
+      ELSIF fct = 12 THEN (*SBC*) ORS.Mark("no SBC")
+      ELSIF fct = 13 THEN (*UML*) ORS.Mark("no UML")
       ELSIF fct = 14 THEN (*BIT*) CheckInt(x); CheckInt(y); RVOG.Bit(x, y)
       ELSIF fct = 15 THEN (*REG*) CheckConst(x); CheckInt(x); RVOG.Register(x)
       ELSIF fct = 16 THEN (*VAL*)
@@ -269,8 +277,8 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
         IF x.mode = ORB.Typ THEN RVOG.MakeConstItem(x, ORB.intType, x.type.size)
         ELSE ORS.Mark("must be a type")
         END
-      ELSIF fct = 19 THEN (*COND*) CheckConst(x); CheckInt(x); RVOG.Condition(x)
-      ELSIF fct = 20 THEN (*H*) CheckConst(x); CheckInt(x); RVOG.H(x)
+      ELSIF fct = 19 THEN (*COND*) ORS.Mark("no COND")
+      ELSIF fct = 20 THEN (*H*) ORS.Mark("no H")
       END ;
       x.type := restyp
     ELSE ORS.Mark("wrong nof params")
@@ -613,7 +621,7 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
     ELSIF sym = ORS.comma THEN ORS.Get(sym); ArrayType(typ.base)
     ELSE ORS.Mark("missing OF"); typ.base := ORB.intType
     END ;
-    IF len >= 0 THEN typ.size := (len * typ.base.size + 3) DIV 4 * 4 ELSE typ.size := 2*RVOG.WordSize  (*array desc*) END ;
+    IF len >= 0 THEN typ.size := RoundUp(len) ELSE typ.size := 2*RVOG.IntegerSize  (*array desc*) END ;
     typ.form := ORB.Array; typ.len := len; type := typ
   END ArrayType;
 
@@ -653,13 +661,13 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
       END ;
       Check(ORS.colon, "colon expected"); Type(tp);
       IF (tp.form = ORB.Array) & (tp.len < 0) THEN ORS.Mark("dyn array not allowed") END ;
-      IF tp.size > 1 THEN offset := (offset+3) DIV 4 * 4 END ;
+      IF tp.size > 1 THEN offset := RoundUp(offset) END ;
       offset := offset + n * tp.size; off := offset; obj0 := obj;
       WHILE obj0 # bot DO obj0.type := tp; obj0.lev := 0; off := off - tp.size; obj0.val := off; obj0 := obj0.next END ;
       bot := obj;
       IF sym = ORS.semicolon THEN ORS.Get(sym) ELSIF sym # ORS.end THEN ORS.Mark(" ; or END") END
     END ;
-    typ.form := ORB.Record; typ.dsc := bot; typ.size := (offset + 3) DIV 4 * 4; type := typ
+    typ.form := ORB.Record; typ.dsc := bot; typ.size := RoundUp(offset); type := typ
   END RecordType;
 
   PROCEDURE FPSection(VAR adr: LONGINT; VAR nofpar: INTEGER);
@@ -816,7 +824,7 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
         obj := first;
         WHILE obj # NIL DO
           obj.type := tp; obj.lev := level;
-          IF tp.size > 1 THEN varsize := (varsize + 3) DIV 4 * 4 (*align*) END ;
+          IF tp.size > 1 THEN varsize := RoundUp(varsize) END ;
           obj.val := varsize; varsize := varsize + obj.type.size;
           IF obj.expo THEN obj.exno := exno; INC(exno) END ;
           obj := obj.next
@@ -824,7 +832,7 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
         Check(ORS.semicolon, "; missing")
       END
     END ;
-    varsize := (varsize + 3) DIV 4 * 4;
+    varsize := RoundUp(varsize);
     ptbase := pbsList;
     WHILE ptbase # NIL DO
       IF ptbase.type.base.form = ORB.Int THEN ORS.Mark("undefined pointer base of") END ;
@@ -852,11 +860,11 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
       ProcedureType(type, parblksize);  (*formal parameter list*)
       Check(ORS.semicolon, "no ;"); locblksize := parblksize; 
       Declarations(locblksize);
-      proc.val := RVOG.Here() * 4; proc.type.dsc := ORB.topScope.next;
+      proc.val := RVOG.Here() * InsnSize; proc.type.dsc := ORB.topScope.next;
       IF sym = ORS.procedure THEN
         L := 0; RVOG.FJump(L);
         REPEAT ProcedureDecl; Check(ORS.semicolon, "no ;") UNTIL sym # ORS.procedure;
-        RVOG.FixLink(L); proc.val := RVOG.Here() * 4; proc.type.dsc := ORB.topScope.next
+        RVOG.FixLink(L); proc.val := RVOG.Here() * InsnSize; proc.type.dsc := ORB.topScope.next
       END ;
       RVOG.Enter(parblksize, locblksize, int);
       IF sym = ORS.begin THEN ORS.Get(sym); StatSequence END ;
@@ -913,7 +921,7 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
         Check(ORS.semicolon, "no ;")
       END ;
       obj := ORB.topScope.next;
-      RVOG.Open(version); Declarations(dc); RVOG.SetDataSize((dc + 3) DIV 4 * 4);
+      RVOG.Open(version); Declarations(dc); RVOG.SetDataSize(RoundUp(dc));
       WHILE sym = ORS.procedure DO ProcedureDecl; Check(ORS.semicolon, "no ;") END ;
       RVOG.Header;
       IF sym = ORS.begin THEN ORS.Get(sym); StatSequence END ;
