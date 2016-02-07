@@ -1714,7 +1714,7 @@ BEGIN varsize := dc
 END SetDataSize;
 
 PROCEDURE Header*;
-BEGIN entry := pc*4;
+BEGIN entry := pc*InsnSize;
   IF version = 0 THEN  (* ROM-resident ABI *)
     code[0] := RVAssem.jal(0, pc*InsnSize);
     put(RVAssem.addi(SB, 0, VarOrg0));
