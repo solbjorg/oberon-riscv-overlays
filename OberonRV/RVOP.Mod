@@ -1,5 +1,5 @@
 MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07*)
-  IMPORT Texts, Oberon, ORS, ORB, RVOG;
+  IMPORT Texts, Oberon, ORS, ORB:=RVOB, RVOG;
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
     ORB for definition of data structures and for handling import and export, and
@@ -7,8 +7,8 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
     Parser is target-independent, except for part of the handling of allocations.*)
 
   CONST
-    IntegerSize = RVOG.IntegerSize;
-    InsnSize = RVOG.InsnSize;
+    IntegerSize = ORB.IntegerSize;
+    InsnSize = ORB.InsnSize;
 
   TYPE PtrBase = POINTER TO PtrBaseDesc;
     PtrBaseDesc = RECORD  (*list of names of pointer base types*)
@@ -621,7 +621,7 @@ END RoundUp;
     ELSIF sym = ORS.comma THEN ORS.Get(sym); ArrayType(typ.base)
     ELSE ORS.Mark("missing OF"); typ.base := ORB.intType
     END ;
-    IF len >= 0 THEN typ.size := RoundUp(len) ELSE typ.size := 2*RVOG.IntegerSize  (*array desc*) END ;
+    IF len >= 0 THEN typ.size := RoundUp(len) ELSE typ.size := 2*ORB.IntegerSize  (*array desc*) END ;
     typ.form := ORB.Array; typ.len := len; type := typ
   END ArrayType;
 
@@ -678,8 +678,8 @@ END RoundUp;
     IdentList(cl, first); FormalType(tp, 0); rdo := FALSE;
     IF (cl = ORB.Var) & (tp.form >= ORB.Array) THEN cl := ORB.Par; rdo := TRUE END ;
     IF (tp.form = ORB.Array) & (tp.len < 0) OR (tp.form = ORB.Record) THEN
-      parsize := 2*RVOG.WordSize  (*open array or record, needs second word for length or type tag*)
-    ELSE parsize := RVOG.WordSize
+      parsize := 2*ORB.IntegerSize  (*open array or record, needs second word for length or type tag*)
+    ELSE parsize := ORB.IntegerSize
     END ;
     obj := first;
     WHILE obj # NIL DO
@@ -721,11 +721,11 @@ END RoundUp;
     ELSIF sym = ORS.array THEN
       ORS.Get(sym); Check(ORS.of, "OF ?");
       IF dim >= 1 THEN ORS.Mark("multi-dimensional open arrays not implemented") END ;
-      NEW(typ); typ.form := ORB.Array; typ.len := -1; typ.size := 2*RVOG.WordSize; 
+      NEW(typ); typ.form := ORB.Array; typ.len := -1; typ.size := 2*ORB.IntegerSize; 
       FormalType(typ.base, dim+1)
     ELSIF sym = ORS.procedure THEN
       ORS.Get(sym); ORB.OpenScope;
-      NEW(typ); typ.form := ORB.Proc; typ.size := RVOG.WordSize; dmy := 0; ProcedureType(typ, dmy);
+      NEW(typ); typ.form := ORB.Proc; typ.size := ORB.PtrSize; dmy := 0; ProcedureType(typ, dmy);
       typ.dsc := ORB.topScope.next; ORB.CloseScope
     ELSE ORS.Mark("identifier expected"); typ := ORB.noType
     END
@@ -753,7 +753,7 @@ END RoundUp;
       ORS.Get(sym); RecordType(type); Check(ORS.end, "no END")
     ELSIF sym = ORS.pointer THEN
       ORS.Get(sym); Check(ORS.to, "no TO");
-      NEW(type);  type.form := ORB.Pointer; type.size := RVOG.WordSize; type.base := ORB.intType;
+      NEW(type);  type.form := ORB.Pointer; type.size := ORB.PtrSize; type.base := ORB.intType;
       IF sym = ORS.ident THEN
         obj := ORB.thisObj(); ORS.Get(sym);
         IF obj # NIL THEN
@@ -770,7 +770,7 @@ END RoundUp;
       END
     ELSIF sym = ORS.procedure THEN
       ORS.Get(sym); ORB.OpenScope;
-      NEW(type); type.form := ORB.Proc; type.size := RVOG.WordSize; dmy := 0;
+      NEW(type); type.form := ORB.Proc; type.size := ORB.PtrSize; dmy := 0;
       ProcedureType(type, dmy); type.dsc := ORB.topScope.next; ORB.CloseScope
     ELSE ORS.Mark("illegal type")
     END
@@ -852,8 +852,8 @@ END RoundUp;
     IF sym = ORS.times THEN ORS.Get(sym); int := TRUE END ;
     IF sym = ORS.ident THEN
       ORS.CopyId(procid); ORS.Get(sym);
-      ORB.NewObj(proc, ORS.id, ORB.Const); parblksize := 4;
-      NEW(type); type.form := ORB.Proc; type.size := RVOG.WordSize; proc.type := type;
+      ORB.NewObj(proc, ORS.id, ORB.Const); parblksize := ORB.PtrSize;
+      NEW(type); type.form := ORB.Proc; type.size := ORB.IntegerSize; proc.type := type;
       CheckExport(proc.expo);
       IF proc.expo THEN proc.exno := exno; INC(exno) END ;
       ORB.OpenScope; INC(level); proc.val := -1; type.base := ORB.noType;

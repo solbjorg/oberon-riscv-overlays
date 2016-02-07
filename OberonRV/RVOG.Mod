@@ -1,6 +1,6 @@
 MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
 
-IMPORT SYSTEM, Files, ORS, ORB, RVAssem;
+IMPORT SYSTEM, Files, Texts, Oberon, ORS, ORB:=RVOB, RVAssem, RVDis;
 
 (*
   Code generator for Oberon compiler for RISC-V processor.
@@ -9,15 +9,13 @@ IMPORT SYSTEM, Files, ORS, ORB, RVAssem;
 *)
 
 CONST
-  BitsPerInteger* = 64;
-  IntegerSize* = BitsPerInteger DIV 8;
+  BitsPerInteger = ORB.BitsPerInteger;
+  IntegerSize = BitsPerInteger DIV 8;
 
-  BitsPerInsn* = 32;
-  InsnSize* = BitsPerInsn DIV 8;
+  BitsPerInsn = ORB.BitsPerInsn;
+  InsnSize = BitsPerInsn DIV 8;
 
-  WordSize* = InsnSize;  (* ORP Compatibility *)
-
-  StkOrg0 = -64;    (* For ROM modules only *)
+  StkOrg0 = 65536;    (* For ROM modules only *)
   VarOrg0 = 0;
 
   firstReg = 8;     (* First usable data register *)
@@ -92,6 +90,7 @@ TYPE
   *)
 
 VAR
+  W: Texts.Writer;
   pc*, varsize: INTEGER;  (* program counter, data indices *)
   tdx, strx: INTEGER;     (* Type descriptor and string array indices *)
   entry: INTEGER;         (* module body entrypoint *)
@@ -112,7 +111,12 @@ VAR
   fixorgP, fixorgD, fixorgT: INTEGER;   (*origins of lists of locations to be fixed up by loader*)
 
 PROCEDURE put(w: INTEGER);
-BEGIN  code[pc] := w;  INC(pc)
+BEGIN
+  Texts.WriteHex(W, pc*InsnSize);  Texts.WriteString(W, "   ");
+  Texts.WriteHex(W, w); Texts.WriteString(W, " : ");
+  RVDis.WriteOpcode(W, w);  Texts.WriteLn(W);
+  Texts.Append(Oberon.Log, W.buf);
+  code[pc] := w;  INC(pc)
 END put;
 
 (* Register Stack Maintenance *)
@@ -120,7 +124,7 @@ END put;
 (* Allocate register RH, adjusting RH accordingly. *)
 PROCEDURE incR;
 BEGIN
-  IF RH < MT-1 THEN INC(RH) ELSE ORS.Mark("register stack overflow") END
+  IF RH < maxReg THEN INC(RH) ELSE ORS.Mark("register stack overflow") END
 END incR;
 
 (* Free register RH-1, adjusting RH accordingly. *)
@@ -351,7 +355,7 @@ END FitsIn12Bits;
 
 PROCEDURE FitsIn32Bits(n: INTEGER): BOOLEAN;
 BEGIN
-  RETURN (-80000000H <= n) & (n < 80000000H)
+  RETURN TRUE  (* hack for 32-bit Oberon bootstrap (-80000000H <= n) & (n < 80000000H) *)
 END FitsIn32Bits;
 
 PROCEDURE LuiForXorIn(dest, n: INTEGER);
@@ -1705,7 +1709,7 @@ BEGIN
 END Adr;
 
 PROCEDURE Open*(v: INTEGER);
-BEGIN pc := 0; tdx := 0; strx := 0; RH := 0; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
+BEGIN pc := 0; tdx := 0; strx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
   IF v = 0 THEN pc := 8 END
 END Open;
 
@@ -1848,4 +1852,6 @@ BEGIN
   sym2uRel[ORS.leq-ORS.eql] := GEU; (* not a typo; swap args first! *)
   sym2uRel[ORS.gtr-ORS.eql] := LTU; (* not a typo; swap args first! *)
   sym2uRel[ORS.geq-ORS.eql] := GEU;
+
+  Texts.OpenWriter(W);
 END RVOG.
