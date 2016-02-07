@@ -1,6 +1,6 @@
 MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
 
-IMPORT SYSTEM, Files, ORS, ORB;
+IMPORT SYSTEM, Files, ORS, ORB, RVAssem;
 
 (*
   Code generator for Oberon compiler for RISC-V processor.
@@ -54,6 +54,7 @@ CONST
   TrapIndexBounds = 1;  (* Array index bounds check failed *)
   TrapTypeMismatch = 2; (* Type check failed at runtime *)
   TrapSourceTooBig = 3; (* Source record, array, or string is too big for := *)
+  TrapNilProcedure = 4; (* Attempt to call NIL procedure *)
   TrapDivByZero = 6;    (* Attempt to divide by zero *)
   TrapAssertFailure = 7;
   TrapNegativeSize = 8;
@@ -99,6 +100,9 @@ VAR
   frame: INTEGER;         (* frame offset changed in SaveRegs, RestoreRegs *)
   check: BOOLEAN;         (* emit run-time checks *)
   version: INTEGER;       (* ABI Version: 0 = boot ROM, 1 = Oberon System *)
+
+  sym2rel: ARRAY 6 OF INTEGER;
+  sym2uRel: ARRAY 6 OF INTEGER;
     
   code: ARRAY maxCode OF INTEGER;
   data: ARRAY maxTD OF INTEGER;  (*type descriptors*)
@@ -106,6 +110,10 @@ VAR
 
   (* REMOVE; after conversion, I suspect these variables will not be needed. *)
   fixorgP, fixorgD, fixorgT: INTEGER;   (*origins of lists of locations to be fixed up by loader*)
+
+PROCEDURE put(w: INTEGER);
+BEGIN  code[pc] := w;  INC(pc)
+END put;
 
 (* Register Stack Maintenance *)
 
@@ -178,7 +186,7 @@ END SetCC0;
 
 PROCEDURE opposite(cond: INTEGER): INTEGER;
 BEGIN
-  ASSERT(cond icond {EQ, NE, LT, GE, LTU, GEU});
+  ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU});
   (*
     Depends on the fact that condition codes are binary encoded like so:
     2 1 0
@@ -192,7 +200,7 @@ END opposite;
 PROCEDURE Trap(cond, num, regL, regR: INTEGER);
 BEGIN
   put(RVAssem.fmtSB(63H, opposite(cond), regL, regR, 12));
-  put(RVAssem.jalr(RA, MT, 0);
+  put(RVAssem.jalr(RA, MT, 0));
   put(LSL(num, 24) + (ORS.Pos() MOD 16777216))
 END Trap;
 
@@ -221,17 +229,19 @@ END invalSB;
 
 PROCEDURE MakeFwdBranch(cond, l, r, link: INTEGER): INTEGER;
 BEGIN
-  ASSERT(cond in {EQ, NE, LT, GE, LTU, GEU});
+  ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU});
   ASSERT((firstReg <= l) & (l < maxReg));
   ASSERT((firstReg <= r) & (r < maxReg));
   ASSERT((0 <= link) & (link < maxCode));
   RETURN
     LSL(cond MOD 8, 0) +
     LSL(l MOD 32, 8) + LSL(r MOD 32, 3) +
-    LSL(link MOD 80000H, 13);
+    LSL(link MOD 80000H, 13)
 END MakeFwdBranch;
 
 PROCEDURE fix(at, with: INTEGER);
+VAR
+  cond, lr, rr: INTEGER;
 BEGIN
   cond := code[at] MOD 8;
   lr := ASR(code[at], 8) MOD 32;
@@ -264,7 +274,7 @@ END FixLink;
   In either case, answers the head of the (potentially) longer list.
 *)
 
-PROCEDURE concatenate(L0, L1: INTEGER): INTEGER;
+PROCEDURE merged(L0, L1: INTEGER): INTEGER;
   VAR L2, L3: INTEGER;
 BEGIN 
   IF L0 # 0 THEN
@@ -314,7 +324,7 @@ BEGIN
   ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
   ASSERT((-128 <= base) & (base < 0));  (* Allows up to 128 imported modules *)
 
-  RETURN 5 + LSL(base, 4) + LSL(fixorgD, 16);
+  RETURN 5 + LSL(base, 4) + LSL(fixorgD, 16)
 END MakeLoadSB;
 
 PROCEDURE GetSB(base: INTEGER);
@@ -325,14 +335,14 @@ BEGIN
 END GetSB;
 
 PROCEDURE NilCheck;
-BEGIN IF check THEN Trap(EQ, 4) END
+BEGIN IF check THEN Trap(EQ, 4, RH-1, 0) END
 END NilCheck;
 
 (* Used for immediate bitfield checks for ANDI/ORI/XORI insns *)
 PROCEDURE FitsIn11Bits(n: INTEGER): BOOLEAN;
 BEGIN
   RETURN (0 <= n) & (n < 2048)
-END FitsIn12Bits;
+END FitsIn11Bits;
 
 PROCEDURE FitsIn12Bits(n: INTEGER): BOOLEAN;
 BEGIN
@@ -346,7 +356,7 @@ END FitsIn32Bits;
 
 PROCEDURE LuiForXorIn(dest, n: INTEGER);
 BEGIN
-  IF SYSTEM.BIT(n, 11) = 0 THEN   (* Account for sign-extension of next insn *)
+  IF ~SYSTEM.BIT(n, 11) THEN   (* Account for sign-extension of next insn *)
     put(RVAssem.lui(dest, n));
   ELSE
     put(RVAssem.lui(dest, SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, n) / {12..31})));
@@ -359,7 +369,7 @@ END LuiForXor;
 
 PROCEDURE LuiForAddIn(dest, n: INTEGER);  (* assuming ADDI, Lx, Sx follows *)
 BEGIN
-  IF SYSTEM.BIT(n, 11) = 0 THEN   (* Account for sign-extension of next insn *)
+  IF ~SYSTEM.BIT(n, 11) THEN   (* Account for sign-extension of next insn *)
     put(RVAssem.lui(dest, n));
   ELSE
     put(RVAssem.lui(dest, n + 1000H))
@@ -429,6 +439,10 @@ BEGIN
   ELSIF FitsIn32Bits(n) THEN Load32BitImmIn(dest, n)
   ELSE Load64BitImmIn(dest, n)
   END
+END LoadImmTo;
+
+PROCEDURE LoadImm(n: INTEGER);
+BEGIN  LoadImmTo(RH, n)
 END LoadImm;
 
 PROCEDURE Fetch32BitDisplacement(base, n: INTEGER);
@@ -707,11 +721,11 @@ BEGIN
     ELSE
       Fetch(SP, x.a + frame);
       incR; LoadImm(x.b); decR; put(RVAssem.add(RH, RH, RH+1));
-      put(putRVAssem.ld(RH, RH, 0))
+      put(RVAssem.ld(RH, RH, 0))
     END;
     NilCheck;
     x.r := RH;  incR
-  ELSIF x.mode = RegI THEN Put2(Ldr, x.r, x.r, x.a); NilCheck
+  ELSIF x.mode = RegI THEN
     IF FitsIn12Bits(x.a) THEN
       put(RVAssem.ld(x.r, x.r, x.a))
     ELSIF FitsIn32Bits(x.a) THEN
@@ -812,7 +826,7 @@ END Not;
 PROCEDURE And1*(VAR x: Item);   (* x := x & *)
 BEGIN
   IF x.mode # Cond THEN loadCond(x) END ;
-  put(MakeFwdBranch(negated(x.r), x.cl, x.cr, x.a);
+  put(MakeFwdBranch(opposite(x.r), x.cl, x.cr, x.a));
   x.a := pc-1; FixLink(x.b); x.b := 0
 END And1;
 
@@ -876,7 +890,7 @@ BEGIN
     IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN x.a := x.a - y.a
     ELSIF y.mode = ORB.Const THEN
       load(x);
-      IF y.a # 0 THEN Put1a(Sub, x.r, x.r, y.a) END
+      IF y.a # 0 THEN
         IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, -x.a))
         ELSE LoadImm(y.a); put(RVAssem.sub(x.r, x.r, RH))
         END
@@ -913,7 +927,7 @@ BEGIN
     x.mode := Reg; x.r := y.r
   ELSE
     load(x); load(y);
-    put(RVAssem.mul(RH-2, x.r, y.r); decR;
+    put(RVAssem.mul(RH-2, x.r, y.r)); decR;
     x.r := RH-1
   END
 END MulOp;
@@ -1070,18 +1084,21 @@ END SetOp;
 
 (* Code generation for relations *)
 
+PROCEDURE relFromSym(s: INTEGER): INTEGER;
+BEGIN RETURN sym2rel[s-ORS.eql]
+END relFromSym;
+
+PROCEDURE uRelFromSym(s: INTEGER): INTEGER;
+BEGIN RETURN sym2uRel[s-ORS.eql]
+END uRelFromSym;
+
 PROCEDURE IntRelation*(op: INTEGER; VAR x, y: Item);   (* x := x < y *)
 BEGIN
   load(x);  load(y);      (* Thanks to pdewacht for his help with this! *)
   x.mode := Cond;  x.a := 0;  x.b := 0;
   IF op IN {ORS.eql, ORS.neq, ORS.lss, ORS.geq} THEN
     x.cl := x.r;  x.cr := y.r;
-    CASE op OF
-      ORS.eql: x.r := EQ
-    | ORS.neq: x.r := NE
-    | ORS.lss: x.r := LT
-    | ORS.geq: x.r := GE
-    END
+    x.r := relFromSym(op)
   ELSIF op = ORS.leq THEN
     x.cl := y.r;  x.cr := x.r;  x.r := GE
   ELSE
@@ -1129,14 +1146,7 @@ BEGIN
   put(RVAssem.addi(y.r, y.r, 1));
   put(RVAssem.bne(RH, RH+1, 8));
   put(RVAssem.bne(RH, 0, -20));
-  CASE op OF
-    ORS.eql: SetCC(x, EQ)
-  | ORS.neq: SetCC(x, NE)
-  | ORS.lss: SetCC(x, LTU)
-  | ORS.geq: SetCC(x, GEU)
-  | ORS.gtr: SetCC(x, LTU)
-  | ORS.leq: SetCC(x, GEU)
-  END;
+  SetCC(x, uRelFromSym(op));
   x.cl := RH;  x.cr := RH+1;
   IF (op = ORS.gtr) OR (op = ORS.leq) THEN Swap(x.cl, x.cr) END;
   decR; decR
@@ -1194,7 +1204,7 @@ BEGIN loadAdr(x); loadAdr(y);
       END ;
       IF check THEN
         incR; LoadImm(x.type.size+(IntegerSize-1) DIV IntegerSize); decR;
-        Trap(GT, TrapSourceTooBig, RH, RH+1)
+        Trap(LT, TrapSourceTooBig, RH+1, RH)
       END ;
       fix(pc0, pc + 5)    (* BUG?  This just looks ... wrong. *)
     END
@@ -1215,7 +1225,7 @@ PROCEDURE CopyString*(VAR x, y: Item);  (*from x to y*)
 BEGIN loadAdr(y); len := y.type.len;
   IF len >= 0 THEN
     IF x.b > len THEN ORS.Mark("string too long") END
-  ELSIF check THEN Put2(Ldr, RH, y.r, 4);  (*array length check*)
+  ELSIF check THEN (*array length check*)
     put(RVAssem.ld(RH, y.r, IntegerSize));
     incR; LoadImm(x.b+1); decR;
     Trap(GE, TrapSourceTooBig, RH, RH+1)
@@ -1283,18 +1293,18 @@ BEGIN
   L := pc;
   IF w.a > 0 THEN
     put(RVAssem.addi(RH, RH, 1));
-    put(MakeFwdBranch(GE, RH, 0)); INC(L, InsnSize)
+    put(MakeFwdBranch(GE, RH, 0, 0)); INC(L, InsnSize)
   ELSIF w.a < 0 THEN
-    put(MakeFwdBranch(LT, RH, 0))
+    put(MakeFwdBranch(LT, RH, 0, 0))
   ELSE
     ORS.Mark("zero increment");
-    put(MakeFwdBranch(LTU, RH, 0))
+    put(MakeFwdBranch(LTU, RH, 0, 0))
   END;
   Store(x, y)
 END For1;
 
 PROCEDURE For2*(VAR x, y, w: Item);
-BEGIN load(x); decR; AddImmTo(x.r, w.a)
+BEGIN load(x); decR; AddImmTo(x.r, x.r, w.a)
 END For2;
 
 (* Branches, procedure calls, procedure prolog and epilog *)
@@ -1320,31 +1330,15 @@ END BJump;
 
 PROCEDURE CBJump*(VAR x: Item; L: INTEGER);
 VAR
-  br: PROCEDURE(xl, xr, displacement: INTEGER): INTEGER;
-  opcode: INTEGER;
-
-  PROCEDURE branchAlways(unused0, unused1, disp: INTEGER): INTEGER;
-  BEGIN RETURN RVAssem.jal(0, disp)
-  END branchAlways;
-
-  PROCEDURE branchNever(unused0, unused1, unused2: INTEGER): INTEGER;
-  BEGIN RETURN -1
-  END branchNever;
-
+  c, opcode: INTEGER;
 BEGIN
   IF x.mode # Cond THEN loadCond(x) END ;
-  CASE opposite(x.r) OF
-    EQ: br := RVAssem.beq
-  | NE: br := RVAssem.bne
-  | LT: br := RVAssem.blt
-  | GE: br := RVAssem.bge
-  | LTU: br := RVAssem.bltu
-  | GEU: br := RVAssem.bgeu
-  | ALW: br := branchAlways
-  | NEV: br := branchNever
+  IF (EQ <= x.r) & (x.r < GEU) THEN
+    c := opposite(x.r);
+    put(RVAssem.fmtSB(63H, c, x.cl, x.cr, (L-pc)*InsnSize))
+  ELSIF x.r = ALW THEN
+    put(RVAssem.jal(0, (L-pc)*InsnSize))
   END;
-  opcode := br(x.cl, x.cr, (L-pc)*InsnSize);
-  IF opcode > -1 THEN put(opcode) END;
   FixLink(x.b); FixLinkWith(x.a, L)
 END CBJump;
 
@@ -1359,7 +1353,7 @@ BEGIN
   r0 := firstReg;
   put(RVAssem.addi(SP, SP, (r-firstReg)*IntegerSize));
   INC(frame, (r-firstReg)*IntegerSize);
-  REPEAT put(RVAssem.sd(r0, SP, (r-r0-1)*IntegerSize); INC(r0) UNTIL r0 = r
+  REPEAT put(RVAssem.sd(r0, SP, (r-r0-1)*IntegerSize)); INC(r0) UNTIL r0 = r
 END SaveRegs;
 
 PROCEDURE RestoreRegs(r: INTEGER); (*R[0 .. r-1]*)
@@ -1398,7 +1392,7 @@ END PrepCall;
 PROCEDURE Call*(VAR x: Item; r: INTEGER);
 BEGIN (*x.type.form = ORB.Proc*)
   IF x.mode = ORB.Const THEN
-    IF x.r >= 0 THEN Put3(BL, 7, (x.a DIV 4)-pc-1)
+    IF x.r >= 0 THEN
       put(RVAssem.jal(RA, (x.a DIV InsnSize)-pc))
     ELSE (*imported*)
       IF pc - fixorgP < 1000H THEN
@@ -1408,7 +1402,7 @@ BEGIN (*x.type.form = ORB.Proc*)
     END
   ELSE
     IF x.mode <= ORB.Par THEN load(x); decR
-    ELSE Put2(Ldr, RH, SP, 0); Put1(Add, SP, SP, 4); DEC(r); DEC(frame, 4)
+    ELSE
       put(RVAssem.ld(RH, SP, 0));  put(RVAssem.addi(SP, SP, IntegerSize));
       DEC(r);
       DEC(frame, IntegerSize)
@@ -1461,10 +1455,11 @@ END Return;
 (* In-line code procedures*)
 
 PROCEDURE Increment*(upordown: INTEGER; VAR x, y: Item);
-  VAR op, zr, v: INTEGER;
+  VAR sign, op, zr, v: INTEGER;
 BEGIN (*frame = 0*)
   IF x.type = ORB.byteType THEN v := 0 ELSE v := 3 END ;
   IF y.type.form = ORB.NoTyp THEN y.mode := ORB.Const; y.a := 1 END ;
+  IF upordown = 0 THEN sign := 1 ELSE sign := -1 END;
 
   IF (x.mode = ORB.Var) & (x.r > 0) THEN
     zr := RH; put(RVAssem.fmtI(03H, v, zr, SP, x.a)); incR;
@@ -1472,23 +1467,23 @@ BEGIN (*frame = 0*)
       put(RVAssem.addi(zr, zr, y.a * sign))
     ELSE
       load(y);
-      IF upordown = 0 THEN put(RVAssem.add(zr, zr, y.r)
-      ELSE put(RVAssem.sub(zr, zr, y.r)
+      IF upordown = 0 THEN put(RVAssem.add(zr, zr, y.r))
+      ELSE put(RVAssem.sub(zr, zr, y.r))
       END;
       decR
-    END
+    END;
     put(RVAssem.fmtS(23H, v, zr, SP, x.a)); decR
   ELSE
     loadAdr(x); zr := RH; put(RVAssem.fmtI(03H, v, RH, x.r, 0)); incR;
     IF (y.mode = ORB.Const) & FitsIn12Bits(y.a) THEN
       put(RVAssem.addi(zr, zr, y.a * sign))
     ELSE
-      load(y); Put0(op, zr, zr, y.r); DEC(RH) END ;
-      IF upordown = 0 THEN put(RVAssem.add(zr, zr, y.r)
+      load(y);
+      IF upordown = 0 THEN put(RVAssem.add(zr, zr, y.r))
       ELSE put(RVAssem.sub(zr, zr, y.r))
       END;
       decR
-    END
+    END;
     put(RVAssem.fmtS(23H, v, zr, x.r, 0));
     decR; decR
   END
@@ -1673,7 +1668,7 @@ BEGIN load(x);
       put(RVAssem.sub(RH+1, RH+1, y.r));
       put(RVAssem.srl(RH, x.r, y.r));
       put(RVAssem.sll(x.r, x.r, RH+1));
-      put(RVAssem.or(x.r, x.r, RH))
+      put(RVAssem.or(x.r, x.r, RH));
       decR; x.r := RH-1
     END
   END
@@ -1681,8 +1676,8 @@ END Shift;
 
 PROCEDURE Bit*(VAR x, y: Item);
 BEGIN
-  load(x); Put2(Ldr, x.r, x.r, 0);
-  IF y.mode = ORB.Const THEN Put1(Ror, x.r, x.r, y.a+1); DEC(RH)
+  load(x); put(RVAssem.ld(x.r, x.r, 0));
+  IF y.mode = ORB.Const THEN
     put(RVAssem.slli(x.r, x.r, (BitsPerInteger-1)-(y.a MOD BitsPerInteger)))
   ELSE
     load(y);
@@ -1839,4 +1834,18 @@ BEGIN  (*exit code*)
   Files.Write(R, "O"); Files.Register(F)
 END Close;
 
+BEGIN
+  sym2rel[ORS.eql-ORS.eql] := EQ;
+  sym2rel[ORS.neq-ORS.eql] := NE;
+  sym2rel[ORS.lss-ORS.eql] := LT;
+  sym2rel[ORS.leq-ORS.eql] := GE;   (* not a typo; swap args first! *)
+  sym2rel[ORS.gtr-ORS.eql] := LT;   (* not a typo; swap args first! *)
+  sym2rel[ORS.geq-ORS.eql] := GE;
+
+  sym2uRel[ORS.eql-ORS.eql] := EQ;
+  sym2uRel[ORS.neq-ORS.eql] := NE;
+  sym2uRel[ORS.lss-ORS.eql] := LTU;
+  sym2uRel[ORS.leq-ORS.eql] := GEU; (* not a typo; swap args first! *)
+  sym2uRel[ORS.gtr-ORS.eql] := LTU; (* not a typo; swap args first! *)
+  sym2uRel[ORS.geq-ORS.eql] := GEU;
 END RVOG.
