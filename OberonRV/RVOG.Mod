@@ -235,7 +235,7 @@ PROCEDURE MakeFwdBranch(cond, l, r, link: INTEGER): INTEGER;
 BEGIN
   ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU});
   ASSERT((firstReg <= l) & (l < maxReg));
-  ASSERT((firstReg <= r) & (r < maxReg));
+  ASSERT(((firstReg <= r) & (r < maxReg)) OR (r = 0));
   ASSERT((0 <= link) & (link < maxCode));
   RETURN
     LSL(cond MOD 8, 0) +
@@ -686,7 +686,6 @@ BEGIN
       LoadImm(s);
       put(RVAssem.mul(y.r, y.r, RH))
     END;
-
     IF x.mode = ORB.Var THEN
       IF x.r > 0 THEN
         put(RVAssem.add(y.r, SP, y.r));
@@ -702,12 +701,12 @@ BEGIN
       x.r := y.r; x.mode := RegI
     ELSIF x.mode = ORB.Par THEN
       Fetch(SP, x.a + frame);
-      put(RVAssem.add(y.r, RH, y.r));
+      put(RVAssem.add(y.r, y.r, RH));
       x.mode := RegI;  x.r := y.r;  x.a := x.b
     ELSIF x.mode = RegI THEN
       put(RVAssem.add(x.r, x.r, y.r)); decR
     END
-  END
+  END;
 END Index;
 
 PROCEDURE DeRef*(VAR x: Item);
@@ -946,7 +945,7 @@ BEGIN
       load(x); put(RVAssem.srai(x.r, x.r, e));
     ELSIF y.mode = ORB.Const THEN
       IF y.a > 0 THEN
-        load(x); LoadImm(y.a); put(RVAssem.div(x.r, x.r, y.a))
+        load(x); LoadImm(y.a); put(RVAssem.div(x.r, x.r, RH))
       ELSE ORS.Mark("bad divisor")
       END
     ELSE
@@ -1108,7 +1107,8 @@ BEGIN
   ELSE
     ASSERT(op = ORS.gtr);
     x.cl := y.r;  x.cr := x.r;  x.r := LT
-  END
+  END;
+  decR; decR
 END IntRelation;
 
 PROCEDURE SetRelation*(op: INTEGER; VAR x, y: Item);   (* x := x < y *)
@@ -1169,20 +1169,20 @@ BEGIN  load(y);
   IF x.mode = ORB.Var THEN
     IF x.r > 0 THEN (*local*) 
       ASSERT(FitsIn12Bits(x.a + frame));
-      put(RVAssem.fmtS(23H, op, y.r, SP, x.a + frame))
+      put(RVAssem.fmtS(23H, op, SP, y.r, x.a + frame))
     ELSE
       ASSERT(FitsIn12Bits(x.a + frame));
       GetSB(x.r);
-      put(RVAssem.fmtS(23H, op, y.r, SB, x.a))
+      put(RVAssem.fmtS(23H, op, SB, y.r, x.a))
     END
   ELSIF x.mode = ORB.Par THEN
     ASSERT(FitsIn12Bits(x.a + frame));
     ASSERT(FitsIn12Bits(x.b));
     put(RVAssem.ld(RH, SP, x.a + frame));
-    put(RVAssem.fmtS(23H, op, y.r, RH, x.b));
+    put(RVAssem.fmtS(23H, op, RH, y.r, x.b));
   ELSIF x.mode = RegI THEN
     ASSERT(FitsIn12Bits(x.a));
-    put(RVAssem.fmtS(23H, op, y.r, x.r, x.a)); decR  (* BUG? *)
+    put(RVAssem.fmtS(23H, op, x.r, y.r, x.a)); decR
   ELSE ORS.Mark("bad mode in Store")
   END ;
   decR
@@ -1293,18 +1293,17 @@ END For0;
 
 PROCEDURE For1*(VAR x, y, z, w: Item; VAR L: INTEGER);
 BEGIN 
-  load(z); decR;
-  L := pc;
+  load(z);
   IF w.a > 0 THEN
-    put(RVAssem.addi(RH, RH, 1));
-    put(MakeFwdBranch(GE, RH, 0, 0)); INC(L, InsnSize)
+    put(MakeFwdBranch(LT, RH-1, RH-2, 0))  (* z < x ==> x > z *)
   ELSIF w.a < 0 THEN
-    put(MakeFwdBranch(LT, RH, 0, 0))
+    put(MakeFwdBranch(LT, RH-2, RH-1, 0))
   ELSE
     ORS.Mark("zero increment");
-    put(MakeFwdBranch(LTU, RH, 0, 0))
+    put(MakeFwdBranch(LTU, RH-1, 0, 0))
   END;
-  Store(x, y)
+  L := pc-1; decR;
+  Store(x, y);
 END For1;
 
 PROCEDURE For2*(VAR x, y, w: Item);
@@ -1329,7 +1328,7 @@ BEGIN
 END CFJump;
 
 PROCEDURE BJump*(L: INTEGER);
-BEGIN put(RVAssem.jal(0, L-pc))
+BEGIN put(RVAssem.jal(0, (L-pc)*InsnSize))
 END BJump;
 
 PROCEDURE CBJump*(VAR x: Item; L: INTEGER);
@@ -1397,7 +1396,7 @@ PROCEDURE Call*(VAR x: Item; r: INTEGER);
 BEGIN (*x.type.form = ORB.Proc*)
   IF x.mode = ORB.Const THEN
     IF x.r >= 0 THEN
-      put(RVAssem.jal(RA, (x.a DIV InsnSize)-pc))
+      put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
     ELSE (*imported*)
       IF pc - fixorgP < 1000H THEN
         put(6H + LSL(-x.r, 4) + LSL(pc-fixorgP, 16)); fixorgP := pc-1
@@ -1476,7 +1475,7 @@ BEGIN (*frame = 0*)
       END;
       decR
     END;
-    put(RVAssem.fmtS(23H, v, zr, SP, x.a)); decR
+    put(RVAssem.fmtS(23H, v, SP, zr, x.a)); decR
   ELSE
     loadAdr(x); zr := RH; put(RVAssem.fmtI(03H, v, RH, x.r, 0)); incR;
     IF (y.mode = ORB.Const) & FitsIn12Bits(y.a) THEN
@@ -1488,7 +1487,7 @@ BEGIN (*frame = 0*)
       END;
       decR
     END;
-    put(RVAssem.fmtS(23H, v, zr, x.r, 0));
+    put(RVAssem.fmtS(23H, v, x.r, zr, 0));
     decR; decR
   END
 END Increment;
