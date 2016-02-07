@@ -42,7 +42,7 @@ PROCEDURE fmtR*(opcode, fn3, fn7, rd, rs1, rs2: INTEGER): INTEGER;
   that loc is in units of words, not bytes.
 *)
 BEGIN
-  RETURN fmtI(opcode, fn3, rd, rs1, (rs1 MOD 32) + LSL(fn7, 5))
+  RETURN fmtI(opcode, fn3, rd, rs1, (rs2 MOD 32) + LSL(fn7, 5))
 END fmtR;
 
 
