@@ -42,7 +42,7 @@ PROCEDURE fmtR*(opcode, fn3, fn7, rd, rs1, rs2: INTEGER): INTEGER;
   that loc is in units of words, not bytes.
 *)
 BEGIN
-  RETURN fmtI(opcode, fn3, rd, rs1, (rs1 MOD 32) + LSL(fn7, 5))
+  RETURN fmtI(opcode, fn3, rd, rs1, (rs2 MOD 32) + LSL(fn7, 5))
 END fmtR;
 
 
@@ -209,6 +209,10 @@ PROCEDURE add*(rd, rs1, rs2: INTEGER): INTEGER;
 BEGIN RETURN fmtR(33H, 0, 0, rd, rs1, rs2)
 END add;
 
+PROCEDURE sub*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 0, 20H, rd, rs1, rs2)
+END sub;
+
 PROCEDURE sll*(rd, rs1, rs2: INTEGER): INTEGER;
 BEGIN RETURN fmtR(33H, 1, 0, rd, rs1, rs2)
 END sll;
@@ -340,6 +344,38 @@ END wfi;
 PROCEDURE fencevm*(rs1: INTEGER): INTEGER;
 BEGIN RETURN fmtI(73H, 0, 0, rs1, 101H)
 END fencevm;
+
+PROCEDURE mul*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 0, 1, rd, rs1, rs2)
+END mul;
+
+PROCEDURE mulh*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 1, 1, rd, rs1, rs2)
+END mulh;
+
+PROCEDURE mulhsu*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 2, 1, rd, rs1, rs2)
+END mulhsu;
+
+PROCEDURE mulhu*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 3, 1, rd, rs1, rs2)
+END mulhu;
+
+PROCEDURE div*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 4, 1, rd, rs1, rs2)
+END div;
+
+PROCEDURE divu*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 5, 1, rd, rs1, rs2)
+END divu;
+
+PROCEDURE rem*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 6, 1, rd, rs1, rs2)
+END rem;
+
+PROCEDURE remu*(rd, rs1, rs2: INTEGER): INTEGER;
+BEGIN RETURN fmtR(33H, 7, 1, rd, rs1, rs2)
+END remu;
 
 END RVAssem.
 

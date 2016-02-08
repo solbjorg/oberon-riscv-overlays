@@ -12,6 +12,7 @@ VAR
   i: INTEGER;
   decoderTable: ARRAY 32 OF WOP;
   bxxTable, lxTable, sxTable, sysTable,
+    mulTable,
     alu1Table, alu2Table, alu3Table, alu4Table,
     alu5Table, alu6Table, alu7Table, alu8Table:
       ARRAY 8, 9 OF CHAR;
@@ -23,7 +24,7 @@ END writeHex;
 
 PROCEDURE unknown(VAR W: Texts.Writer; op, fn3: INTEGER);
 BEGIN
-  Texts.WriteString(W, "DWORD   ");
+  Texts.WriteString(W, "WORD   ");
   writeHex(W, op)
 END unknown;
 
@@ -217,12 +218,27 @@ BEGIN
   END
 END system;
 
-PROCEDURE alur(VAR W: Texts.Writer; op, fn3: INTEGER);
+PROCEDURE addsub(VAR W: Texts.Writer; op, fn3: INTEGER);
 BEGIN
   IF (fn3 IN {1, 5}) & ODD(op DIV 40000000H) THEN
     fmtR(W, op MOD 40000000H, fn3, alu3Table[fn3])
   ELSE
     fmtR(W, op, fn3, alu4Table[fn3])
+  END
+END addsub;
+
+PROCEDURE muldiv(VAR W: Texts.Writer; op, fn3: INTEGER);
+BEGIN
+  fmtR(W, op, fn3, mulTable[fn3])
+END muldiv;
+
+PROCEDURE alur(VAR W: Texts.Writer; op, fn3: INTEGER);
+VAR fn7: INTEGER;
+BEGIN
+  fn7 := ASR(op, 25) MOD 128;
+  IF (fn7 = 0) OR (fn7 = 20H) THEN addsub(W, op, fn3)
+  ELSIF fn7 = 1 THEN muldiv(W, op, fn3)
+  ELSE unknown(W, op, fn3)
   END
 END alur;
 
@@ -348,6 +364,15 @@ BEGIN
   alu8Table[5] := "SRLW    ";
   alu8Table[6] := "????    ";
   alu8Table[7] := "????    ";
+
+  mulTable[0] := "MUL     ";
+  mulTable[1] := "MULH    ";
+  mulTable[2] := "MULHSU  ";
+  mulTable[3] := "MULHU   ";
+  mulTable[4] := "DIV     ";
+  mulTable[5] := "DIVU    ";
+  mulTable[6] := "REM     ";
+  mulTable[7] := "REMU    ";
 
   sysTable[0] := "CSR???  ";
   sysTable[1] := "CSRRW   ";
