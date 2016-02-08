@@ -190,7 +190,7 @@ END SetCC0;
 
 PROCEDURE opposite(cond: INTEGER): INTEGER;
 BEGIN
-  ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU});
+  ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU, NEV, ALW});
   (*
     Depends on the fact that condition codes are binary encoded like so:
     2 1 0
@@ -222,10 +222,11 @@ END invalSB;
   The forward branches themselves are stored as simple 32-bit data words.
   They have the binary representation as follows:
 
-    LSL(cond MOD 8, 0) +        (3 bits)
-    LSL(rightReg MOD 32, 3) +   (5 bits)
-    LSL(leftReg MOD 32, 8) +    (5 bits)
-    LSL(link MOD 80000H, 13)    (19 bits)
+    LSL(cond MOD 16, 0) +       (4 bits)
+    LSL(rightReg MOD 32, 4) +   (5 bits)
+    LSL(leftReg MOD 32, 9) +    (5 bits)
+                                (2 bits unused)
+    LSL(link MOD 10000H, 16)    (16 bits)
 
   The act of patching the fixup will replace the entire word with a conditional
   branch instruction as appropriate.  A zero link field terminates the list.
@@ -233,24 +234,29 @@ END invalSB;
 
 PROCEDURE MakeFwdBranch(cond, l, r, link: INTEGER): INTEGER;
 BEGIN
-  ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU});
+  ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU, NEV, ALW});
   ASSERT((firstReg <= l) & (l < maxReg));
   ASSERT(((firstReg <= r) & (r < maxReg)) OR (r = 0));
   ASSERT((0 <= link) & (link < maxCode));
   RETURN
-    LSL(cond MOD 8, 0) +
-    LSL(l MOD 32, 8) + LSL(r MOD 32, 3) +
-    LSL(link MOD 80000H, 13)
+    LSL(cond MOD 16, 0) +
+    LSL(l MOD 32, 9) + LSL(r MOD 32, 4) +
+    LSL(link MOD 10000H, 16)
 END MakeFwdBranch;
 
 PROCEDURE fix(at, with: INTEGER);
 VAR
-  cond, lr, rr: INTEGER;
+  displacement, cond, lr, rr: INTEGER;
 BEGIN
-  cond := code[at] MOD 8;
-  lr := ASR(code[at], 8) MOD 32;
-  rr := ASR(code[at], 3) MOD 32;
-  code[at] := RVAssem.fmtSB(63H, cond, lr, rr, (with-at)*InsnSize);
+  cond := code[at] MOD 16;
+  lr := ASR(code[at], 9) MOD 32;
+  rr := ASR(code[at], 4) MOD 32;
+  displacement := (with-at)*InsnSize;
+  IF cond = ALW THEN code[at] := RVAssem.jal(0, displacement)
+  ELSIF cond = NEV THEN code[at] := RVAssem.ori(0, 0, 0)
+  ELSE
+    code[at] := RVAssem.fmtSB(63H, cond, lr, rr, displacement)
+  END
 END fix;
 
 PROCEDURE FixLinkWith(L, dst: INTEGER);
@@ -606,7 +612,9 @@ END loadStringAdr;
 (* Items: Conversion from constants or from Objects on the Heap to Items on the Stack*)
 
 PROCEDURE MakeConstItem*(VAR x: Item; typ: ORB.Type; val: INTEGER);
-BEGIN x.mode := ORB.Const; x.type := typ; x.a := val
+BEGIN
+  x.mode := ORB.Const; x.type := typ; x.a := val;
+  IF x.type = ORB.boolType THEN x.cl := firstReg END
 END MakeConstItem;
 
 PROCEDURE MakeRealItem*(VAR x: Item; val: REAL);
@@ -1317,7 +1325,7 @@ BEGIN invalSB; RETURN pc
 END Here;
 
 PROCEDURE FJump*(VAR L: INTEGER);
-BEGIN put(MakeFwdBranch(ALW, 0, 0, L));  L := pc-1
+BEGIN put(MakeFwdBranch(ALW, RH, 0, L));  L := pc-1
 END FJump;
 
 PROCEDURE CFJump*(VAR x: Item);
@@ -1336,10 +1344,10 @@ VAR
   c, opcode: INTEGER;
 BEGIN
   IF x.mode # Cond THEN loadCond(x) END ;
-  IF (EQ <= x.r) & (x.r < GEU) THEN
-    c := opposite(x.r);
+  c := opposite(x.r);
+  IF (EQ <= c) & (c < GEU) THEN
     put(RVAssem.fmtSB(63H, c, x.cl, x.cr, (L-pc)*InsnSize))
-  ELSIF x.r = ALW THEN
+  ELSIF c = ALW THEN
     put(RVAssem.jal(0, (L-pc)*InsnSize))
   END;
   FixLink(x.b); FixLinkWith(x.a, L)
