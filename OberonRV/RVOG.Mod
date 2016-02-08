@@ -1768,7 +1768,7 @@ PROCEDURE Close*(VAR modid: ORS.Ident; key, nofent: INTEGER);
     i, comsize, nofimps, nofptrs, size: INTEGER;
     name: ORS.Ident;
     F: Files.File; R: Files.Rider;
-BEGIN  (*exit code*)
+BEGIN  (* module body epilog *)
   IF version = 0 THEN  (* ROM ABI *)
     put(RVAssem.addi(RA, 0, 0));
     put(RVAssem.jalr(0, RA, 0));
@@ -1777,6 +1777,7 @@ BEGIN  (*exit code*)
     put(RVAssem.addi(SP, SP, IntegerSize));
     put(RVAssem.jalr(0, RA, 0));
   END ;
+
   obj := ORB.topScope.next; nofimps := 0;
   comsize := IntegerSize; nofptrs := 0;
   WHILE obj # NIL DO
