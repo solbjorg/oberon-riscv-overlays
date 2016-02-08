@@ -110,7 +110,7 @@ VAR
   (* REMOVE; after conversion, I suspect these variables will not be needed. *)
   fixorgP, fixorgD, fixorgT: INTEGER;   (*origins of lists of locations to be fixed up by loader*)
 
-PROCEDURE put(w: INTEGER);
+PROCEDURE put*(w: INTEGER);
 BEGIN
   Texts.WriteHex(W, pc*InsnSize);  Texts.WriteString(W, "   ");
   Texts.WriteHex(W, w); Texts.WriteString(W, " : ");
@@ -263,7 +263,7 @@ PROCEDURE FixLinkWith(L, dst: INTEGER);
   VAR next: INTEGER;
 BEGIN
   WHILE L # 0 DO
-    next := ASR(code[L], 13) MOD 80000H; fix(L, dst);
+    next := ASR(code[L], 16) MOD 10000H; fix(L, dst);
     L := next
   END
 END FixLinkWith;
@@ -332,8 +332,9 @@ BEGIN
     diagnose bugs will occur.
   *)
   ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
-  ASSERT((-128 <= base) & (base < 0));  (* Allows up to 128 imported modules *)
-
+  ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
+  Texts.WriteString(W,"MLSB:"); Texts.WriteInt(W,base,0); Texts.WriteLn(W);
+  Texts.Append(Oberon.Log,W.buf);
   RETURN 5 + LSL(base, 4) + LSL(fixorgD, 16)
 END MakeLoadSB;
 
@@ -518,10 +519,11 @@ BEGIN
       END ;
       x.r := RH; incR
     ELSIF x.mode = ORB.Par THEN
+      ASSERT(FitsIn12Bits(x.a + frame));
       ASSERT(FitsIn12Bits(x.b));
-      AddImm(SP, x.a + frame);
+      put(RVAssem.ld(RH, SP, x.a + frame));
       put(RVAssem.fmtI(03H, op, RH, RH, x.b));
-      x.r := RH; incR
+      x.r := RH; incR;
     ELSIF x.mode = RegI THEN
       ASSERT(FitsIn12Bits(x.a));
       put(RVAssem.fmtI(03H, op, x.r, x.r, x.a));
@@ -844,7 +846,8 @@ END And1;
 PROCEDURE And2*(VAR x, y: Item);
 BEGIN
   IF y.mode # Cond THEN loadCond(y) END ;
-  x.a := merged(y.a, x.a); x.b := y.b; x.r := y.r
+  x.a := merged(y.a, x.a); x.b := y.b; x.r := y.r;
+  x.cl := y.cl; x.cr := y.cr
 END And2;
 
 PROCEDURE Or1*(VAR x: Item);   (* x := x OR *)
@@ -857,7 +860,8 @@ END Or1;
 PROCEDURE Or2*(VAR x, y: Item);
 BEGIN
   IF y.mode # Cond THEN loadCond(y) END ;
-  x.a := y.a; x.b := merged(y.b, x.b); x.r := y.r
+  x.a := y.a; x.b := merged(y.b, x.b); x.r := y.r;
+  x.cl := y.cl; x.cr := y.cr
 END Or2;
 
 (* Code generation for arithmetic operators *)
@@ -1774,25 +1778,25 @@ BEGIN  (* module body epilog *)
     put(RVAssem.jalr(0, RA, 0));
   ELSE
     put(RVAssem.ld(RA, SP, 0));
-    put(RVAssem.addi(SP, SP, IntegerSize));
+    put(RVAssem.addi(SP, SP, 8));
     put(RVAssem.jalr(0, RA, 0));
   END ;
 
   obj := ORB.topScope.next; nofimps := 0;
-  comsize := IntegerSize; nofptrs := 0;
+  comsize := 4; nofptrs := 0;
   WHILE obj # NIL DO
     IF (obj.class = ORB.Mod) & (obj.dsc # ORB.system) THEN INC(nofimps) (*count imports*)
     ELSIF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc)
         & (obj.type.nofpar = 0) & (obj.type.base = ORB.noType) THEN i := 0; (*count commands*)
       WHILE obj.name[i] # 0X DO INC(i) END ;
-      i := (i+IntegerSize) DIV IntegerSize * IntegerSize;
-      INC(comsize, i+IntegerSize)
+      i := (i+4) DIV 4 * 4;
+      INC(comsize, i+4)
     ELSIF obj.class = ORB.Var THEN INC(nofptrs, NofPtrs(obj.type))  (*count pointers*)
     END ;
     obj := obj.next
   END ;
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
-      (pc + nofimps + nofent + nofptrs + 1)*IntegerSize;
+      (pc + nofimps + nofent + nofptrs + 1)*4;
 
   ORB.MakeFileName(name, modid, ".rv64.Obj"); (*write code file*)
   F := Files.New(name); Files.Set(R, F, 0);
@@ -1804,10 +1808,10 @@ BEGIN  (* module body epilog *)
     obj := obj.next
   END ;
   Files.Write(R, 0X);
-  Files.WriteInt(R, tdx*IntegerSize);
+  Files.WriteInt(R, tdx*4);
   i := 0;
   WHILE i < tdx DO Files.WriteInt(R, data[i]); INC(i) END ; (*type descriptors*)
-  Files.WriteInt(R, varsize - tdx*IntegerSize);  (*data*)
+  Files.WriteInt(R, varsize - tdx*4);  (*data*)
   Files.WriteInt(R, strx);
   FOR i := 0 TO strx-1 DO Files.Write(R, str[i]) END ;  (*strings*)
   Files.WriteInt(R, pc);  (*code len*)
