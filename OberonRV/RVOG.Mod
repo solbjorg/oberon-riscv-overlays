@@ -661,8 +661,14 @@ BEGIN;
   END
 END Field;
 
+PROCEDURE log2(m: INTEGER; VAR e: INTEGER): INTEGER;
+BEGIN e := 0;
+  WHILE ~ODD(m) DO m := m DIV 2; INC(e) END ;
+  RETURN m
+END log2;
+
 PROCEDURE Index*(VAR x, y: Item);   (* x := x[y] *)
-  VAR s, lim: INTEGER;
+  VAR e, s1, s, lim: INTEGER;
 BEGIN
   s := x.type.base.size;    (* Type size, in bytes *)
   lim := x.type.len;        (* Limit of the array dimension, in elements *)
@@ -686,12 +692,8 @@ BEGIN
       Trap(GE, TrapIndexBounds, y.r, RH);
     END;
     (* y < lim *)
-    IF s = 2 THEN
-      put(RVAssem.slli(y.r, y.r, 1))
-    ELSIF s = 4 THEN
-      put(RVAssem.slli(y.r, y.r, 2))
-    ELSIF s = 8 THEN
-      put(RVAssem.slli(y.r, y.r, 3))
+    s1 := log2(s, e);
+    IF s1 = 1 THEN put(RVAssem.slli(y.r, y.r, e))
     ELSIF s > 1 THEN
       LoadImm(s);
       put(RVAssem.mul(y.r, y.r, RH))
@@ -917,12 +919,6 @@ BEGIN
     END
   END
 END AddOp;
-
-PROCEDURE log2(m: INTEGER; VAR e: INTEGER): INTEGER;
-BEGIN e := 0;
-  WHILE ~ODD(m) DO m := m DIV 2; INC(e) END ;
-  RETURN m
-END log2;
 
 PROCEDURE MulOp*(VAR x, y: Item);   (* x := x * y *)
   VAR e: INTEGER;
