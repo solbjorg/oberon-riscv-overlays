@@ -9,6 +9,7 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
   CONST
     IntegerSize = ORB.IntegerSize;
     InsnSize = ORB.InsnSize;
+    BitsPerSet = ORB.BitsPerSet;
 
   TYPE PtrBase = POINTER TO PtrBaseDesc;
     PtrBaseDesc = RECORD  (*list of names of pointer base types*)
@@ -72,7 +73,7 @@ END RoundUp;
   BEGIN
     IF x.type.form # ORB.Int THEN ORS.Mark("not Int"); x.type := ORB.setType
     ELSIF x.mode = ORB.Const THEN
-      IF (x.a < 0) OR (x.a >= 32) THEN ORS.Mark("invalid set") END
+      IF (x.a < 0) OR (x.a >= BitsPerSet) THEN ORS.Mark("invalid set") END
     END 
   END CheckSetVal;
 

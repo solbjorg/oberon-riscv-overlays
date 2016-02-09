@@ -1183,9 +1183,13 @@ BEGIN  load(y);
       ASSERT(FitsIn12Bits(x.a + frame));
       put(RVAssem.fmtS(23H, op, SP, y.r, x.a + frame))
     ELSE
-      ASSERT(FitsIn12Bits(x.a + frame));
       GetSB(x.r);
-      put(RVAssem.fmtS(23H, op, SB, y.r, x.a))
+      IF FitsIn12Bits(x.a + frame) THEN
+        put(RVAssem.fmtS(23H, op, SB, y.r, x.a))
+      ELSE
+        LoadImm(x.a); put(RVAssem.add(RH, RH, SB));
+        put(RVAssem.fmtS(23H, op, RH, y.r, 0))
+      END
     END
   ELSIF x.mode = ORB.Par THEN
     ASSERT(FitsIn12Bits(x.a + frame));
@@ -1232,7 +1236,7 @@ BEGIN loadAdr(x); loadAdr(y);
   put(RVAssem.sd(RH+1, x.r, 0));
   put(RVAssem.addi(x.r, x.r, IntegerSize));
   put(RVAssem.addi(RH, RH, -1));
-  put(RVAssem.bne(RH, 0, -24));
+  put(RVAssem.bne(RH, 0, -20));
   decR; decR
 END StoreStruct;
 
