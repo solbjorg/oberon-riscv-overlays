@@ -894,7 +894,7 @@ BEGIN
     ELSIF y.mode = ORB.Const THEN
       load(x);
       IF y.a # 0 THEN
-        IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, x.a))
+        IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, y.a))
         ELSE LoadImm(y.a); put(RVAssem.add(x.r, x.r, RH))
         END
       END
