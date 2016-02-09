@@ -235,7 +235,7 @@ END invalSB;
 PROCEDURE MakeFwdBranch(cond, l, r, link: INTEGER): INTEGER;
 BEGIN
   ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU, NEV, ALW});
-  ASSERT((firstReg <= l) & (l < maxReg));
+(*  ASSERT((firstReg <= l) & (l < maxReg)); *)
   ASSERT(((firstReg <= r) & (r < maxReg)) OR (r = 0));
   ASSERT((0 <= link) & (link < maxCode));
   RETURN
@@ -289,8 +289,8 @@ PROCEDURE merged(L0, L1: INTEGER): INTEGER;
 BEGIN 
   IF L0 # 0 THEN
     L3 := L0;   (* Find the end of L0 and place in L2 *)
-    REPEAT L2 := L3; L3 := ASR(code[L2], 13) MOD 80000H UNTIL L3 = 0;
-    code[L2] := code[L2] + LSL(L1, 13); L1 := L0
+    REPEAT L2 := L3; L3 := ASR(code[L2], 16) MOD 10000H UNTIL L3 = 0;
+    code[L2] := code[L2] + LSL(L1 MOD 10000H, 16); L1 := L0
   END ;
   RETURN L1
 END merged;
@@ -333,9 +333,9 @@ BEGIN
   *)
   ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
   ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
-  Texts.WriteString(W,"MLSB:"); Texts.WriteInt(W,base,0); Texts.WriteLn(W);
+  Texts.WriteString(W,"MLSB:"); Texts.WriteInt(W,-base,0); Texts.WriteLn(W);
   Texts.Append(Oberon.Log,W.buf);
-  RETURN 5 + LSL(base, 4) + LSL(fixorgD, 16)
+  RETURN 5 + LSL(-base MOD 128, 4) + LSL(fixorgD MOD 10000H, 16)
 END MakeLoadSB;
 
 PROCEDURE GetSB(base: INTEGER);
@@ -511,11 +511,20 @@ BEGIN
       x.r := RH; incR
     ELSIF x.mode = ORB.Var THEN
       IF x.r > 0 THEN (*local*)
-        ASSERT(FitsIn12Bits(x.a + frame));
-        put(RVAssem.fmtI(03H, op, RH, SP, x.a + frame));
+        IF FitsIn12Bits(x.a+frame) THEN
+          put(RVAssem.fmtI(03H, op, RH, SP, x.a + frame));
+        ELSE
+          LoadImm(x.a + frame); put(RVAssem.add(RH, RH, SP));
+          put(RVAssem.fmtI(03H, op, RH, RH, 0));
+        END
       ELSE (* relative to another module *)
-        ASSERT(FitsIn12Bits(x.a));
-        GetSB(x.r); put(RVAssem.fmtI(03H, op, RH, SB, x.a))
+        GetSB(x.r);
+        IF FitsIn12Bits(x.a) THEN
+          put(RVAssem.fmtI(03H, op, RH, SB, x.a))
+        ELSE
+          LoadImm(x.a); put(RVAssem.add(RH, RH, SB));
+          put(RVAssem.fmtI(03H, op, RH, RH, 0))
+        END
       END ;
       x.r := RH; incR
     ELSIF x.mode = ORB.Par THEN
@@ -1059,7 +1068,7 @@ BEGIN
     load(x);  LoadImm(63);
     put(RVAssem.sub(x.r, RH, x.r));
     put(RVAssem.sll(y.r, y.r, x.r));
-    decR    (* BUG?  Old code decremented RH-2, but other branch by only -1 *)
+    decR; decR
   END ;
   SetCC0(x, LT)
 END In;
@@ -1366,7 +1375,7 @@ PROCEDURE SaveRegs(r: INTEGER);  (* R[frstReg .. r-1]*)
 BEGIN
   ASSERT(r >= firstReg);
   r0 := firstReg;
-  put(RVAssem.addi(SP, SP, (r-firstReg)*IntegerSize));
+  put(RVAssem.addi(SP, SP, (firstReg-r)*IntegerSize));
   INC(frame, (r-firstReg)*IntegerSize);
   REPEAT put(RVAssem.sd(r0, SP, (r-r0-1)*IntegerSize)); INC(r0) UNTIL r0 = r
 END SaveRegs;
@@ -1411,7 +1420,7 @@ BEGIN (*x.type.form = ORB.Proc*)
       put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
     ELSE (*imported*)
       IF pc - fixorgP < 1000H THEN
-        put(6H + LSL(-x.r, 4) + LSL(pc-fixorgP, 16)); fixorgP := pc-1
+        put(6H + LSL(-x.r, 4) + LSL(fixorgP, 16)); fixorgP := pc-1
       ELSE ORS.Mark("fixup impossible")
       END
     END
@@ -1427,7 +1436,7 @@ BEGIN (*x.type.form = ORB.Proc*)
   END ;
   IF x.type.base.form = ORB.NoTyp THEN (*procedure*) RH := firstReg
   ELSE (*function*)
-    IF r > 0 THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
+    IF r > firstReg THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
     x.mode := Reg; x.r := r; RH := r+1
   END ;
   invalSB
@@ -1535,7 +1544,7 @@ BEGIN
   IF x.a = 0 THEN
     cond := opposite(x.r)
   ELSE
-    put(MakeFwdBranch(x.r, RH, 0, x.b)); FixLink(x.a);
+    put(MakeFwdBranch(x.r, RH-1, 0, x.b)); FixLink(x.a);
     x.b := pc-1; cond := ALW
   END ;
   Trap(cond, TrapAssertFailure, RH, 0); FixLink(x.b)
@@ -1550,8 +1559,9 @@ END New;
 
 PROCEDURE Pack*(VAR x, y: Item);
   VAR z: Item;
-BEGIN z := x; load(x); load(y);
+BEGIN
 (*
+  z := x; load(x); load(y);
   Put1(Lsl, y.r, y.r, 23); Put0(Add, x.r, x.r, y.r); DEC(RH); Store(z, x)
 *)  ORS.Mark("REALs not supported")
 END Pack;
