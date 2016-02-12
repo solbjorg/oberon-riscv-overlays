@@ -736,7 +736,7 @@ BEGIN
     IF x.r > 0 THEN (*local*)
       Fetch(SP, x.a + frame)
     ELSE
-      GetSB(x.r);  Fetch(SP, x.a)
+      GetSB(x.r);  Fetch(SB, x.a)
     END;
     NilCheck; x.r := RH; incR
   ELSIF x.mode = ORB.Par THEN
@@ -1851,6 +1851,12 @@ BEGIN
   Files.Write(R, "O"); Files.Register(F)
 END CloseModule;
 
+PROCEDURE writeDword(VAR R: Files.Rider; i: INTEGER);
+BEGIN
+  Files.WriteInt(R, i);
+  IF i < 0 THEN Files.WriteInt(R, -1) ELSE Files.WriteInt(R, 0) END
+END writeDword;
+
 PROCEDURE CloseRom(VAR modid: ORS.Ident; key, nofent: INTEGER);
 VAR
   i, j, size: INTEGER;
@@ -1859,6 +1865,7 @@ VAR
 BEGIN
   ORB.MakeFileName(name, modid, ".rv64.Rom"); (*write ROM image file*)
   F := Files.New(name); Files.Set(R, F, 0);
+  ASSERT(Files.Pos(R) = 0);
 
   (*
     ROM images are slightly different from module files.  The format
@@ -1866,13 +1873,13 @@ BEGIN
 
     ORG     baseOfRom
 
-    WORD    x
-    WORD*x  typeDescriptorData
-    WORD    uninitializedDataSizeInBytes
-    WORD    y
+    DWORD   x
+    DWORD*x typeDescriptorData
+    DWORD   uninitializedDataSizeInBytes
+    DWORD   y
     BYTE*y  stringData
     BYTE*a  alignment32bit  (0 <= a < 4)
-    WORD    numberOfWordsInCode
+    DWORD   numberOfWordsInCode
     JAL     0, ...    (code starts here)
     ...etc...
 
@@ -1885,52 +1892,60 @@ BEGIN
 
   Texts.WriteString(W, "Writing type descriptors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
 
-  Files.WriteInt(R, tdx);                 (* Type descriptors *)
-  i := 0;
+  writeDword(R, tdx);                 (* Type descriptors *)
+  i := 0;  j := 8;
   WHILE i < tdx DO
-    Files.WriteInt(R, data[i])
+    writeDword(R, data[i]);
+    INC(i); INC(j, 8)
   END;
-  j := i;
+  ASSERT(Files.Pos(R) = j);
 
   Texts.WriteString(W, "Writing variable space needed"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
 
-  Files.WriteInt(R, varsize - tdx*4);     (* Data size *)
-  INC(j, 4);
+  writeDword(R, varsize - tdx*8);     (* Data size *)
+  INC(j, 8);
+  ASSERT(Files.Pos(R) = j);
 
   Texts.WriteString(W, "Writing string constants"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
 
-  Files.WriteInt(R, strx);                (* String Constants *)
+  writeDword(R, strx);                (* String Constants *)
+  INC(j, 8);
   FOR i := 0 TO strx-1 DO
     Files.Write(R, str[i]);
     INC(j)
   END;
+  ASSERT(Files.Pos(R) = j);
 
-  Texts.WriteString(W, "Writing filler for 32-bit alignment"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+  Texts.WriteString(W, "Writing filler for 64-bit alignment"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
 
   (* instruction alignment for code segment *)
-  WHILE j MOD 4 # 0 DO
+  WHILE j MOD 8 # 0 DO
     Files.Write(R, 00X); INC(j)
   END;
+  ASSERT(Files.Pos(R) = j);
 
   Texts.WriteString(W, "Writing program code"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
 
-  Files.WriteInt(R, pc);                  (* Program *)
-  entry := pc;
+  writeDword(R, pc);                  (* Program *)
+  INC(j, 8);
+  entry := j;
   FOR i := 0 TO pc-1 DO
     Files.WriteInt(R, code[i]);
     INC(j, 4);
   END;
+  ASSERT(Files.Pos(R) = j);
 
   Texts.WriteString(W, "Filling space for interrupt vectors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
 
   (* Reset Vector *)
-  WHILE j < 0FF00H DO
+  WHILE j < 0FFF00H DO
     Files.Write(R, 00X); INC(j)
   END;
+  ASSERT(Files.Pos(R) = j);
 
   Texts.WriteString(W, "Writing reset and interrupt vectors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
 
-  Files.WriteInt(R, RVAssem.jal(0, entry));
+  Files.WriteInt(R, RVAssem.jal(0, entry-0FFF00H));
   Files.Register(F);
 END CloseRom;
 
