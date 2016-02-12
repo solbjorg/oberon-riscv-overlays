@@ -1777,21 +1777,12 @@ BEGIN
   END
 END FindPtrs;
 
-PROCEDURE Close*(VAR modid: ORS.Ident; key, nofent: INTEGER);
+PROCEDURE CloseModule(VAR modid: ORS.Ident; key, nofent: INTEGER);
   VAR obj: ORB.Object;
     i, comsize, nofimps, nofptrs, size: INTEGER;
     name: ORS.Ident;
     F: Files.File; R: Files.Rider;
-BEGIN  (* module body epilog *)
-  IF version = 0 THEN  (* ROM ABI *)
-    put(RVAssem.addi(RA, 0, 0));
-    put(RVAssem.jalr(0, RA, 0));
-  ELSE
-    put(RVAssem.ld(RA, SP, 0));
-    put(RVAssem.addi(SP, SP, 8));
-    put(RVAssem.jalr(0, RA, 0));
-  END ;
-
+BEGIN
   obj := ORB.topScope.next; nofimps := 0;
   comsize := 4; nofptrs := 0;
   WHILE obj # NIL DO
@@ -1858,6 +1849,107 @@ BEGIN  (* module body epilog *)
   Files.WriteInt(R, -1);
   Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, entry);
   Files.Write(R, "O"); Files.Register(F)
+END CloseModule;
+
+PROCEDURE CloseRom(VAR modid: ORS.Ident; key, nofent: INTEGER);
+VAR
+  i, j, size: INTEGER;
+  name: ORS.Ident;
+  F: Files.File; R: Files.Rider;
+BEGIN
+  ORB.MakeFileName(name, modid, ".rv64.Rom"); (*write ROM image file*)
+  F := Files.New(name); Files.Set(R, F, 0);
+
+  (*
+    ROM images are slightly different from module files.  The format
+    is as follows:
+
+    ORG     baseOfRom
+
+    WORD    x
+    WORD*x  typeDescriptorData
+    WORD    uninitializedDataSizeInBytes
+    WORD    y
+    BYTE*y  stringData
+    BYTE*a  alignment32bit  (0 <= a < 4)
+    WORD    numberOfWordsInCode
+    JAL     0, ...    (code starts here)
+    ...etc...
+
+    The main body of the ROM module is expected to copy any type descriptors
+    into RAM, then zero out the uninitialized data space, then copy strings
+    immediately after that.  Once that's done, dynamic type checks and
+    static string constants should "just work" as expected, even if code
+    itself is running in RAM.
+  *)
+
+  Texts.WriteString(W, "Writing type descriptors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  Files.WriteInt(R, tdx);                 (* Type descriptors *)
+  i := 0;
+  WHILE i < tdx DO
+    Files.WriteInt(R, data[i])
+  END;
+  j := i;
+
+  Texts.WriteString(W, "Writing variable space needed"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  Files.WriteInt(R, varsize - tdx*4);     (* Data size *)
+  INC(j, 4);
+
+  Texts.WriteString(W, "Writing string constants"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  Files.WriteInt(R, strx);                (* String Constants *)
+  FOR i := 0 TO strx-1 DO
+    Files.Write(R, str[i]);
+    INC(j)
+  END;
+
+  Texts.WriteString(W, "Writing filler for 32-bit alignment"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  (* instruction alignment for code segment *)
+  WHILE j MOD 4 # 0 DO
+    Files.Write(R, 00X); INC(j)
+  END;
+
+  Texts.WriteString(W, "Writing program code"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  Files.WriteInt(R, pc);                  (* Program *)
+  entry := pc;
+  FOR i := 0 TO pc-1 DO
+    Files.WriteInt(R, code[i]);
+    INC(j, 4);
+  END;
+
+  Texts.WriteString(W, "Filling space for interrupt vectors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  (* Reset Vector *)
+  WHILE j < 0FF00H DO
+    Files.Write(R, 00X); INC(j)
+  END;
+
+  Texts.WriteString(W, "Writing reset and interrupt vectors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  Files.WriteInt(R, RVAssem.jal(0, entry));
+  Files.Register(F);
+END CloseRom;
+
+PROCEDURE Close*(VAR modid: ORS.Ident; key, nofent: INTEGER);
+  VAR obj: ORB.Object;
+    i, comsize, nofimps, nofptrs, size: INTEGER;
+    name: ORS.Ident;
+    F: Files.File; R: Files.Rider;
+BEGIN  (* module body epilog *)
+  IF version = 0 THEN  (* ROM ABI *)
+    put(RVAssem.addi(RA, 0, 0));
+    put(RVAssem.jalr(0, RA, 0));
+    CloseRom(modid, key, nofent);
+  ELSE
+    put(RVAssem.ld(RA, SP, 0));
+    put(RVAssem.addi(SP, SP, 8));
+    put(RVAssem.jalr(0, RA, 0));
+    CloseModule(modid, key, nofent);
+  END ;
 END Close;
 
 BEGIN
