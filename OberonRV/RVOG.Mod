@@ -107,8 +107,8 @@ VAR
   data: ARRAY maxTD OF INTEGER;  (*type descriptors*)
   str: ARRAY maxStrx OF CHAR;
 
-  (* REMOVE; after conversion, I suspect these variables will not be needed. *)
-  fixorgP, fixorgD, fixorgT: INTEGER;   (*origins of lists of locations to be fixed up by loader*)
+  (* Origins of lists of relocations to be fixed up by the loader *)
+  fixorgP, fixorgD, fixorgT: INTEGER;
 
 PROCEDURE put*(w: INTEGER);
 BEGIN
