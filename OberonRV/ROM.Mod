@@ -11,16 +11,38 @@ VAR
   corresponding ROM contents.
 *)
 
+PROCEDURE get(VAR out: INTEGER);
+BEGIN
+  SYSTEM.GET(i, out);
+  INC(i, SYSTEM.SIZE(INTEGER))
+END get;
+
+PROCEDURE getChar(VAR out: CHAR);
+BEGIN
+  SYSTEM.GET(i, out);
+  INC(i, SYSTEM.SIZE(CHAR))
+END getChar;
+
+PROCEDURE put(in: INTEGER);
+BEGIN
+  SYSTEM.PUT(j, in);
+  INC(j, SYSTEM.SIZE(INTEGER))
+END put;
+
+PROCEDURE putChar(in: CHAR);
+BEGIN
+  SYSTEM.PUT(j, in);
+  INC(j, SYSTEM.SIZE(CHAR))
+END putChar;
+
 PROCEDURE copyTypeDescriptors;
 VAR
   n, w: INTEGER;
 BEGIN
   i := 0FFF00000H; j := 0;
-  SYSTEM.GET(i, n);  INC(i, SIZE(INTEGER));
+  get(n);
   WHILE n # 0 DO
-    SYSTEM.GET(i, w);  SYSTEM.PUT(j, w);
-    INC(i, SIZE(INTEGER));
-    INC(j, SIZE(INTEGER));
+    get(w); put(w);
     DEC(n)
   END  
 END copyTypeDescriptors;
@@ -29,11 +51,9 @@ PROCEDURE zeroVariables;
 VAR
   size: INTEGER;
 BEGIN
-  SYSTEM.GET(i, size);
-  INC(i, SIZE(INTEGER));
+  get(size);
   WHILE size # 0 DO
-    SYSTEM.PUT(j, 00X);
-    INC(j)
+    putChar(00X)
   END
 END zeroVariables;
 
@@ -42,12 +62,11 @@ VAR
   size: INTEGER;
   ch: CHAR;
 BEGIN
-  SYSTEM.GET(i, size);
-  INC(i, SIZE(INTEGER));
+  get(size);
   WHILE size # 0 DO
-    SYSTEM.GET(i, ch); SYSTEM.PUT(j, ch);
-    INC(i); INC(j); DEC(size)
-  END
+    getChar(ch); putChar(ch);
+    DEC(size)
+  END;
   i := (i+3) DIV 4 * 4;
 END copyStrings;
 
