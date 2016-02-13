@@ -622,7 +622,7 @@ END RoundUp;
     ELSIF sym = ORS.comma THEN ORS.Get(sym); ArrayType(typ.base)
     ELSE ORS.Mark("missing OF"); typ.base := ORB.intType
     END ;
-    IF len >= 0 THEN typ.size := RoundUp(len) ELSE typ.size := 2*ORB.IntegerSize  (*array desc*) END ;
+    IF len >= 0 THEN typ.size := len * RoundUp(typ.base.size) ELSE typ.size := 2*ORB.IntegerSize  (*array desc*) END ;
     typ.form := ORB.Array; typ.len := len; type := typ
   END ArrayType;
 
