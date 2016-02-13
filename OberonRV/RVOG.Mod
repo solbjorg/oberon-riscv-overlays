@@ -28,7 +28,7 @@ CONST
   SB = GP;          (* We assign the role of SB to GP *)
   MT = TP;          (* We assign the role of MT to TP *)
 
-  maxCode = 8000;   (* Module size maximum: 8000 instructions *)
+  maxCode = 65536;  (* Total # of instructions in a module *)
   maxStrx = 65536;  (* 64KB for statically allocated strings *)
   maxTD = 512;      (* 512 words of space for type descriptors *)
 
