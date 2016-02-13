@@ -18,8 +18,9 @@ CONST
   StkOrg0 = 65536;    (* For ROM modules only *)
   VarOrg0 = 0;
 
-  firstReg = 8;     (* First usable data register *)
-  maxReg = 32;      (* Last usable data register, plus one *)
+  firstReg* = 8;    (* First usable data register *)
+  maxReg* = 32;     (* Last usable data register, plus one *)
+
   RA = 1;           (* Return address register *)
   SP = 2;           (* Stack pointer *)
   GP = 3;           (* Globals Pointer *)
