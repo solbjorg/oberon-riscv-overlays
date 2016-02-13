@@ -1202,8 +1202,12 @@ BEGIN  load(y);
     put(RVAssem.ld(RH, SP, x.a + frame));
     put(RVAssem.fmtS(23H, op, RH, y.r, x.b));
   ELSIF x.mode = RegI THEN
-    ASSERT(FitsIn12Bits(x.a));
-    put(RVAssem.fmtS(23H, op, x.r, y.r, x.a)); decR
+    IF FitsIn12Bits(x.a) THEN
+      put(RVAssem.fmtS(23H, op, x.r, y.r, x.a)); decR
+    ELSE
+      AddImm(x.r, x.a);
+      put(RVAssem.fmtS(23H, op, RH, y.r, 0)); decR
+    END
   ELSE ORS.Mark("bad mode in Store")
   END ;
   decR
