@@ -12,3 +12,11 @@ rot() {
   nor RVOTool.DecObj $*
 }
 
+oc() {
+  nor ORP.Compile $*
+}
+
+ot() {
+  nor ORTool.DecObj $*
+}
+
