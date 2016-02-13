@@ -534,8 +534,12 @@ BEGIN
       put(RVAssem.fmtI(03H, op, RH, RH, x.b));
       x.r := RH; incR;
     ELSIF x.mode = RegI THEN
-      ASSERT(FitsIn12Bits(x.a));
-      put(RVAssem.fmtI(03H, op, x.r, x.r, x.a));
+      IF FitsIn12Bits(x.a) THEN
+        put(RVAssem.fmtI(03H, op, x.r, x.r, x.a));
+      ELSE
+        AddImm(x.r, x.a);
+        put(RVAssem.fmtI(03H, op, RH, x.r, 0));
+      END
     ELSIF x.mode = Cond THEN
       put(RVAssem.fmtSB(63H, opposite(x.r), x.cl, x.cr, 12));
       FixLink(x.b);
