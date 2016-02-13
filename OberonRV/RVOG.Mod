@@ -637,9 +637,9 @@ PROCEDURE MakeStringItem*(VAR x: Item; len: INTEGER); (*copies string from ORS-b
 VAR i: INTEGER;
 BEGIN
   x.mode := ORB.Const; x.type := ORB.strType; x.a := strx; x.b := len; i := 0;
-  IF strx + len + 4 < maxStrx THEN
+  IF strx + len + IntegerSize < maxStrx THEN
     WHILE len > 0 DO str[strx] := ORS.str[i]; INC(strx); INC(i); DEC(len) END;
-    WHILE strx MOD 4 # 0 DO str[strx] := 0X; INC(strx) END
+    WHILE strx MOD IntegerSize # 0 DO str[strx] := 0X; INC(strx) END
   ELSE ORS.Mark("too many strings")
   END
 END MakeStringItem;
