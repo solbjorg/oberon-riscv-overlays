@@ -11,6 +11,8 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
     InsnSize = ORB.InsnSize;
     BitsPerSet = ORB.BitsPerSet;
 
+    BytesForParameters = (RVOG.maxReg - RVOG.firstReg) * IntegerSize;
+
   TYPE PtrBase = POINTER TO PtrBaseDesc;
     PtrBaseDesc = RECORD  (*list of names of pointer base types*)
       name: ORS.Ident; type: ORB.Type; next: PtrBase
@@ -687,7 +689,7 @@ END RoundUp;
       INC(nofpar); obj.class := cl; obj.type := tp; obj.rdo := rdo; obj.lev := level; obj.val := adr;
       adr := adr + parsize; obj := obj.next
     END ;
-    IF adr >= 52 THEN ORS.Mark("too many parameters") END
+    IF adr >= BytesForParameters THEN ORS.Mark("too many parameters") END
   END FPSection;
 
   PROCEDURE ProcedureType(ptype: ORB.Type; VAR parblksize: LONGINT);
