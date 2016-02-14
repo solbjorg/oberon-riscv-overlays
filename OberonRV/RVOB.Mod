@@ -437,15 +437,15 @@ BEGIN
   topScope := NIL; OpenScope; topScope.next := system; universe := topScope;
   
   system := NIL;  (* initialize "unsafe" pseudo-module SYSTEM*)
-  enter("H", SFunc, intType, 201);     (*functions*)
-  enter("COND", SFunc, boolType, 191);
+  enter("CSRRC", SFunc, intType, 212);     (*functions*)
+  enter("CSRRS", SFunc, intType, 202);
+  enter("CSRRW", SFunc, intType, 192);
   enter("SIZE", SFunc, intType, 181);
   enter("ADR", SFunc, intType, 171);
   enter("VAL", SFunc, intType, 162);
   enter("REG", SFunc, intType, 151);
   enter("BIT", SFunc, boolType, 142);
   enter("LDREG", SProc, noType, 142);  (*procedures*)
-  enter("LDPSR", SProc, noType, 131);
   enter("COPY", SProc, noType, 123);
   enter("PUT", SProc, noType, 112);
   enter("GET", SProc, noType, 102);

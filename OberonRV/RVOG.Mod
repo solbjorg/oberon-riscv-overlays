@@ -1738,6 +1738,22 @@ BEGIN
   END
 END Adr;
 
+PROCEDURE CSRop*(op: INTEGER; VAR x, y: Item);
+BEGIN
+  ASSERT(x.mode = ORB.Const);
+  ASSERT((0 <= x.a) & (x.a < 4096));
+  IF (y.mode = ORB.Const) & (0 <= y.a) & (y.a < 32) THEN
+    put(RVAssem.fmtI(73H, op+5, RH, y.a, x.a));
+    x.mode := Reg;
+    x.r := RH; incR
+  ELSE
+    load(y);
+    ASSERT(y.mode = Reg);
+    put(RVAssem.fmtI(73H, op+1, y.r, y.r, x.a));
+    x := y
+  END
+END CSRop;
+
 PROCEDURE Open*(v: INTEGER);
 BEGIN pc := 0; tdx := 0; strx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
   IF v = 0 THEN pc := 8 END
