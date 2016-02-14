@@ -1741,16 +1741,19 @@ END Adr;
 PROCEDURE CSRop*(op: INTEGER; VAR x, y: Item);
 BEGIN
   ASSERT(x.mode = ORB.Const);
-  ASSERT((0 <= x.a) & (x.a < 4096));
-  IF (y.mode = ORB.Const) & (0 <= y.a) & (y.a < 32) THEN
-    put(RVAssem.fmtI(73H, op+5, RH, y.a, x.a));
-    x.mode := Reg;
-    x.r := RH; incR
+  IF (x.a < 0) OR  (4096 <= x.a) THEN
+    ORS.Mark("CSR must lie between 0000H and 0FFFH inclusive.");
   ELSE
-    load(y);
-    ASSERT(y.mode = Reg);
-    put(RVAssem.fmtI(73H, op+1, y.r, y.r, x.a));
-    x := y
+    IF (y.mode = ORB.Const) & (0 <= y.a) & (y.a < 32) THEN
+      put(RVAssem.fmtI(73H, op+5, RH, y.a, x.a));
+      x.mode := Reg;
+      x.r := RH; incR
+    ELSE
+      load(y);
+      ASSERT(y.mode = Reg);
+      put(RVAssem.fmtI(73H, op+1, y.r, y.r, x.a));
+      x := y
+    END
   END
 END CSRop;
 
