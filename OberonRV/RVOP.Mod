@@ -61,6 +61,13 @@ END RoundUp;
     IF x.type.form # ORB.Int THEN ORS.Mark("not Integer"); x.type := ORB.intType END
   END CheckInt;
 
+  PROCEDURE CheckIntOrSet(VAR x: RVOG.Item);
+  BEGIN
+    IF (x.type.form # ORB.Int) & (x.type.form # ORB.Set) THEN
+      ORS.Mark("neither integer nor set"); x.type := ORB.intType
+    END
+  END CheckIntOrSet;
+
   PROCEDURE CheckReal(VAR x: RVOG.Item);
   BEGIN
     IF x.type.form # ORB.Real THEN ORS.Mark("not Real"); x.type := ORB.realType END
@@ -280,6 +287,8 @@ END RoundUp;
         IF x.mode = ORB.Typ THEN RVOG.MakeConstItem(x, ORB.intType, x.type.size)
         ELSE ORS.Mark("must be a type")
         END
+      ELSIF fct IN {19, 20, 21} THEN
+        CheckConst(x); CheckInt(x); CheckIntOrSet(y); RVOG.CSRop(fct-19, x, y);
       ELSIF fct = 19 THEN (*COND*) ORS.Mark("no COND")
       ELSIF fct = 20 THEN (*H*) ORS.Mark("no H")
       END ;
