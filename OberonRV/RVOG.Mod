@@ -18,8 +18,9 @@ CONST
   StkOrg0 = 65536;    (* For ROM modules only *)
   VarOrg0 = 0;
 
-  firstReg = 8;     (* First usable data register *)
-  maxReg = 32;      (* Last usable data register, plus one *)
+  firstReg* = 8;    (* First usable data register *)
+  maxReg* = 32;     (* Last usable data register, plus one *)
+
   RA = 1;           (* Return address register *)
   SP = 2;           (* Stack pointer *)
   GP = 3;           (* Globals Pointer *)
@@ -28,7 +29,7 @@ CONST
   SB = GP;          (* We assign the role of SB to GP *)
   MT = TP;          (* We assign the role of MT to TP *)
 
-  maxCode = 8000;   (* Module size maximum: 8000 instructions *)
+  maxCode = 65536;  (* Total # of instructions in a module *)
   maxStrx = 65536;  (* 64KB for statically allocated strings *)
   maxTD = 512;      (* 512 words of space for type descriptors *)
 
@@ -107,10 +108,10 @@ VAR
   data: ARRAY maxTD OF INTEGER;  (*type descriptors*)
   str: ARRAY maxStrx OF CHAR;
 
-  (* REMOVE; after conversion, I suspect these variables will not be needed. *)
-  fixorgP, fixorgD, fixorgT: INTEGER;   (*origins of lists of locations to be fixed up by loader*)
+  (* Origins of lists of relocations to be fixed up by the loader *)
+  fixorgP, fixorgD, fixorgT: INTEGER;
 
-PROCEDURE put(w: INTEGER);
+PROCEDURE put*(w: INTEGER);
 BEGIN
   Texts.WriteHex(W, pc*InsnSize);  Texts.WriteString(W, "   ");
   Texts.WriteHex(W, w); Texts.WriteString(W, " : ");
@@ -235,7 +236,7 @@ END invalSB;
 PROCEDURE MakeFwdBranch(cond, l, r, link: INTEGER): INTEGER;
 BEGIN
   ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU, NEV, ALW});
-  ASSERT((firstReg <= l) & (l < maxReg));
+(*  ASSERT((firstReg <= l) & (l < maxReg)); *)
   ASSERT(((firstReg <= r) & (r < maxReg)) OR (r = 0));
   ASSERT((0 <= link) & (link < maxCode));
   RETURN
@@ -263,7 +264,7 @@ PROCEDURE FixLinkWith(L, dst: INTEGER);
   VAR next: INTEGER;
 BEGIN
   WHILE L # 0 DO
-    next := ASR(code[L], 13) MOD 80000H; fix(L, dst);
+    next := ASR(code[L], 16) MOD 10000H; fix(L, dst);
     L := next
   END
 END FixLinkWith;
@@ -289,8 +290,8 @@ PROCEDURE merged(L0, L1: INTEGER): INTEGER;
 BEGIN 
   IF L0 # 0 THEN
     L3 := L0;   (* Find the end of L0 and place in L2 *)
-    REPEAT L2 := L3; L3 := ASR(code[L2], 13) MOD 80000H UNTIL L3 = 0;
-    code[L2] := code[L2] + LSL(L1, 13); L1 := L0
+    REPEAT L2 := L3; L3 := ASR(code[L2], 16) MOD 10000H UNTIL L3 = 0;
+    code[L2] := code[L2] + LSL(L1 MOD 10000H, 16); L1 := L0
   END ;
   RETURN L1
 END merged;
@@ -332,9 +333,10 @@ BEGIN
     diagnose bugs will occur.
   *)
   ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
-  ASSERT((-128 <= base) & (base < 0));  (* Allows up to 128 imported modules *)
-
-  RETURN 5 + LSL(base, 4) + LSL(fixorgD, 16)
+  ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
+  Texts.WriteString(W,"MLSB:"); Texts.WriteInt(W,-base,0); Texts.WriteLn(W);
+  Texts.Append(Oberon.Log,W.buf);
+  RETURN 5 + LSL(-base MOD 128, 4) + LSL(fixorgD MOD 10000H, 16)
 END MakeLoadSB;
 
 PROCEDURE GetSB(base: INTEGER);
@@ -510,21 +512,35 @@ BEGIN
       x.r := RH; incR
     ELSIF x.mode = ORB.Var THEN
       IF x.r > 0 THEN (*local*)
-        ASSERT(FitsIn12Bits(x.a + frame));
-        put(RVAssem.fmtI(03H, op, RH, SP, x.a + frame));
+        IF FitsIn12Bits(x.a+frame) THEN
+          put(RVAssem.fmtI(03H, op, RH, SP, x.a + frame));
+        ELSE
+          LoadImm(x.a + frame); put(RVAssem.add(RH, RH, SP));
+          put(RVAssem.fmtI(03H, op, RH, RH, 0));
+        END
       ELSE (* relative to another module *)
-        ASSERT(FitsIn12Bits(x.a));
-        GetSB(x.r); put(RVAssem.fmtI(03H, op, RH, SB, x.a))
+        GetSB(x.r);
+        IF FitsIn12Bits(x.a) THEN
+          put(RVAssem.fmtI(03H, op, RH, SB, x.a))
+        ELSE
+          LoadImm(x.a); put(RVAssem.add(RH, RH, SB));
+          put(RVAssem.fmtI(03H, op, RH, RH, 0))
+        END
       END ;
       x.r := RH; incR
     ELSIF x.mode = ORB.Par THEN
+      ASSERT(FitsIn12Bits(x.a + frame));
       ASSERT(FitsIn12Bits(x.b));
-      AddImm(SP, x.a + frame);
+      put(RVAssem.ld(RH, SP, x.a + frame));
       put(RVAssem.fmtI(03H, op, RH, RH, x.b));
-      x.r := RH; incR
+      x.r := RH; incR;
     ELSIF x.mode = RegI THEN
-      ASSERT(FitsIn12Bits(x.a));
-      put(RVAssem.fmtI(03H, op, x.r, x.r, x.a));
+      IF FitsIn12Bits(x.a) THEN
+        put(RVAssem.fmtI(03H, op, x.r, x.r, x.a));
+      ELSE
+        AddImm(x.r, x.a);
+        put(RVAssem.fmtI(03H, op, RH, x.r, 0));
+      END
     ELSIF x.mode = Cond THEN
       put(RVAssem.fmtSB(63H, opposite(x.r), x.cl, x.cr, 12));
       FixLink(x.b);
@@ -626,9 +642,9 @@ PROCEDURE MakeStringItem*(VAR x: Item; len: INTEGER); (*copies string from ORS-b
 VAR i: INTEGER;
 BEGIN
   x.mode := ORB.Const; x.type := ORB.strType; x.a := strx; x.b := len; i := 0;
-  IF strx + len + 4 < maxStrx THEN
+  IF strx + len + IntegerSize < maxStrx THEN
     WHILE len > 0 DO str[strx] := ORS.str[i]; INC(strx); INC(i); DEC(len) END;
-    WHILE strx MOD 4 # 0 DO str[strx] := 0X; INC(strx) END
+    WHILE strx MOD IntegerSize # 0 DO str[strx] := 0X; INC(strx) END
   ELSE ORS.Mark("too many strings")
   END
 END MakeStringItem;
@@ -659,8 +675,14 @@ BEGIN;
   END
 END Field;
 
+PROCEDURE log2(m: INTEGER; VAR e: INTEGER): INTEGER;
+BEGIN e := 0;
+  WHILE ~ODD(m) DO m := m DIV 2; INC(e) END ;
+  RETURN m
+END log2;
+
 PROCEDURE Index*(VAR x, y: Item);   (* x := x[y] *)
-  VAR s, lim: INTEGER;
+  VAR e, s1, s, lim: INTEGER;
 BEGIN
   s := x.type.base.size;    (* Type size, in bytes *)
   lim := x.type.len;        (* Limit of the array dimension, in elements *)
@@ -684,12 +706,8 @@ BEGIN
       Trap(GE, TrapIndexBounds, y.r, RH);
     END;
     (* y < lim *)
-    IF s = 2 THEN
-      put(RVAssem.slli(y.r, y.r, 1))
-    ELSIF s = 4 THEN
-      put(RVAssem.slli(y.r, y.r, 2))
-    ELSIF s = 8 THEN
-      put(RVAssem.slli(y.r, y.r, 3))
+    s1 := log2(s, e);
+    IF s1 = 1 THEN put(RVAssem.slli(y.r, y.r, e))
     ELSIF s > 1 THEN
       LoadImm(s);
       put(RVAssem.mul(y.r, y.r, RH))
@@ -723,7 +741,7 @@ BEGIN
     IF x.r > 0 THEN (*local*)
       Fetch(SP, x.a + frame)
     ELSE
-      GetSB(x.r);  Fetch(SP, x.a)
+      GetSB(x.r);  Fetch(SB, x.a)
     END;
     NilCheck; x.r := RH; incR
   ELSIF x.mode = ORB.Par THEN
@@ -844,7 +862,8 @@ END And1;
 PROCEDURE And2*(VAR x, y: Item);
 BEGIN
   IF y.mode # Cond THEN loadCond(y) END ;
-  x.a := merged(y.a, x.a); x.b := y.b; x.r := y.r
+  x.a := merged(y.a, x.a); x.b := y.b; x.r := y.r;
+  x.cl := y.cl; x.cr := y.cr
 END And2;
 
 PROCEDURE Or1*(VAR x: Item);   (* x := x OR *)
@@ -857,7 +876,8 @@ END Or1;
 PROCEDURE Or2*(VAR x, y: Item);
 BEGIN
   IF y.mode # Cond THEN loadCond(y) END ;
-  x.a := y.a; x.b := merged(y.b, x.b); x.r := y.r
+  x.a := y.a; x.b := merged(y.b, x.b); x.r := y.r;
+  x.cl := y.cl; x.cr := y.cr
 END Or2;
 
 (* Code generation for arithmetic operators *)
@@ -888,7 +908,7 @@ BEGIN
     ELSIF y.mode = ORB.Const THEN
       load(x);
       IF y.a # 0 THEN
-        IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, x.a))
+        IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, y.a))
         ELSE LoadImm(y.a); put(RVAssem.add(x.r, x.r, RH))
         END
       END
@@ -902,7 +922,7 @@ BEGIN
     ELSIF y.mode = ORB.Const THEN
       load(x);
       IF y.a # 0 THEN
-        IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, -x.a))
+        IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, -y.a))
         ELSE LoadImm(y.a); put(RVAssem.sub(x.r, x.r, RH))
         END
       END
@@ -913,12 +933,6 @@ BEGIN
     END
   END
 END AddOp;
-
-PROCEDURE log2(m: INTEGER; VAR e: INTEGER): INTEGER;
-BEGIN e := 0;
-  WHILE ~ODD(m) DO m := m DIV 2; INC(e) END ;
-  RETURN m
-END log2;
 
 PROCEDURE MulOp*(VAR x, y: Item);   (* x := x * y *)
   VAR e: INTEGER;
@@ -1059,7 +1073,7 @@ BEGIN
     load(x);  LoadImm(63);
     put(RVAssem.sub(x.r, RH, x.r));
     put(RVAssem.sll(y.r, y.r, x.r));
-    decR    (* BUG?  Old code decremented RH-2, but other branch by only -1 *)
+    decR; decR
   END ;
   SetCC0(x, LT)
 END In;
@@ -1179,9 +1193,13 @@ BEGIN  load(y);
       ASSERT(FitsIn12Bits(x.a + frame));
       put(RVAssem.fmtS(23H, op, SP, y.r, x.a + frame))
     ELSE
-      ASSERT(FitsIn12Bits(x.a + frame));
       GetSB(x.r);
-      put(RVAssem.fmtS(23H, op, SB, y.r, x.a))
+      IF FitsIn12Bits(x.a + frame) THEN
+        put(RVAssem.fmtS(23H, op, SB, y.r, x.a))
+      ELSE
+        LoadImm(x.a); put(RVAssem.add(RH, RH, SB));
+        put(RVAssem.fmtS(23H, op, RH, y.r, 0))
+      END
     END
   ELSIF x.mode = ORB.Par THEN
     ASSERT(FitsIn12Bits(x.a + frame));
@@ -1189,8 +1207,12 @@ BEGIN  load(y);
     put(RVAssem.ld(RH, SP, x.a + frame));
     put(RVAssem.fmtS(23H, op, RH, y.r, x.b));
   ELSIF x.mode = RegI THEN
-    ASSERT(FitsIn12Bits(x.a));
-    put(RVAssem.fmtS(23H, op, x.r, y.r, x.a)); decR
+    IF FitsIn12Bits(x.a) THEN
+      put(RVAssem.fmtS(23H, op, x.r, y.r, x.a)); decR
+    ELSE
+      AddImm(x.r, x.a);
+      put(RVAssem.fmtS(23H, op, RH, y.r, 0)); decR
+    END
   ELSE ORS.Mark("bad mode in Store")
   END ;
   decR
@@ -1228,7 +1250,7 @@ BEGIN loadAdr(x); loadAdr(y);
   put(RVAssem.sd(RH+1, x.r, 0));
   put(RVAssem.addi(x.r, x.r, IntegerSize));
   put(RVAssem.addi(RH, RH, -1));
-  put(RVAssem.bne(RH, 0, -24));
+  put(RVAssem.bne(RH, 0, -20));
   decR; decR
 END StoreStruct;
 
@@ -1362,7 +1384,7 @@ PROCEDURE SaveRegs(r: INTEGER);  (* R[frstReg .. r-1]*)
 BEGIN
   ASSERT(r >= firstReg);
   r0 := firstReg;
-  put(RVAssem.addi(SP, SP, (r-firstReg)*IntegerSize));
+  put(RVAssem.addi(SP, SP, (firstReg-r)*IntegerSize));
   INC(frame, (r-firstReg)*IntegerSize);
   REPEAT put(RVAssem.sd(r0, SP, (r-r0-1)*IntegerSize)); INC(r0) UNTIL r0 = r
 END SaveRegs;
@@ -1407,7 +1429,7 @@ BEGIN (*x.type.form = ORB.Proc*)
       put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
     ELSE (*imported*)
       IF pc - fixorgP < 1000H THEN
-        put(6H + LSL(-x.r, 4) + LSL(pc-fixorgP, 16)); fixorgP := pc-1
+        put(6H + LSL(-x.r, 4) + LSL(fixorgP, 16)); fixorgP := pc-1
       ELSE ORS.Mark("fixup impossible")
       END
     END
@@ -1423,7 +1445,7 @@ BEGIN (*x.type.form = ORB.Proc*)
   END ;
   IF x.type.base.form = ORB.NoTyp THEN (*procedure*) RH := firstReg
   ELSE (*function*)
-    IF r > 0 THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
+    IF r > firstReg THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
     x.mode := Reg; x.r := r; RH := r+1
   END ;
   invalSB
@@ -1531,7 +1553,7 @@ BEGIN
   IF x.a = 0 THEN
     cond := opposite(x.r)
   ELSE
-    put(MakeFwdBranch(x.r, RH, 0, x.b)); FixLink(x.a);
+    put(MakeFwdBranch(x.r, RH-1, 0, x.b)); FixLink(x.a);
     x.b := pc-1; cond := ALW
   END ;
   Trap(cond, TrapAssertFailure, RH, 0); FixLink(x.b)
@@ -1546,8 +1568,9 @@ END New;
 
 PROCEDURE Pack*(VAR x, y: Item);
   VAR z: Item;
-BEGIN z := x; load(x); load(y);
+BEGIN
 (*
+  z := x; load(x); load(y);
   Put1(Lsl, y.r, y.r, 23); Put0(Add, x.r, x.r, y.r); DEC(RH); Store(z, x)
 *)  ORS.Mark("REALs not supported")
 END Pack;
@@ -1763,35 +1786,27 @@ BEGIN
   END
 END FindPtrs;
 
-PROCEDURE Close*(VAR modid: ORS.Ident; key, nofent: INTEGER);
+PROCEDURE CloseModule(VAR modid: ORS.Ident; key, nofent: INTEGER);
   VAR obj: ORB.Object;
     i, comsize, nofimps, nofptrs, size: INTEGER;
     name: ORS.Ident;
     F: Files.File; R: Files.Rider;
-BEGIN  (*exit code*)
-  IF version = 0 THEN  (* ROM ABI *)
-    put(RVAssem.addi(RA, 0, 0));
-    put(RVAssem.jalr(0, RA, 0));
-  ELSE
-    put(RVAssem.ld(RA, SP, 0));
-    put(RVAssem.addi(SP, SP, IntegerSize));
-    put(RVAssem.jalr(0, RA, 0));
-  END ;
+BEGIN
   obj := ORB.topScope.next; nofimps := 0;
-  comsize := IntegerSize; nofptrs := 0;
+  comsize := 4; nofptrs := 0;
   WHILE obj # NIL DO
     IF (obj.class = ORB.Mod) & (obj.dsc # ORB.system) THEN INC(nofimps) (*count imports*)
     ELSIF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc)
         & (obj.type.nofpar = 0) & (obj.type.base = ORB.noType) THEN i := 0; (*count commands*)
       WHILE obj.name[i] # 0X DO INC(i) END ;
-      i := (i+IntegerSize) DIV IntegerSize * IntegerSize;
-      INC(comsize, i+IntegerSize)
+      i := (i+4) DIV 4 * 4;
+      INC(comsize, i+4)
     ELSIF obj.class = ORB.Var THEN INC(nofptrs, NofPtrs(obj.type))  (*count pointers*)
     END ;
     obj := obj.next
   END ;
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
-      (pc + nofimps + nofent + nofptrs + 1)*IntegerSize;
+      (pc + nofimps + nofent + nofptrs + 1)*4;
 
   ORB.MakeFileName(name, modid, ".rv64.Obj"); (*write code file*)
   F := Files.New(name); Files.Set(R, F, 0);
@@ -1803,10 +1818,10 @@ BEGIN  (*exit code*)
     obj := obj.next
   END ;
   Files.Write(R, 0X);
-  Files.WriteInt(R, tdx*IntegerSize);
+  Files.WriteInt(R, tdx*4);
   i := 0;
   WHILE i < tdx DO Files.WriteInt(R, data[i]); INC(i) END ; (*type descriptors*)
-  Files.WriteInt(R, varsize - tdx*IntegerSize);  (*data*)
+  Files.WriteInt(R, varsize - tdx*4);  (*data*)
   Files.WriteInt(R, strx);
   FOR i := 0 TO strx-1 DO Files.Write(R, str[i]) END ;  (*strings*)
   Files.WriteInt(R, pc);  (*code len*)
@@ -1843,6 +1858,122 @@ BEGIN  (*exit code*)
   Files.WriteInt(R, -1);
   Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, entry);
   Files.Write(R, "O"); Files.Register(F)
+END CloseModule;
+
+PROCEDURE writeDword(VAR R: Files.Rider; i: INTEGER);
+BEGIN
+  Files.WriteInt(R, i);
+  IF i < 0 THEN Files.WriteInt(R, -1) ELSE Files.WriteInt(R, 0) END
+END writeDword;
+
+PROCEDURE CloseRom(VAR modid: ORS.Ident; key, nofent: INTEGER);
+VAR
+  i, j, size: INTEGER;
+  name: ORS.Ident;
+  F: Files.File; R: Files.Rider;
+BEGIN
+  ORB.MakeFileName(name, modid, ".rv64.Rom"); (*write ROM image file*)
+  F := Files.New(name); Files.Set(R, F, 0);
+  ASSERT(Files.Pos(R) = 0);
+
+  (*
+    ROM images are slightly different from module files.  The format
+    is as follows:
+
+    ORG     baseOfRom
+
+    DWORD   x
+    DWORD*x typeDescriptorData
+    DWORD   uninitializedDataSizeInBytes
+    DWORD   y
+    BYTE*y  stringData
+    BYTE*a  alignment32bit  (0 <= a < 4)
+    DWORD   numberOfWordsInCode
+    JAL     0, ...    (code starts here)
+    ...etc...
+
+    The main body of the ROM module is expected to copy any type descriptors
+    into RAM, then zero out the uninitialized data space, then copy strings
+    immediately after that.  Once that's done, dynamic type checks and
+    static string constants should "just work" as expected, even if code
+    itself is running in RAM.
+  *)
+
+  Texts.WriteString(W, "Writing type descriptors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  writeDword(R, tdx);                 (* Type descriptors *)
+  i := 0;  j := 8;
+  WHILE i < tdx DO
+    writeDword(R, data[i]);
+    INC(i); INC(j, 8)
+  END;
+  ASSERT(Files.Pos(R) = j);
+
+  Texts.WriteString(W, "Writing variable space needed"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  writeDword(R, varsize - tdx*8);     (* Data size *)
+  INC(j, 8);
+  ASSERT(Files.Pos(R) = j);
+
+  Texts.WriteString(W, "Writing string constants"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  writeDword(R, strx);                (* String Constants *)
+  INC(j, 8);
+  FOR i := 0 TO strx-1 DO
+    Files.Write(R, str[i]);
+    INC(j)
+  END;
+  ASSERT(Files.Pos(R) = j);
+
+  Texts.WriteString(W, "Writing filler for 64-bit alignment"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  (* instruction alignment for code segment *)
+  WHILE j MOD 8 # 0 DO
+    Files.Write(R, 00X); INC(j)
+  END;
+  ASSERT(Files.Pos(R) = j);
+
+  Texts.WriteString(W, "Writing program code"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  writeDword(R, pc);                  (* Program *)
+  INC(j, 8);
+  entry := j;
+  FOR i := 0 TO pc-1 DO
+    Files.WriteInt(R, code[i]);
+    INC(j, 4);
+  END;
+  ASSERT(Files.Pos(R) = j);
+
+  Texts.WriteString(W, "Filling space for interrupt vectors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  (* Reset Vector *)
+  WHILE j < 0FFF00H DO
+    Files.Write(R, 00X); INC(j)
+  END;
+  ASSERT(Files.Pos(R) = j);
+
+  Texts.WriteString(W, "Writing reset and interrupt vectors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+
+  Files.WriteInt(R, RVAssem.jal(0, entry-0FFF00H));
+  Files.Register(F);
+END CloseRom;
+
+PROCEDURE Close*(VAR modid: ORS.Ident; key, nofent: INTEGER);
+  VAR obj: ORB.Object;
+    i, comsize, nofimps, nofptrs, size: INTEGER;
+    name: ORS.Ident;
+    F: Files.File; R: Files.Rider;
+BEGIN  (* module body epilog *)
+  IF version = 0 THEN  (* ROM ABI *)
+    put(RVAssem.addi(RA, 0, 0));
+    put(RVAssem.jalr(0, RA, 0));
+    CloseRom(modid, key, nofent);
+  ELSE
+    put(RVAssem.ld(RA, SP, 0));
+    put(RVAssem.addi(SP, SP, 8));
+    put(RVAssem.jalr(0, RA, 0));
+    CloseModule(modid, key, nofent);
+  END ;
 END Close;
 
 BEGIN

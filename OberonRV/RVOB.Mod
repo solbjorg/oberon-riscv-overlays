@@ -11,7 +11,7 @@ CONST
   BitsPerInteger* = 64;
   IntegerSize* = BitsPerInteger DIV 8;
 
-  BitsPerReal* = 32;
+  BitsPerReal* = 64;
   RealSize* = BitsPerReal DIV 8;
 
   BitsPerSet* = 64;

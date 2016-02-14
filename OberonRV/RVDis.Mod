@@ -220,7 +220,7 @@ END system;
 
 PROCEDURE addsub(VAR W: Texts.Writer; op, fn3: INTEGER);
 BEGIN
-  IF (fn3 IN {1, 5}) & ODD(op DIV 40000000H) THEN
+  IF (fn3 IN {0, 1, 5}) & ODD(op DIV 40000000H) THEN
     fmtR(W, op MOD 40000000H, fn3, alu3Table[fn3])
   ELSE
     fmtR(W, op, fn3, alu4Table[fn3])
@@ -311,7 +311,7 @@ BEGIN
   alu2Table[6] := "ORI     ";
   alu2Table[7] := "ANDI    ";
 
-  alu3Table[0] := "ADD     ";
+  alu3Table[0] := "SUB     ";
   alu3Table[1] := "???     ";
   alu3Table[2] := "SLT     ";
   alu3Table[3] := "SLTU    ";
