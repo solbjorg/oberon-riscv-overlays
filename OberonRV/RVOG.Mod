@@ -869,7 +869,7 @@ END And2;
 PROCEDURE Or1*(VAR x: Item);   (* x := x OR *)
 BEGIN
   IF x.mode # Cond THEN loadCond(x) END ;
-  put(MakeFwdBranch(x.r, x.cl, x.cr, x.a));
+  put(MakeFwdBranch(x.r, x.cl, x.cr, x.b));
   x.b := pc-1; FixLink(x.a); x.a := 0
 END Or1;
 
