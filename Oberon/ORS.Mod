@@ -12,7 +12,7 @@ MODULE ORS; (* NW 19.9.93 / 1.4.2014  Scanner in Oberon-07*)
   
   CONST IdLen* = 32;
     NKW = 34;  (*nof keywords*)
-    maxExp = 38; stringBufSize = 256;
+    maxExp = 38; stringBufSize = 2560;
   
     (*lexical symbols*)
     null = 0; times* = 1; rdiv* = 2; div* = 3; mod* = 4;
@@ -96,18 +96,20 @@ MODULE ORS; (* NW 19.9.93 / 1.4.2014  Scanner in Oberon-07*)
     VAR i, m, n: INTEGER;
   BEGIN i := 0; Texts.Read(R, ch);
     WHILE ~R.eot & (ch # "$") DO
-      WHILE (ch = " ") OR (ch = 9X) OR (ch = 0DX) DO Texts.Read(R, ch) END ;  (*skip*)
-      IF ("0" <= ch) & (ch <= "9") THEN m := ORD(ch) - 30H
-      ELSIF ("A" <= ch) & (ch <= "F") THEN m := ORD(ch) - 37H
-      ELSE m := 0; Mark("hexdig expected")
-      END ;
-      Texts.Read(R, ch);
-      IF ("0" <= ch) & (ch <= "9") THEN n := ORD(ch) - 30H
-      ELSIF ("A" <= ch) & (ch <= "F") THEN n := ORD(ch) - 37H
-      ELSE n := 0; Mark("hexdig expected")
-      END ;
-      IF i < stringBufSize THEN str[i] := CHR(m*10H + n); INC(i) ELSE Mark("string too long") END ;
-      Texts.Read(R, ch)
+      WHILE (ch = " ") OR (ch = 9X) OR (ch = 0AX) OR (ch = 0DX) DO Texts.Read(R, ch) END ;  (*skip*)
+      IF ch # "$" THEN
+        IF ("0" <= ch) & (ch <= "9") THEN m := ORD(ch) - 30H
+        ELSIF ("A" <= ch) & (ch <= "F") THEN m := ORD(ch) - 37H
+        ELSE m := 0; Mark("hexdig expected")
+        END ;
+        Texts.Read(R, ch);
+        IF ("0" <= ch) & (ch <= "9") THEN n := ORD(ch) - 30H
+        ELSIF ("A" <= ch) & (ch <= "F") THEN n := ORD(ch) - 37H
+        ELSE n := 0; Mark("hexdig expected")
+        END ;
+        IF i < stringBufSize THEN str[i] := CHR(m*10H + n); INC(i) ELSE Mark("string too long") END ;
+        Texts.Read(R, ch)
+      END
     END ;
     Texts.Read(R, ch); slen := i  (*no 0X appended!*)
   END HexString;
