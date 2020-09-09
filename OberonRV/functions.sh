@@ -1,7 +1,7 @@
 #!/bin/bash
 
 nor() {
-  NOREBO_PATH=../build ../norebo $*
+  NOREBO_PATH="${PWD}/../build:${PWD}:${PWD}/rvbuild" ../norebo $*
 }
 
 roc() {
