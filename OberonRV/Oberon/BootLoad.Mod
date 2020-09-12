@@ -108,11 +108,11 @@ MODULE* BootLoad;  (*NW 20.10.2013 / PR 4.2.2014; boot from SDHC disk or line*)
 
 BEGIN SYSTEM.LDREG(SP, stackOrg); SYSTEM.LDREG(MT, MTOrg);
   IF SYSTEM.REG(LNK) = 0 THEN (*cold start*)
-    LED(80H); InitSPI;
-    IF SYSTEM.BIT(swi, 0) THEN LED(81H); LoadFromLine ELSE LED(82H); LoadFromDisk END ;
-  ELSIF SYSTEM.BIT(swi, 0) THEN LED(81H); LoadFromLine
+    SYSTEM.PUT(led, 80H); InitSPI;
+    IF SYSTEM.BIT(swi, 0) THEN SYSTEM.PUT(led, 81H); LoadFromLine ELSE SYSTEM.PUT(led, 82H); LoadFromDisk END ;
+  ELSIF SYSTEM.BIT(swi, 0) THEN SYSTEM.PUT(led, 81H); LoadFromLine
   END ;
-  SYSTEM.PUT(12, MemLim); SYSTEM.PUT(24, stackOrg); LED(84H)
+  SYSTEM.PUT(12, MemLim); SYSTEM.PUT(24, stackOrg); SYSTEM.PUT(led, 84H);
 END BootLoad.
 
 

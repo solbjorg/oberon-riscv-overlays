@@ -1,11 +1,13 @@
 #!/bin/bash
+# TODO replace this with something like a make system
 #export NOREBO_PATH="${PWD}/../../build:${PWD}:${PWD}/build"
 #NOREBO_BIN="${PWD}/../../norebo"
-cd ..; source functions.sh; cd Oberon;
+cd ..; source functions.sh; ./rebuild.sh; cd Oberon;
 export NOREBO_PATH="${NOREBO_PATH}:${PWD}:${PWD}/build"
 mkdir -p build; cd build
 roc BootLoad.Mod
-roc Kernel.Mod
+roc RVKernel.Mod
+roc RVFileDir.Mod
 #Modules.Mod/s \
 #FileDir.Mod/s \
 #Files.Mod/s \

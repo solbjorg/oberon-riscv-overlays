@@ -1,5 +1,5 @@
-MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
-  IMPORT SYSTEM, Kernel;
+MODULE RVFileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
+  IMPORT SYSTEM, Kernel:=RVKernel;
 
   (*File Directory is a B-tree with its root page at DirRootAdr.
     Each entry contains a file name and the disk address of the file's head sector*)
@@ -71,6 +71,7 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
     UNTIL (dadr = 0) OR (A # 0)
   END Search;
 
+  (* Seems like the sheer size of these variables is too large for the current compiler *)
   PROCEDURE insert(name: FileName;
                    dpg0:  DiskAdr;
                    VAR h: BOOLEAN;
@@ -349,4 +350,4 @@ PROCEDURE Init*;
   BEGIN k := 0; TraverseDir(A, k, DirRootAdr); MarkSectors(A, k)
   END Init; 
   
-END FileDir.
+END RVFileDir.

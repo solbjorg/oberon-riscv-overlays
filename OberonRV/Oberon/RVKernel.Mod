@@ -1,7 +1,7 @@
-MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
+MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   IMPORT SYSTEM;
   CONST SectorLength* = 1024;
-    timer = -64; spiData = -48; spiCtrl = -44;
+    timer = -64; led = -60; spiData = -48; spiCtrl = -44;
     CARD0 = 1; SPIFAST = 4;
     FSoffset = 80000H; (*256MB in 512-byte blocks*)
     mapsize = 10000H; (*1K sectors, 64MB*)
@@ -200,20 +200,22 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     FOR i := 2 TO mapsize DIV 32 - 1 DO sectorMap[i] := {} END
   END InitSecMap;
 
+  (* Sector numbers are always a multiple of 29 for the purpose of redundancy checks. (p. 110) *)
+  (* Additionally, sec MOD 29 = 0 must be true for this to be a valid sector number. *)
   PROCEDURE MarkSector*(sec: INTEGER);
-  BEGIN sec := sec DIV 29; ASSERT(SYSTEM.H(0) = 0);
+  BEGIN ASSERT(sec MOD 29 = 0); sec := sec DIV 29;
     INCL(sectorMap[sec DIV 32], sec MOD 32); INC(NofSectors)
   END MarkSector;
 
   PROCEDURE FreeSector*(sec: INTEGER);
-  BEGIN sec := sec DIV 29; ASSERT(SYSTEM.H(0) = 0);
+  BEGIN ASSERT(sec MOD 29 = 0); sec := sec DIV 29;
     EXCL(sectorMap[sec DIV 32], sec MOD 32); DEC(NofSectors)
   END FreeSector;
 
   PROCEDURE AllocSector*(hint: INTEGER; VAR sec: INTEGER);
     VAR s: INTEGER;
   BEGIN (*find free sector, starting after hint*)
-    hint := hint DIV 29; ASSERT(SYSTEM.H(0) = 0); s := hint;
+    ASSERT(hint MOD 29 = 0); hint := hint DIV 29; s := hint;
     REPEAT INC(s);
       IF s = mapsize THEN s := 1 END ;
     UNTIL ~(s MOD 32 IN sectorMap[s DIV 32]);
@@ -221,13 +223,13 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   END AllocSector;
 
   PROCEDURE GetSector*(src: INTEGER; VAR dst: Sector);
-  BEGIN src := src DIV 29; ASSERT(SYSTEM.H(0) = 0);
+  BEGIN ASSERT(src MOD 29 = 0); src := src DIV 29;
     src := src * 2 + FSoffset;
     ReadSD(src, SYSTEM.ADR(dst)); ReadSD(src+1, SYSTEM.ADR(dst)+512) 
   END GetSector;
   
   PROCEDURE PutSector*(dst: INTEGER; VAR src: Sector);
-  BEGIN dst := dst DIV 29; ASSERT(SYSTEM.H(0) =  0);
+  BEGIN ASSERT(dst MOD 29 = 0); dst := dst DIV 29;
     dst := dst * 2 + FSoffset;
     WriteSD(dst, SYSTEM.ADR(src)); WriteSD(dst+1, SYSTEM.ADR(src)+512)
   END PutSector;
@@ -255,7 +257,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     VAR u, v, w: INTEGER;
   BEGIN u := SYSTEM.REG(15); SYSTEM.GET(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
     IF w = 0 THEN New(a, b)
-    ELSE (*stop*) LED(w + 192); REPEAT UNTIL FALSE
+    ELSE (*stop*) SYSTEM.PUT(led, w + 192); REPEAT UNTIL FALSE
     END
   END Trap;
 
@@ -268,4 +270,4 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     allocated := 0; clock := 0; InitSecMap
   END Init;
 
-END Kernel.
+END RVKernel.
