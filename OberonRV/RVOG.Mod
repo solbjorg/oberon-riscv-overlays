@@ -113,10 +113,11 @@ VAR
 
 PROCEDURE put*(w: INTEGER);
 BEGIN
+   (*
   Texts.WriteHex(W, pc*InsnSize);  Texts.WriteString(W, "   ");
   Texts.WriteHex(W, w); Texts.WriteString(W, " : ");
   RVDis.WriteOpcode(W, w);  Texts.WriteLn(W);
-  Texts.Append(Oberon.Log, W.buf);
+  Texts.Append(Oberon.Log, W.buf); *)
   code[pc] := w;  INC(pc)
 END put;
 
@@ -1456,7 +1457,12 @@ PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
 BEGIN invalSB; frame := 0;
   IF ~int THEN (*procedure prolog*)
     a := IntegerSize; r := firstReg;
-    put(RVAssem.addi(SP, SP, -locblksize));
+    IF ~FitsIn12Bits(locblksize) THEN
+       Texts.WriteLn(W); Texts.WriteString(W, "Entering with big local block, untested: "); Texts.WriteHex(W, locblksize); Texts.Append(Oberon.Log, W.buf);
+       LoadImm(locblksize);
+       put(RVAssem.sub(SP, SP, RH));
+    ELSE put(RVAssem.addi(SP, SP, -locblksize));
+    END;
     put(RVAssem.sd(RA, SP, 0));
     WHILE a < parblksize DO
       put(RVAssem.sd(r, SP, a)); INC(r); INC(a, IntegerSize)
@@ -1473,9 +1479,13 @@ PROCEDURE Return*(form: INTEGER; VAR x: Item; size: INTEGER; int: BOOLEAN);
 BEGIN
   IF form # ORB.NoTyp THEN load(x) END ;
   IF ~int THEN (*procedure epilog*)
-    ASSERT(FitsIn12Bits(size));
     put(RVAssem.ld(RA, SP, 0));
-    put(RVAssem.addi(SP, SP, size));
+    IF ~FitsIn12Bits(size) THEN
+       Texts.WriteLn(W); Texts.WriteString(W, "Returning from big local block, untested: "); Texts.WriteHex(W, size); Texts.Append(Oberon.Log, W.buf);
+       LoadImm(size);
+       put(RVAssem.add(SP, SP, RH));
+    ELSE put(RVAssem.addi(SP, SP, size));
+    END;
     put(RVAssem.jalr(0, RA, 0));
   ELSE (*interrupt return, restore SB, R1, R0*)
   (*
