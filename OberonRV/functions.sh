@@ -1,7 +1,10 @@
 #!/bin/bash
 
+export NOREBO_BIN="${PWD}/../norebo"
+export NOREBO_PATH="${PWD}/../build:${PWD}:${PWD}/rvbuild"
+
 nor() {
-  NOREBO_PATH="${PWD}/../build:${PWD}:${PWD}/rvbuild" ../norebo $*
+  ${NOREBO_BIN} $*
 }
 
 roc() {
