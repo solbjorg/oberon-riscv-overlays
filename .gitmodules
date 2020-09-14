@@ -1,0 +1,3 @@
+[submodule "Oberon-building-tools"]
+	path = Oberon-building-tools
+	url = https://github.com/andreaspirklbauer/Oberon-building-tools.git
