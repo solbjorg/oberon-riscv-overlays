@@ -2,12 +2,12 @@
 set -e
 make
 
-export NOREBO_PATH="$PWD/Custom:$PWD/Oberon:$PWD/Bootstrap"
+. source.sh
 
 mkdir -p build
 cd build
 
-../norebo ORP.Compile \
+$NOREBO_BIN ORP.Compile \
         Norebo.Mod/s \
         Kernel.Mod/s \
 	FileDir.Mod/s \
@@ -28,12 +28,8 @@ for i in *.rsc; do
   mv $i ${i%.rsc}.rsx
 done
 
-../norebo CoreLinker.LinkSerial Modules InnerCore
+$NOREBO_BIN CoreLinker.LinkSerial Modules InnerCore
 
 for i in *.rsx; do
   mv $i ${i%.rsx}.rsc
 done
-
-../norebo ORP.Compile MagicSquares.Mod
-
-../norebo MagicSquares.Generate 4

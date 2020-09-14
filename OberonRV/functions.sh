@@ -1,7 +1,9 @@
 #!/bin/bash
 
-export NOREBO_BIN="${PWD}/../norebo"
-export NOREBO_PATH="${PWD}/../build:${PWD}:${PWD}/rvbuild"
+DIR="$(dirname "$(readlink -f "$0")")"
+
+export NOREBO_BIN="${DIR}/../norebo"
+export NOREBO_PATH="${DIR}/../build:${DIR}:${DIR}/rvbuild:${DIR}/../Oberon-building-tools/Sources/FPGAOberon2013"
 
 nor() {
   ${NOREBO_BIN} $*
