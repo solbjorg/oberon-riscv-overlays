@@ -5,9 +5,9 @@ export NOREBO_PATH="${NOREBO_PATH}:${DIR}:${DIR}/build"
 cd ..; source ./functions.sh; ./rebuild.sh; cd Oberon;
 ./clean.sh
 mkdir -p build; cd build
-roc BootLoad.Mod
-roc RVKernel.Mod
-#roc RVFileDir.Mod
+roc RVBootLoad.Mod
+#roc RVKernel.Mod \
+roc RVFileDir.Mod
 #Modules.Mod/s \
 #FileDir.Mod/s \
 #Files.Mod/s \
