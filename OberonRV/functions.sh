@@ -1,6 +1,7 @@
 #!/bin/bash
 
 DIR="$(dirname "$(readlink -f "$0")")"
+echo $DIR
 
 export NOREBO_BIN="${DIR}/../norebo"
 export NOREBO_PATH="${DIR}/../build:${DIR}:${DIR}/rvbuild:${DIR}/../Oberon-building-tools/Sources/FPGAOberon2013"

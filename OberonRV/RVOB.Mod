@@ -8,13 +8,13 @@ MODULE RVOB;   (*NW 25.6.2014   in Oberon-07*)
     the symbol table (universe), and that of the pseudo-module SYSTEM are initialized. *)
 
 CONST
-  BitsPerInteger* = 64;
+  BitsPerInteger* = 32;
   IntegerSize* = BitsPerInteger DIV 8;
 
-  BitsPerReal* = 64;
+  BitsPerReal* = 32;
   RealSize* = BitsPerReal DIV 8;
 
-  BitsPerSet* = 64;
+  BitsPerSet* = 32;
   SetSize* = BitsPerSet DIV 8;
 
   PtrSize* = IntegerSize;

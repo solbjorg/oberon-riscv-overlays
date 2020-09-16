@@ -1,6 +1,6 @@
 MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
 
-IMPORT SYSTEM, Files, Texts, Oberon, ORS, ORB:=RVOB, RVAssem, RVDis;
+IMPORT SYSTEM, Files, Texts, Oberon, RVAssem,  ORS, ORB:=RVOB, RVDis;
 
 (*
   Code generator for Oberon compiler for RISC-V processor.
@@ -439,6 +439,7 @@ BEGIN
     to fake it with a call to Load32BitImm for now.  This should allow boot-
     strapping the 64-bit compiler.
   *)
+  ORS.Mark("Attempted load of 64-bit integer in 32-bit compiler.");
   Load32BitImm(n)
 END Load64BitImmIn;
 
@@ -462,11 +463,12 @@ PROCEDURE Fetch32BitDisplacement(base, n: INTEGER);
 BEGIN
   LuiForAdd(n);
   put(RVAssem.add(RH, RH, base));
-  put(RVAssem.ld(RH, RH, n MOD 1000H));
+  put(RVAssem.lw(RH, RH, n MOD 1000H));
 END Fetch32BitDisplacement;
 
 PROCEDURE Fetch64BitDisplacement(base, n: INTEGER);
 BEGIN
+  ORS.Mark("Attempted fetch of 64-bit displacement in RV32 compiler. FIXME");
   LoadImm(n);
   put(RVAssem.add(RH, RH, base));
   put(RVAssem.ld(RH, RH, 0));
@@ -474,7 +476,7 @@ END Fetch64BitDisplacement;
 
 PROCEDURE Fetch(base, n: INTEGER);
 BEGIN
-  IF FitsIn12Bits(n) THEN put(RVAssem.ld(RH, base, n))
+  IF FitsIn12Bits(n) THEN put(RVAssem.lw(RH, base, n))
   ELSIF FitsIn32Bits(n) THEN Fetch32BitDisplacement(base, n)
   ELSE Fetch64BitDisplacement(base, n)
   END
@@ -497,7 +499,8 @@ END AddImm;
 PROCEDURE load(VAR x: Item);
   VAR op: INTEGER;
 BEGIN
-  IF x.type.size = 1 THEN op := 0 ELSE op := 3 END;
+  (* op = 3 if 64-bit *)
+  IF x.type.size = 1 THEN op := 0 ELSE op := 2 END;
   IF x.mode # Reg THEN
     IF x.mode = ORB.Const THEN
       IF x.type.form = ORB.Proc THEN
@@ -532,7 +535,7 @@ BEGIN
     ELSIF x.mode = ORB.Par THEN
       ASSERT(FitsIn12Bits(x.a + frame));
       ASSERT(FitsIn12Bits(x.b));
-      put(RVAssem.ld(RH, SP, x.a + frame));
+      put(RVAssem.lw(RH, SP, x.a + frame));
       put(RVAssem.fmtI(03H, op, RH, RH, x.b));
       x.r := RH; incR;
     ELSIF x.mode = RegI THEN
@@ -566,7 +569,7 @@ BEGIN
     x.r := RH; incR
   ELSIF x.mode = ORB.Par THEN
     IF FitsIn12Bits(x.a + frame) THEN
-      put(RVAssem.ld(RH, SP, x.a + frame));
+      put(RVAssem.lw(RH, SP, x.a + frame));
       IF x.b # 0 THEN
         IF FitsIn12Bits(x.b) THEN
           put(RVAssem.addi(RH, RH, x.b))
@@ -747,21 +750,22 @@ BEGIN
     NilCheck; x.r := RH; incR
   ELSIF x.mode = ORB.Par THEN
     IF FitsIn12Bits(x.b) THEN
-      Fetch(SP, x.a + frame);  put(RVAssem.ld(RH, RH, x.b));
+      Fetch(SP, x.a + frame);  put(RVAssem.lw(RH, RH, x.b));
     ELSE
       Fetch(SP, x.a + frame);
       incR; LoadImm(x.b); decR; put(RVAssem.add(RH, RH, RH+1));
-      put(RVAssem.ld(RH, RH, 0))
+      put(RVAssem.lw(RH, RH, 0))
     END;
     NilCheck;
     x.r := RH;  incR
   ELSIF x.mode = RegI THEN
     IF FitsIn12Bits(x.a) THEN
-      put(RVAssem.ld(x.r, x.r, x.a))
+      put(RVAssem.lw(x.r, x.r, x.a))
     ELSIF FitsIn32Bits(x.a) THEN
       LuiForAdd(x.a);
-      put(RVAssem.ld(x.r, x.r, x.a))
+      put(RVAssem.lw(x.r, x.r, x.a))
     ELSE (* Fits in 64 bits *)
+      ORS.Mark("64-bit DeRef. FIXME");
       LoadImm(x.a);
       put(RVAssem.add(x.r, x.r, RH));
       put(RVAssem.ld(x.r, x.r, 0))
@@ -824,7 +828,7 @@ BEGIN (*fetch tag into RH*)
   ELSE
     load(x);  pc0 := pc;
     put(MakeFwdBranch(EQ, RH, 0, 0));  (*NIL belongs to every pointer type*)
-    put(RVAssem.ld(RH, x.r, -8))
+    put(RVAssem.lw(RH, x.r, -8))
   END;
   Fetch(RH, T.nofpar * IntegerSize); incR;
   loadTypTagAdr(T);  (*tag of T*)
@@ -1188,7 +1192,8 @@ END StrToChar;
 PROCEDURE Store*(VAR x, y: Item); (* x := y *)
 VAR op: INTEGER;
 BEGIN  load(y);
-  IF x.type.size = 1 THEN op := 0 ELSE op := 3 END ;
+   (* op := 3 if 64-bit *)
+  IF x.type.size = 1 THEN op := 0 ELSE op := 2 END ;
   IF x.mode = ORB.Var THEN
     IF x.r > 0 THEN (*local*) 
       ASSERT(FitsIn12Bits(x.a + frame));
@@ -1205,7 +1210,7 @@ BEGIN  load(y);
   ELSIF x.mode = ORB.Par THEN
     ASSERT(FitsIn12Bits(x.a + frame));
     ASSERT(FitsIn12Bits(x.b));
-    put(RVAssem.ld(RH, SP, x.a + frame));
+    put(RVAssem.lw(RH, SP, x.a + frame));
     put(RVAssem.fmtS(23H, op, RH, y.r, x.b));
   ELSIF x.mode = RegI THEN
     IF FitsIn12Bits(x.a) THEN
@@ -1230,7 +1235,7 @@ BEGIN loadAdr(x); loadAdr(y);
       END
     ELSE (*y is open array*)
       ASSERT(FitsIn12Bits(y.a+IntegerSize));
-      put(RVAssem.ld(RH, SP, y.a + IntegerSize));
+      put(RVAssem.lw(RH, SP, y.a + IntegerSize));
       s := y.type.base.size;  (* element size *)
       pc0 := pc; put(MakeFwdBranch(EQ, RH, 0, 0));
       IF s = 1 THEN put(RVAssem.addi(RH, RH, 3)); put(RVAssem.srai(RH, RH, 2))
@@ -1246,9 +1251,9 @@ BEGIN loadAdr(x); loadAdr(y);
   ELSIF x.type.form = ORB.Record THEN LoadImm(x.type.size DIV IntegerSize)
   ELSE ORS.Mark("inadmissible assignment")
   END ;
-  put(RVAssem.ld(RH+1, y.r, 0));
+  put(RVAssem.lw(RH+1, y.r, 0));
   put(RVAssem.addi(y.r, y.r, IntegerSize));
-  put(RVAssem.sd(RH+1, x.r, 0));
+  put(RVAssem.sw(RH+1, x.r, 0));
   put(RVAssem.addi(x.r, x.r, IntegerSize));
   put(RVAssem.addi(RH, RH, -1));
   put(RVAssem.bne(RH, 0, -20));
@@ -1261,13 +1266,13 @@ BEGIN loadAdr(y); len := y.type.len;
   IF len >= 0 THEN
     IF x.b > len THEN ORS.Mark("string too long") END
   ELSIF check THEN (*array length check*)
-    put(RVAssem.ld(RH, y.r, IntegerSize));
+    put(RVAssem.lw(RH, y.r, IntegerSize));
     incR; LoadImm(x.b+1); decR;
     Trap(GE, TrapSourceTooBig, RH, RH+1)
   END ;
   loadStringAdr(x);
-  put(RVAssem.ld(RH, x.r, 0));  put(RVAssem.add(x.r, x.r, IntegerSize));
-  put(RVAssem.sd(RH, y.r, 0));  put(RVAssem.add(y.r, y.r, IntegerSize));
+  put(RVAssem.lw(RH, x.r, 0));  put(RVAssem.add(x.r, x.r, IntegerSize));
+  put(RVAssem.sw(RH, y.r, 0));  put(RVAssem.add(y.r, y.r, IntegerSize));
   put(RVAssem.srli(RH, RH, BitsPerInteger-8));
   put(RVAssem.bne(RH, 0, -20));
   decR; decR
@@ -1284,12 +1289,12 @@ BEGIN
       LoadImm(x.type.len)
     ELSE
       ASSERT(FitsIn12Bits(x.a + frame + IntegerSize));
-      put(RVAssem.ld(RH, SP, x.a + frame + IntegerSize))
+      put(RVAssem.lw(RH, SP, x.a + frame + IntegerSize))
     END;
     incR
   ELSIF ftype.form = ORB.Record THEN
     IF xmd = ORB.Par THEN
-      put(RVAssem.ld(RH, SP, x.a + frame + IntegerSize)); incR
+      put(RVAssem.lw(RH, SP, x.a + frame + IntegerSize)); incR
     ELSE
       loadTypTagAdr(x.type)
     END
@@ -1307,7 +1312,7 @@ BEGIN
     LoadImm(x.type.len)
   ELSE
     ASSERT(FitsIn12Bits(x.a + frame + IntegerSize));
-    put(RVAssem.ld(RH, SP, x.a + frame + IntegerSize))
+    put(RVAssem.lw(RH, SP, x.a + frame + IntegerSize))
   END;
   incR
 END OpenArrayParam;
@@ -1387,7 +1392,7 @@ BEGIN
   r0 := firstReg;
   put(RVAssem.addi(SP, SP, (firstReg-r)*IntegerSize));
   INC(frame, (r-firstReg)*IntegerSize);
-  REPEAT put(RVAssem.sd(r0, SP, (r-r0-1)*IntegerSize)); INC(r0) UNTIL r0 = r
+  REPEAT put(RVAssem.sw(r0, SP, (r-r0-1)*IntegerSize)); INC(r0) UNTIL r0 = r
 END SaveRegs;
 
 PROCEDURE RestoreRegs(r: INTEGER); (*R[0 .. r-1]*)
@@ -1395,7 +1400,7 @@ PROCEDURE RestoreRegs(r: INTEGER); (*R[0 .. r-1]*)
 BEGIN
   ASSERT(r >= firstReg );
   r0 := r;
-  REPEAT DEC(r0); put(RVAssem.ld(r0, SP, (r-r0-1)*IntegerSize))
+  REPEAT DEC(r0); put(RVAssem.lw(r0, SP, (r-r0-1)*IntegerSize))
   UNTIL r0 = firstReg;
   put(RVAssem.addi(SP, SP, (r-firstReg)*IntegerSize));
   DEC(frame, (r-firstReg)*IntegerSize)
@@ -1437,7 +1442,7 @@ BEGIN (*x.type.form = ORB.Proc*)
   ELSE
     IF x.mode <= ORB.Par THEN load(x); decR
     ELSE
-      put(RVAssem.ld(RH, SP, 0));  put(RVAssem.addi(SP, SP, IntegerSize));
+      put(RVAssem.lw(RH, SP, 0));  put(RVAssem.addi(SP, SP, IntegerSize));
       DEC(r);
       DEC(frame, IntegerSize)
     END ;
@@ -1463,9 +1468,9 @@ BEGIN invalSB; frame := 0;
        put(RVAssem.sub(SP, SP, RH));
     ELSE put(RVAssem.addi(SP, SP, -locblksize));
     END;
-    put(RVAssem.sd(RA, SP, 0));
+    put(RVAssem.sw(RA, SP, 0));
     WHILE a < parblksize DO
-      put(RVAssem.sd(r, SP, a)); INC(r); INC(a, IntegerSize)
+      put(RVAssem.sw(r, SP, a)); INC(r); INC(a, IntegerSize)
     END
   ELSE (*interrupt procedure*)
   (*
@@ -1479,7 +1484,7 @@ PROCEDURE Return*(form: INTEGER; VAR x: Item; size: INTEGER; int: BOOLEAN);
 BEGIN
   IF form # ORB.NoTyp THEN load(x) END ;
   IF ~int THEN (*procedure epilog*)
-    put(RVAssem.ld(RA, SP, 0));
+    put(RVAssem.lw(RA, SP, 0));
     IF ~FitsIn12Bits(size) THEN
        Texts.WriteLn(W); Texts.WriteString(W, "Returning from big local block, untested: "); Texts.WriteHex(W, size); Texts.Append(Oberon.Log, W.buf);
        LoadImm(size);
@@ -1500,7 +1505,8 @@ END Return;
 PROCEDURE Increment*(upordown: INTEGER; VAR x, y: Item);
   VAR sign, op, zr, v: INTEGER;
 BEGIN (*frame = 0*)
-  IF x.type = ORB.byteType THEN v := 0 ELSE v := 3 END ;
+  (* v := 3 if 64-bit *)
+  IF x.type = ORB.byteType THEN v := 0 ELSE v := 2 END ;
   IF y.type.form = ORB.NoTyp THEN y.mode := ORB.Const; y.a := 1 END ;
   IF upordown = 0 THEN sign := 1 ELSE sign := -1 END;
 
@@ -1535,7 +1541,7 @@ END Increment;
 PROCEDURE Include*(inorex: INTEGER; VAR x, y: Item);
   VAR zr: INTEGER;
 BEGIN
-  loadAdr(x); zr := RH; put(RVAssem.ld(RH, x.r, 0)); incR;
+  loadAdr(x); zr := RH; put(RVAssem.lw(RH, x.r, 0)); incR;
   IF y.mode = ORB.Const THEN
     IF inorex = 0 THEN put(RVAssem.ori(zr, zr, LSL(1, y.a)))
     ELSE put(RVAssem.andi(zr, zr, (-LSL(1, y.a))-1))
@@ -1553,7 +1559,7 @@ BEGIN
     END;
     decR
   END ;
-  put(RVAssem.sd(zr, x.r, 0)); decR; decR
+  put(RVAssem.sw(zr, x.r, 0)); decR; decR
 END Include;
 
 PROCEDURE Assert*(VAR x: Item);
@@ -1614,8 +1620,8 @@ BEGIN load(x); load(y);
     IF check THEN Trap(LT, TrapNegativeSize, z.r, 0) END ;
     put(RVAssem.beq(z.r, 0, 24))
   END ;
-  put(RVAssem.ld(RH, x.r, 0));  put(RVAssem.addi(x.r, x.r, IntegerSize));
-  put(RVAssem.sd(RH, x.r, 0));  put(RVAssem.addi(x.r, y.r, IntegerSize));
+  put(RVAssem.lw(RH, x.r, 0));  put(RVAssem.addi(x.r, x.r, IntegerSize));
+  put(RVAssem.sw(RH, x.r, 0));  put(RVAssem.addi(x.r, y.r, IntegerSize));
   put(RVAssem.addi(z.r, z.r, -1));
   put(RVAssem.bne(z.r, 0, -20));
   decR; decR; decR
@@ -1679,7 +1685,7 @@ PROCEDURE Len*(VAR x: Item);
 BEGIN
   IF x.type.len >= 0 THEN x.mode := ORB.Const; x.a := x.type.len
   ELSE (*open array*)
-    put(RVAssem.ld(RH, SP, x.a + frame + IntegerSize));
+    put(RVAssem.lw(RH, SP, x.a + frame + IntegerSize));
     x.mode := Reg; x.r := RH; incR
   END 
 END Len;
@@ -1720,7 +1726,7 @@ END Shift;
 
 PROCEDURE Bit*(VAR x, y: Item);
 BEGIN
-  load(x); put(RVAssem.ld(x.r, x.r, 0));
+  load(x); put(RVAssem.lw(x.r, x.r, 0));
   IF y.mode = ORB.Const THEN
     put(RVAssem.slli(x.r, x.r, (BitsPerInteger-1)-(y.a MOD BitsPerInteger)))
   ELSE
@@ -1780,11 +1786,12 @@ PROCEDURE Header*;
 BEGIN entry := pc*InsnSize;
   IF version = 0 THEN  (* ROM-resident ABI *)
     code[0] := RVAssem.jal(0, pc*InsnSize);
-    put(RVAssem.addi(SB, 0, VarOrg0));
-    put(RVAssem.addi(SP, 0, StkOrg0));
+    LoadImmTo(SB, VarOrg0);
+    LoadImmTo(SP, StkOrg0);
   ELSE
     put(RVAssem.addi(SP, SP, -IntegerSize));
-    put(RVAssem.sd(RA, SP, 0));
+    (* must be changed if 64-bit is desired *)
+    put(RVAssem.sw(RA, SP, 0));
     invalSB
   END
 END Header;
@@ -1818,8 +1825,8 @@ END FindPtrs;
 PROCEDURE CloseModule(VAR modid: ORS.Ident; key, nofent: INTEGER);
   VAR obj: ORB.Object;
     i, comsize, nofimps, nofptrs, size: INTEGER;
-    name: ORS.Ident;
-    F: Files.File; R: Files.Rider;
+    name, namecode: ORS.Ident;
+    F, Fn: Files.File; R, Rn: Files.Rider;
 BEGIN
   obj := ORB.topScope.next; nofimps := 0;
   comsize := 4; nofptrs := 0;
@@ -1838,7 +1845,9 @@ BEGIN
       (pc + nofimps + nofent + nofptrs + 1)*4;
 
   ORB.MakeFileName(name, modid, ".rv64.Obj"); (*write code file*)
+  ORB.MakeFileName(namecode, modid, ".rv64.Code"); (*write code file*)
   F := Files.New(name); Files.Set(R, F, 0);
+  Fn := Files.New(namecode); Files.Set(Rn, Fn, 0);
   Files.WriteString(R, modid); Files.WriteInt(R, key); Files.WriteByte(R, version);
   Files.WriteInt(R, size);
   obj := ORB.topScope.next;
@@ -1854,7 +1863,7 @@ BEGIN
   Files.WriteInt(R, strx);
   FOR i := 0 TO strx-1 DO Files.Write(R, str[i]) END ;  (*strings*)
   Files.WriteInt(R, pc);  (*code len*)
-  FOR i := 0 TO pc-1 DO Files.WriteInt(R, code[i]) END ;  (*program*)
+  FOR i := 0 TO pc-1 DO Files.WriteInt(R, code[i]); Files.WriteInt(Rn, code[i]); END ;  (*program*)
   obj := ORB.topScope.next;
   WHILE obj # NIL DO  (*commands*)
     IF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc) &
@@ -1886,7 +1895,7 @@ BEGIN
   END ;
   Files.WriteInt(R, -1);
   Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, entry);
-  Files.Write(R, "O"); Files.Register(F)
+  Files.Write(R, "O"); Files.Register(F); Files.Write(Rn, "O"); Files.Register(Fn);
 END CloseModule;
 
 PROCEDURE writeDword(VAR R: Files.Rider; i: INTEGER);
@@ -1996,9 +2005,10 @@ BEGIN  (* module body epilog *)
   IF version = 0 THEN  (* ROM ABI *)
     put(RVAssem.addi(RA, 0, 0));
     put(RVAssem.jalr(0, RA, 0));
-    CloseRom(modid, key, nofent);
+    (*CloseRom(modid, key, nofent);*)
+    CloseModule(modid, key, nofent);
   ELSE
-    put(RVAssem.ld(RA, SP, 0));
+    put(RVAssem.lw(RA, SP, 0));
     put(RVAssem.addi(SP, SP, 8));
     put(RVAssem.jalr(0, RA, 0));
     CloseModule(modid, key, nofent);
