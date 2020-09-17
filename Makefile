@@ -9,4 +9,4 @@ oberonrv: OberonRV/*.Mod OberonRV/Oberon/*.Mod
 
 clean:
 	rm -f norebo
-	rm -rf build1 build2 build3
+	rm -rf build
