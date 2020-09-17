@@ -335,7 +335,7 @@ BEGIN
   *)
   ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
   ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
-  Texts.WriteString(W,"MLSB:"); Texts.WriteInt(W,-base,0); Texts.WriteLn(W);
+  (*Texts.WriteString(W,"MLSB:"); Texts.WriteInt(W,-base,0); Texts.WriteLn(W);*)
   Texts.Append(Oberon.Log,W.buf);
   RETURN 5 + LSL(-base MOD 128, 4) + LSL(fixorgD MOD 10000H, 16)
 END MakeLoadSB;
@@ -1143,15 +1143,14 @@ BEGIN
   load(x);
   IF (op = ORS.eql) OR (op = ORS.neq) THEN
     IF (y.mode = ORB.Const) & FitsIn11Bits(y.a) THEN
-      put(RVAssem.xori(x.r, x.r, y.a));  decR
+      put(RVAssem.xori(x.r, x.r, y.a)); decR
     ELSE
       load(y);
       put(RVAssem.xor(x.r, x.r, y.r));
-      decR
+      decR; decR
     END;
     IF op = ORS.eql THEN SetCC0(x, EQ) ELSE SetCC0(x, NE) END;
-    decR
-  ELSE ORS.Mark("illegal relation") 
+  ELSE ORS.Mark("illegal relation")
   END
 END SetRelation;
 
