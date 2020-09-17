@@ -211,6 +211,7 @@ END RoundUp;
   BEGIN expression(x);
     IF par # NIL THEN
       varpar := par.class = ORB.Par;
+
       IF CompTypes(par.type, x.type, varpar) THEN
         IF ~varpar THEN RVOG.ValueParam(x)
         ELSE (*par.class = Par*)
@@ -633,7 +634,7 @@ END RoundUp;
     ELSIF sym = ORS.comma THEN ORS.Get(sym); ArrayType(typ.base)
     ELSE ORS.Mark("missing OF"); typ.base := ORB.intType
     END ;
-    IF len >= 0 THEN typ.size := len * RoundUp(typ.base.size) ELSE typ.size := 2*ORB.IntegerSize  (*array desc*) END ;
+    IF len >= 0 THEN typ.size := RoundUp(len * typ.base.size) ELSE typ.size := 2*ORB.IntegerSize  (*array desc*) END ;
     typ.form := ORB.Array; typ.len := len; type := typ
   END ArrayType;
 
