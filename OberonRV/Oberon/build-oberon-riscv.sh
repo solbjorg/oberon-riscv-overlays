@@ -1,24 +1,48 @@
 #!/bin/bash
 # TODO replace this with something like a make system
 DIR="$(dirname "$(readlink -f "$0")")"
-export NOREBO_PATH="${NOREBO_PATH}:${DIR}:${DIR}/build"
+COMPILER=roc
+
+while getopts "or" opt; do
+    case "$opt" in
+    r)  COMPILER=roc
+        ;;
+    o)  COMPILER=oc
+        ;;
+    esac
+done
+
 cd ..; source ./functions.sh; ./rebuild.sh; cd Oberon;
+#export NOREBO_PATH="${NOREBO_PATH}:${DIR}:${DIR}/build"
+#export NOREBO_BIN="${DIR}/../../norebo"
 ./clean.sh
 mkdir -p build; cd build
-roc RVBootLoad.Mod
-#roc RVKernel.Mod \
-roc RVFileDir.Mod
-#Modules.Mod/s \
-#FileDir.Mod/s \
-#Files.Mod/s \
-#Fonts.Mod/s \
-#Texts.Mod/s \
 
+# Stage 0
+$COMPILER RVBootLoad.Mod/s
+
+# Stage 1
+$COMPILER RVKernel.Mod/s \
+          RVFileDir.Mod/s \
+          RVFiles.Mod/s \
+          RVModules.Mod/s 
+
+# Stage 2
+$COMPILER RVInput.Mod/s \
+          RVDisplay.Mod/s \
+          RVViewers.Mod/s \
+          RVFonts.Mod/s \
+          RVTexts.Mod/s \
+          RVOberon.Mod/s 
+
+#Stage 3
+$COMPILER RVMenuViewers.Mod/s \
+          RVTextFrames.Mod/s \
+          RVSystem.Mod/s \
 #Blink.Mod/s \
 #BootLoad.Mod/s \
 #Checkers.Mod/s \
 #Curves.Mod/s \
-#Display.Mod/s \
 #Draw.Mod/s \
 #EBNF.Mod/s \
 #Edit.Mod/s \
@@ -26,10 +50,8 @@ roc RVFileDir.Mod
 #GraphicFrames.Mod/s \
 #Graphics.Mod/s \
 #Hilbert.Mod/s \
-#Input.Mod/s \
 #MacroTool.Mod/s \
 #Math.Mod/s \
-#MenuViewers.Mod/s \
 #Net.Mod/s \
 #ORB.Mod/s \
 #ORC.Mod/s \
@@ -37,7 +59,6 @@ roc RVFileDir.Mod
 #ORP.Mod/s \
 #ORS.Mod/s \
 #ORTool.Mod/s \
-#Oberon.Mod/s \
 #PCLink1.Mod/s \
 #PIO.Mod/s \
 #RISC.Mod/s \
@@ -50,5 +71,4 @@ roc RVFileDir.Mod
 #System.Mod/s \
 #TextFrames.Mod/s \
 #Tools.Mod/s \
-#Viewers.Mod/s \
 #RVAssem.Mod/s RVDis.Mod/s RVOB.Mod/s RVOG.Mod/s RVOP.Mod/s RVOTool.Mod/s

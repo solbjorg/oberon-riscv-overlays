@@ -262,7 +262,7 @@ MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   END Trap;
 
   PROCEDURE Init*;
-  BEGIN Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap*)
+  BEGIN Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap; replaced later by System.Mod*)
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H; heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;

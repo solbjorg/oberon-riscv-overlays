@@ -1,5 +1,5 @@
-MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
-  IMPORT Display;
+MODULE RVViewers; (*JG 14.9.90 / NW 15.9.2013*)
+  IMPORT Display:=RVDisplay;
 
   CONST restore* = 0; modify* = 1; suspend* = 2; (*message ids*)
     inf = 65535;
@@ -203,4 +203,4 @@ BEGIN backup := NIL; curW := 0; minH := 1; DH := Display.Height;
   NEW(FillerTrack);
   FillerTrack.X := 0; FillerTrack.W := inf; FillerTrack.Y := 0; FillerTrack.H := DH;
   FillerTrack.dsc := FillerViewer; FillerTrack.next := FillerTrack
-END Viewers.
+END RVViewers.

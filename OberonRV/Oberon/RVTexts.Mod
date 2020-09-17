@@ -1,5 +1,5 @@
-MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10.1.2019*)
-  IMPORT Files, Fonts;
+MODULE RVTexts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10.1.2019*)
+  IMPORT Files:=RVFiles, Fonts:=RVFonts;
 
   CONST (*scanner symbol classes*)
     Inval* = 0;         (*invalid symbol*)
@@ -322,15 +322,20 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
     x = 1.m * 2^(e-127)   bit 0: sign, bits 1- 8: e, bits  9-31: m
     x = 1.m * 2^(e-1023)  bit 0: sign, bits 1-11: e, bits 12-63: m *)
 
+
+  (*
   PROCEDURE Ten(n: INTEGER): REAL;
     VAR t, p: REAL;
-  BEGIN t := 1.0; p := 10.0;   (*compute 10^n *)
+  BEGIN
+    t := 1.0; p := 10.0;   (*compute 10^n *)
     WHILE n > 0 DO
       IF ODD(n) THEN t := p * t END ;
       p := p*p; n := n DIV 2
     END ;
     RETURN t
   END Ten;
+  *)
+ 
 
   PROCEDURE Scan* (VAR S: Scanner);
     CONST maxExp = 38; maxM = 16777216; (*2^24*)
@@ -361,31 +366,33 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
         END ;
         IF ch = "H" THEN (*hex integer*) Read(S, ch); S.i := h; S.class := Int  (*neg?*)
         ELSIF ch = "." THEN (*real number*)
-          Read(S, ch); x := 0.0; e := 0; j := 0;
-          WHILE ("0" <= ch) & (ch <= "9") DO  (*fraction*)
-            h := 10*n + (ORD(ch) - 30H);
-            IF h < maxM THEN n := h; INC(j) END ;
-            Read(S, ch)
-          END ;
-          IF ch = "E" THEN (*scale factor*)
-            s := 0; Read(S, ch);
-            IF ch = "-" THEN negE := TRUE; Read(S, ch)
-            ELSE negE := FALSE;
-              IF ch = "+" THEN Read(S, ch) END
-            END ;
-            WHILE ("0" <= ch) & (ch <= "9") DO
-              s := s*10 + ORD(ch) - 30H; Read(S, ch)
-            END ;
-            IF negE THEN DEC(e, s) ELSE INC(e, s) END ;
-          END ;
-          x := FLT(n); DEC(e, j);
-          IF e < 0 THEN
-            IF e >= -maxExp THEN x := x / Ten(-e) ELSE x := 0.0 END
-          ELSIF e > 0 THEN
-            IF e <= maxExp THEN x := Ten(e) * x ELSE x := 0.0 END
-          END ;
-          IF neg THEN S.x := -x ELSE S.x := x END ;
-          IF hex THEN S.class := 0 ELSE S.class := Real END
+          (* Currently no support for real numbers! *)
+
+          (* Read(S, ch); x := 0.0; e := 0; j := 0;                    *)
+          (* WHILE ("0" <= ch) & (ch <= "9") DO  (\*fraction*\)        *)
+          (*   h := 10*n + (ORD(ch) - 30H);                            *)
+          (*   IF h < maxM THEN n := h; INC(j) END ;                   *)
+          (*   Read(S, ch)                                             *)
+          (* END ;                                                     *)
+          (* IF ch = "E" THEN (\*scale factor*\)                       *)
+          (*   s := 0; Read(S, ch);                                    *)
+          (*   IF ch = "-" THEN negE := TRUE; Read(S, ch)              *)
+          (*   ELSE negE := FALSE;                                     *)
+          (*     IF ch = "+" THEN Read(S, ch) END                      *)
+          (*   END ;                                                   *)
+          (*   WHILE ("0" <= ch) & (ch <= "9") DO                      *)
+          (*     s := s*10 + ORD(ch) - 30H; Read(S, ch)                *)
+          (*   END ;                                                   *)
+          (*   IF negE THEN DEC(e, s) ELSE INC(e, s) END ;             *)
+          (* END ;                                                     *)
+          (* x := FLT(n); DEC(e, j);                                   *)
+          (* IF e < 0 THEN                                             *)
+          (*   IF e >= -maxExp THEN x := x / Ten(-e) ELSE x := 0.0 END *)
+          (* ELSIF e > 0 THEN                                          *)
+          (*   IF e <= maxExp THEN x := Ten(e) * x ELSE x := 0.0 END   *)
+          (* END ;                                                     *)
+          (* IF neg THEN S.x := -x ELSE S.x := x END ;                 *)
+          (* IF hex THEN S.class := 0 ELSE S.class := Real END         *)
         ELSE (*decimal integer*)
           IF neg THEN S.i := -n ELSE S.i := n END;
           IF hex THEN S.class := Inval ELSE S.class := Int END
@@ -467,56 +474,56 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
     REPEAT DEC(i); Write(W, a[i]) UNTIL i = 0
   END WriteHex;
 
- PROCEDURE WriteReal* (VAR W: Writer; x: REAL; n: INTEGER);
-    VAR e, i, k, m: INTEGER;
-      d: ARRAY 16 OF CHAR;
-  BEGIN e := ASR(ORD(x), 23) MOD 100H;  (*binary exponent*)
-    IF e = 0 THEN
-      WriteString(W, "  0 ");
-      WHILE n >= 3 DO Write(W, " "); DEC(n) END
-    ELSIF e = 255 THEN WriteString(W, " NaN ")
-    ELSE Write(W, " ");
-      WHILE n >= 15 DO DEC(n); Write(W, " ") END ;
-      (* 2 < n < 9 digits to be written*)
-      IF x < 0.0 THEN Write(W, "-"); x := -x ELSE Write(W, " ") END ;
-      e := (e - 127) * 77 DIV 256 - 6;  (*decimal exponent*)
-      IF e >= 0 THEN x := x / Ten(e) ELSE x := Ten(-e) * x END ;
-      m := FLOOR(x + 0.5);
-      IF m >= 10000000 THEN INC(e); m := m DIV 10 END ;
-      i := 0; k := 13-n;
-      REPEAT
-         IF i = k THEN INC(m, 5) END ;    (*rounding*)
-       d[i] := CHR(m MOD 10 + 30H); m := m DIV 10; INC(i)
-      UNTIL m = 0;
-      DEC(i); Write(W, d[i]); Write(W, ".");
-      IF i < n-7 THEN n := 0 ELSE n := 14 - n END ;
-      WHILE i > n DO DEC(i); Write(W, d[i]) END ;
-      Write(W, "E"); INC(e, 6);
-       IF e < 0 THEN Write(W, "-"); e := -e ELSE Write(W, "+") END ;
-      Write(W, CHR(e DIV 10 + 30H)); Write(W, CHR(e MOD 10 + 30H))
-    END
-  END WriteReal;
+ (* PROCEDURE WriteReal* (VAR W: Writer; x: REAL; n: INTEGER); *)
+ (*    VAR e, i, k, m: INTEGER; *)
+ (*      d: ARRAY 16 OF CHAR; *)
+ (*  BEGIN e := ASR(ORD(x), 23) MOD 100H;  (\*binary exponent*\) *)
+ (*    IF e = 0 THEN *)
+ (*      WriteString(W, "  0 "); *)
+ (*      WHILE n >= 3 DO Write(W, " "); DEC(n) END *)
+ (*    ELSIF e = 255 THEN WriteString(W, " NaN ") *)
+ (*    ELSE Write(W, " "); *)
+ (*      WHILE n >= 15 DO DEC(n); Write(W, " ") END ; *)
+ (*      (\* 2 < n < 9 digits to be written*\) *)
+ (*      IF x < 0.0 THEN Write(W, "-"); x := -x ELSE Write(W, " ") END ; *)
+ (*      e := (e - 127) * 77 DIV 256 - 6;  (\*decimal exponent*\) *)
+ (*      IF e >= 0 THEN x := x / Ten(e) ELSE x := Ten(-e) * x END ; *)
+ (*      m := FLOOR(x + 0.5); *)
+ (*      IF m >= 10000000 THEN INC(e); m := m DIV 10 END ; *)
+ (*      i := 0; k := 13-n; *)
+ (*      REPEAT *)
+ (*         IF i = k THEN INC(m, 5) END ;    (\*rounding*\) *)
+ (*       d[i] := CHR(m MOD 10 + 30H); m := m DIV 10; INC(i) *)
+ (*      UNTIL m = 0; *)
+ (*      DEC(i); Write(W, d[i]); Write(W, "."); *)
+ (*      IF i < n-7 THEN n := 0 ELSE n := 14 - n END ; *)
+ (*      WHILE i > n DO DEC(i); Write(W, d[i]) END ; *)
+ (*      Write(W, "E"); INC(e, 6); *)
+ (*       IF e < 0 THEN Write(W, "-"); e := -e ELSE Write(W, "+") END ; *)
+ (*      Write(W, CHR(e DIV 10 + 30H)); Write(W, CHR(e MOD 10 + 30H)) *)
+ (*    END *)
+ (*  END WriteReal; *)
 
-  PROCEDURE WriteRealFix* (VAR W: Writer; x: REAL; n, k: INTEGER);
-    VAR i, m: INTEGER; neg: BOOLEAN;
-      d: ARRAY 12 OF CHAR;
-  BEGIN
-    IF x = 0.0 THEN WriteString(W, "  0")
-    ELSE
-      IF x < 0.0 THEN x := -x; neg := TRUE ELSE neg := FALSE END ;
-      IF k > 7 THEN k := 7 END ;
-      x := Ten(k) * x; m := FLOOR(x + 0.5);
-      i := 0;
-      REPEAT d[i] := CHR(m MOD 10 + 30H); m := m DIV 10; INC(i) UNTIL m = 0;
-      Write(W, " ");
-      WHILE n > i+3 DO  Write(W, " "); DEC(n) END ;
-      IF neg THEN Write(W, "-"); DEC(n) ELSE Write(W, " ") END ;
-      WHILE i > k DO DEC(i); Write(W, d[i]) END ;
-      Write(W, ".");
-      WHILE k > i DO DEC(k); Write(W, "0") END ;
-      WHILE i > 0 DO DEC(i); Write(W, d[i]) END
-    END
-  END WriteRealFix;
+ (*  PROCEDURE WriteRealFix* (VAR W: Writer; x: REAL; n, k: INTEGER); *)
+ (*    VAR i, m: INTEGER; neg: BOOLEAN; *)
+ (*      d: ARRAY 12 OF CHAR; *)
+ (*  BEGIN *)
+ (*    IF x = 0.0 THEN WriteString(W, "  0") *)
+ (*    ELSE *)
+ (*      IF x < 0.0 THEN x := -x; neg := TRUE ELSE neg := FALSE END ; *)
+ (*      IF k > 7 THEN k := 7 END ; *)
+ (*      x := Ten(k) * x; m := FLOOR(x + 0.5); *)
+ (*      i := 0; *)
+ (*      REPEAT d[i] := CHR(m MOD 10 + 30H); m := m DIV 10; INC(i) UNTIL m = 0; *)
+ (*      Write(W, " "); *)
+ (*      WHILE n > i+3 DO  Write(W, " "); DEC(n) END ; *)
+ (*      IF neg THEN Write(W, "-"); DEC(n) ELSE Write(W, " ") END ; *)
+ (*      WHILE i > k DO DEC(i); Write(W, d[i]) END ; *)
+ (*      Write(W, "."); *)
+ (*      WHILE k > i DO DEC(k); Write(W, "0") END ; *)
+ (*      WHILE i > 0 DO DEC(i); Write(W, d[i]) END *)
+ (*    END *)
+ (*  END WriteRealFix; *)
 
   PROCEDURE WritePair(VAR W: Writer; ch: CHAR; x: LONGINT);
   BEGIN Write(W, ch);
@@ -534,4 +541,4 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
   END WriteClock;
 
 BEGIN TrailerFile := Files.New("")
-END Texts.
+END RVTexts.

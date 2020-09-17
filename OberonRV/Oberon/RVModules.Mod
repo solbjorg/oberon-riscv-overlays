@@ -1,5 +1,5 @@
-MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
-  IMPORT SYSTEM, Files;
+MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
+  IMPORT SYSTEM, Files:=RVFiles;
   CONST versionkey = 1X; MT = 12; DescSize = 80;
 
   TYPE Module* = POINTER TO ModDesc;
@@ -221,5 +221,5 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END Init;
 
 BEGIN Init; Load("Oberon", M);
-    LED(res); REPEAT UNTIL FALSE  (*only if load fails*)
-END Modules.
+    SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE  (*only if load fails*)
+END RVModules.

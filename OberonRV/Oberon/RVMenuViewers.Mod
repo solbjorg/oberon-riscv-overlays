@@ -1,5 +1,5 @@
-MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
-  IMPORT Input, Display, Viewers, Oberon;
+MODULE RVMenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
+  IMPORT Input:=RVInput, Display:=RVDisplay, Viewers:=RVViewers, Oberon:=RVOberon;
 
   CONST extend* = 0; reduce* = 1; FrameColor = Display.white;
 
@@ -205,4 +205,4 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
     Viewers.Open(V, X, Y); Restore(V); RETURN V
   END New;
 
-END MenuViewers.
+END RVMenuViewers.
