@@ -1,5 +1,5 @@
 MODULE ORG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
-  IMPORT SYSTEM, Files, ORS, ORB;
+  IMPORT SYSTEM, Files, Texts, Oberon, ORS, ORB;
   (*Code generator for Oberon compiler for RISC processor.
      Procedural interface to Parser OSAP; result in array "code".
      Procedure Close writes code-files*)
@@ -49,6 +49,7 @@ MODULE ORG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
     code: ARRAY maxCode OF LONGINT;
     data: ARRAY maxTD OF LONGINT;  (*type descriptors*)
     str: ARRAY maxStrx OF CHAR;
+    W: Texts.Writer;
 
   (*instruction assemblers according to formats*)
 
@@ -800,6 +801,9 @@ MODULE ORG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
   BEGIN invalSB; frame := 0;
     IF ~int THEN (*procedure prolog*)
       a := 4; r := 0;
+      IF locblksize > 2048 THEN
+         Texts.WriteLn(W); Texts.WriteString(W, "Entering with big local block, untested: "); Texts.WriteHex(W, locblksize); Texts.Append(Oberon.Log, W.buf);
+      END;
       Put1(Sub, SP, SP, locblksize); Put2(Str, LNK, SP, 0);
       WHILE a < parblksize DO Put2(Str, r, SP, a); INC(r); INC(a, 4) END
     ELSE (*interrupt procedure*)
@@ -1114,5 +1118,6 @@ MODULE ORG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
   END Close;
 
 BEGIN
-  relmap[0] := 1; relmap[1] := 9; relmap[2] := 5; relmap[3] := 6; relmap[4] := 14; relmap[5] := 13
+  relmap[0] := 1; relmap[1] := 9; relmap[2] := 5; relmap[3] := 6; relmap[4] := 14; relmap[5] := 13;
+  Texts.OpenWriter(W);
 END ORG.
