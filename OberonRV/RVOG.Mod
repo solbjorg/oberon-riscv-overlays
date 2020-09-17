@@ -180,6 +180,7 @@ END SetCC0;
 
     Bxx     xL, xR, *+
     JALR    RA, 0(MT)
+    JAL     x0, 8
     WORD    LSL(trap, 24) + (ORS.Pos() MOD 16777216)
     (normal execution resumes here)
 
@@ -205,8 +206,12 @@ END opposite;
 
 PROCEDURE Trap(cond, num, regL, regR: INTEGER);
 BEGIN
-  put(RVAssem.fmtSB(63H, opposite(cond), regL, regR, 12));
+  (* Emits a branch that skips past the trap if requirement is met. *)
+  IF num > 0 THEN put(RVAssem.fmtSB(63H, opposite(cond), regL, regR, 16)) END;
   put(RVAssem.jalr(RA, MT, 0));
+  (* Jump over the trap... *)
+  put(RVAssem.jal(0, 8));
+  (* Deposit the trap number as well as where it happened. *)
   put(LSL(num, 24) + (ORS.Pos() MOD 16777216))
 END Trap;
 
@@ -216,6 +221,8 @@ END Trap;
 
 PROCEDURE invalSB;
 BEGIN curSB := 1  (* I don't understand why 1 is used here. *)
+   (* I do! Module numbers start at 1, as MT[0] always points to the Trap procedure *)
+   (* in the Oberon system. See Ch. 12.7.10 of the PO book (PO.Applications). *)
 END invalSB;
 
 (*
@@ -1577,7 +1584,7 @@ END Assert;
 PROCEDURE New*(VAR x: Item);
 BEGIN
   loadAdr(x); loadTypTagAdr(x.type.base);
-  put(RVAssem.jalr(RA, MT, 0));
+  Trap(0, 0, 0, 0);
   RH := firstReg; invalSB
 END New;
 
@@ -1738,6 +1745,7 @@ BEGIN
   SetCC0(x, LT); decR
 END Bit;
 
+(* Loads register x.a into x.r *)
 PROCEDURE Register*(VAR x: Item);
 BEGIN (*x.mode = Const*)
   put(RVAssem.addi(RH, x.a MOD maxReg, 0));

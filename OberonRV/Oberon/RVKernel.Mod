@@ -5,6 +5,7 @@ MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     CARD0 = 1; SPIFAST = 4;
     FSoffset = 80000H; (*256MB in 512-byte blocks*)
     mapsize = 10000H; (*1K sectors, 64MB*)
+    ra = 1; (* register that holds return address *)
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
 
@@ -249,16 +250,42 @@ MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN clock := dt
   END SetClock;
 
+  (* Deposits a relative offset jump to `Padr` in location `at` *)
+  (* Used to install functions at places required for the operating system. *)
   PROCEDURE Install*(Padr, at: INTEGER);
-  BEGIN SYSTEM.PUT(at, 0E7000000H + (Padr - at) DIV 4 -1)
+
+     (* Returns a `jal x0, imm` instruction. *)
+    PROCEDURE Jal(imm: INTEGER) : INTEGER;
+      VAR imm20, imm19to12, imm11, imm10to1: INTEGER;
+    BEGIN
+      imm20 := imm DIV 100000H;
+      imm19to12 := (imm - imm20 * 100000H) DIV 1000H;
+      imm11 := (imm - (imm20 * 100000H + imm19to12 * 1000H)) DIV 800H;
+      imm10to1 := (imm - (imm20 * 100000H + imm19to12 * 1000H + imm11 * 800H)) DIV 2H;
+      RETURN ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 0) * 80H + 111
+    END Jal;
+
+  BEGIN SYSTEM.PUT(at, Jal(Padr - at))
   END Install;
 
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
     VAR u, v, w: INTEGER;
-  BEGIN u := SYSTEM.REG(15); SYSTEM.GET(u - 4, v); w := v DIV 10H MOD 10H; (*trap number*)
+    (* In RISC5, bits were conveniently unused in the reg jump instruction, which Oberon *)
+    (* then used to encode trap numbers. We don't have that luxury, so we deposit the trap *)
+    (* number _after_ the instruction instead. It can't be executed, so it will cause *)
+    (* errors if jumped to (and confuse any disassembler!). *)
+  BEGIN u := SYSTEM.REG(ra); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
     IF w = 0 THEN New(a, b)
+    (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
     ELSE (*stop*) SYSTEM.PUT(led, w + 192); REPEAT UNTIL FALSE
     END
+    (* Ok, more explanation of some of the low-level hacks in use here. *)
+    (* We had to deposit the trap number _after_ the instruction, which means if we *)
+    (* return to that location, we're in trouble, as it will execute gobbledygook. *)
+    (* Ideal solution: we just add 4 to RA, and we'll jump to after the trap number. *)
+    (* That doesn't work, as we can't change specific registers in Oberon (as far as I *)
+    (* know anyway). Note that this will never execute if trapnum > 0; but we had to do *)
+    (* this for NEW() to work as it's supposed to. *)
   END Trap;
 
   PROCEDURE Init*;
