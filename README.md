@@ -38,9 +38,28 @@ If Norebo's compiler and linker replaces my assembler,
 * `Runtime/` RISC5 emulator and operating system interface.
 * `Oberon/` Unmodified source code from Project Oberon 2013.
 * `OberonRV/` RISC-V modified source code.
-* `Custom/` Customized Norebo modules.
+* `Norebo/` Norebo-specific and new modules.
 * `Bootstrap/` Pre-compiled modules to bootstrap Norebo.
-* `build.sh` The build script. See Norebo in action.
+* `build.sh` Script to rebuild Norebo. See Norebo in action.
+
+## PO2013 image build tools
+
+This repository also contains tools to build fresh PO2013 filesystem
+images.  Use it like so:
+
+    ./fetch-sources.py upstream
+    ./build-image.py upstream
+
+...where `upstream` is the name of the directory where the sources
+should live.  (Replace it with the name of your choice.) This will
+download the project sources, compile them, create runnable disk image
+`build/Oberon.dsk`.  The CSV build manifest controls which set of
+files should define the resulting system.  The disk image can be run
+on the [Project Oberon RISC emulator].
+
+Supporting Oberon modules are stored in `Norebo`: a virtual file
+system (`VDiskUtil`/`VFile`) and a static linker for the Inner Core.
+All this is based on code from PO2013.
 
 ## File handling
 
@@ -217,3 +236,5 @@ of exit codes:
        105 | illegal procedure call
        106 | integer division by zero
        107 | assertion violated
+
+[Project Oberon RISC emulator]: https://github.com/pdewacht/oberon-risc-emu

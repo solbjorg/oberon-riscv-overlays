@@ -33,7 +33,7 @@ MODULE CoreLinker;  (*derived from NW 20.10.2013*)
     RETURN Files.Old(filename)
   END ThisFile;
 
-  PROCEDURE error(n: INTEGER; name: ModuleName);
+  PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
   BEGIN res := n; importing := name
   END error;
 
@@ -58,7 +58,7 @@ MODULE CoreLinker;  (*derived from NW 20.10.2013*)
     END
   END ReadStringPart;
 
-  PROCEDURE Load(name: ModuleName; VAR buffer: ARRAY OF INTEGER; VAR newmod: Module);
+  PROCEDURE Load(name: ARRAY OF CHAR; VAR buffer: ARRAY OF INTEGER; VAR newmod: Module);
     (*search module in list; if not found, load module.
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
@@ -113,7 +113,9 @@ MODULE CoreLinker;  (*derived from NW 20.10.2013*)
       END ;
       IF res = 0 THEN (*read file*)
         INC(p, DescSize DIV 4); (*allocate descriptor*)
-        mod.desc.name := name; mod.desc.key := key; mod.desc.refcnt := 0;
+        (* mod.desc.name := name; *)
+        n := 0; WHILE name[n] # 0X DO mod.desc.name[n] := name[n]; INC(n); END ;
+        mod.desc.key := key; mod.desc.refcnt := 0;
         mod.desc.data := p * 4;  (*data*)
         buffer[MTOrg DIV 4 + mod.desc.num] := p * 4;  (*module table entry*)
         Files.ReadInt(R, n);
@@ -214,7 +216,7 @@ MODULE CoreLinker;  (*derived from NW 20.10.2013*)
     END
   END Copy;
 
-  PROCEDURE Link*(name: ModuleName; VAR buffer: ARRAY OF INTEGER);
+  PROCEDURE Link*(name: ARRAY OF CHAR; VAR buffer: ARRAY OF INTEGER);
     VAR mod: Module;
       n: LONGINT;
   BEGIN
@@ -240,7 +242,7 @@ MODULE CoreLinker;  (*derived from NW 20.10.2013*)
     IF res = 0 THEN
       F := Files.New(corename); Files.Set(R, F, 0);
       Files.WriteInt(R, 9B1EA38DH); FOR i := 4 TO 1023 DO Files.WriteByte(R, 0) END ;
-      FOR i := 1 TO AllocPtr DIV 4 DO Files.WriteInt(R, buffer[i]) END ;
+      FOR i := 0 TO AllocPtr DIV 4 - 1 DO Files.WriteInt(R, buffer[i]) END ;
       Files.Register(F)
     END
   END LinkDiskImage;
@@ -277,7 +279,7 @@ MODULE CoreLinker;  (*derived from NW 20.10.2013*)
     END
   END LinkCommand;
 
-  PROCEDURE LinkDisk*;  (*untested*)
+  PROCEDURE LinkDisk*;
   BEGIN LinkCommand(LinkDiskImage)
   END LinkDisk;
 
