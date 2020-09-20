@@ -1,6 +1,6 @@
 MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
 
-IMPORT SYSTEM, Files, Texts, Oberon, RVAssem,  ORS, ORB:=RVOB, RVDis;
+IMPORT SYSTEM, Files, Texts, Oberon, RVAssem,  ORS, ORB:=RVOB; (*RVDis;*)
 
 (*
   Code generator for Oberon compiler for RISC-V processor.
@@ -322,7 +322,7 @@ END merged;
   local module ID and the linkage to the next such instruction.  Therefore,
   we rely yet again on a place-holder data word of the following form:
 
-      5H + LSL(moduleID MOD 256, 4) + LSL(link MOD 10000H, 16)
+      5H + LSL(moduleID MOD 128, 4) + LSL(link MOD 10000H, 16)
 
   The low nybble will technically be ignored by the loader, since by virtue
   of the slot being in a list of fixups, we already know that it's a SB
@@ -330,6 +330,22 @@ END merged;
   to answer with a "DWORD" directive instead of trying to figure out the
   corresponding actual RISC-V instruction it would happen to decode to.
   This helps mainly when debugging and looking at output from RVOTool.DecObj.
+
+  Following up on the above note, we also need to calculate the offset from SB
+  to get the correct address to the exported variable/procedure.  This is _only_
+  required if it is an exported variable, rather than the same module's global
+  variable, as we can already retrieve that at compile-time. These addresses
+  are stored as a series of offsets from the entry of a module. In other words,
+  regrettably, the compiler also cannot know the value of the offset, and thus
+  this also needs fixups. There are three different "scenarios" to my knowledge
+  that require reloading SB that need consideration:
+    - loading another module's exported var/proc
+    - storing a value to another module's exported var/proc
+    - loading the address of another module's exported var/proc
+  These are LOAD, STORE, and ADDI instructions respectively. Only their immediates
+  need fixing up after the fact, and since we're only dealing with I-type and S-type
+  formatting, it isn't *too* hairy to do it directly in codespace rather than using a
+  placeholder word. Thus it becomes the linker's job to fix this too.
 *)
 
 PROCEDURE MakeLoadSB(base: INTEGER): INTEGER;
@@ -342,9 +358,12 @@ BEGIN
   *)
   ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
   ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
-  (*Texts.WriteString(W,"MLSB:"); Texts.WriteInt(W,-base,0); Texts.WriteLn(W);*)
+  Texts.WriteString(W,"MLSB: "); Texts.WriteInt(W,-base,0);
+  Texts.WriteString(W, " inst: "); Texts.WriteHex(W, 5 + LSL(-base, 4) + LSL(fixorgD MOD 10000H, 16));
+  Texts.WriteString(W, " fixorgD: "); Texts.WriteHex(W, fixorgD);
+  Texts.WriteLn(W);
   Texts.Append(Oberon.Log,W.buf);
-  RETURN 5 + LSL(-base MOD 128, 4) + LSL(fixorgD MOD 10000H, 16)
+  RETURN 5 + LSL(-base, 4) + LSL(fixorgD MOD 10000H, 16)
 END MakeLoadSB;
 
 PROCEDURE GetSB(base: INTEGER);
@@ -531,6 +550,7 @@ BEGIN
         END
       ELSE (* relative to another module *)
         GetSB(x.r);
+        (* x.a must be less than 256 *)
         IF FitsIn12Bits(x.a) THEN
           put(RVAssem.fmtI(03H, op, RH, SB, x.a))
         ELSE
@@ -1429,7 +1449,7 @@ END PrepCall;
 
   Similar to loading the static base, we use the following instruction slot:
 
-    6H + LSL(moduleID MOD 256, 4) + LSL(fixupLink MOD 10000H, 16)
+    procedureID + LSL(moduleID MOD 128, 8) + LSL(fixupLink MOD 10000H, 16)
 
   It is up to the module loader or linker to replace these pseudo-instructions
   with the appropriate JAL instruction.
@@ -1440,8 +1460,9 @@ BEGIN (*x.type.form = ORB.Proc*)
     IF x.r >= 0 THEN
       put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
     ELSE (*imported*)
-      IF pc - fixorgP < 1000H THEN
-        put(6H + LSL(-x.r, 4) + LSL(fixorgP, 16)); fixorgP := pc-1
+      IF (fixorgP < 10000H) & (x.a < 100H) & (-x.r < 80H) THEN
+        (* -x.r = moduleID?? *)
+        put(x.a + LSL(-x.r, 8) + LSL(fixorgP, 16)); fixorgP := pc-1
       ELSE ORS.Mark("fixup impossible")
       END
     END
@@ -1851,7 +1872,7 @@ BEGIN
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
       (pc + nofimps + nofent + nofptrs + 1)*4;
 
-  ORB.MakeFileName(name, modid, ".rv64.Obj"); (*write code file*)
+  ORB.MakeFileName(name, modid, ".rscv"); (*write code file*)
   ORB.MakeFileName(namecode, modid, ".rv64.Code"); (*write code file*)
   F := Files.New(name); Files.Set(R, F, 0);
   Fn := Files.New(namecode); Files.Set(Rn, Fn, 0);
