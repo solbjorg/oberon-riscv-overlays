@@ -1598,10 +1598,11 @@ BEGIN
   IF x.a = 0 THEN
     cond := opposite(x.r)
   ELSE
+    Texts.WriteLn(W); Texts.WriteString(W, "Assertion with forward branch"); Texts.Append(Oberon.Log, W.buf);
     put(MakeFwdBranch(x.r, RH-1, 0, x.b)); FixLink(x.a);
     x.b := pc-1; cond := ALW
   END ;
-  Trap(cond, TrapAssertFailure, RH, 0); FixLink(x.b)
+  Trap(cond, TrapAssertFailure, RH, RH+1); FixLink(x.b)
 END Assert; 
 
 PROCEDURE New*(VAR x: Item);
