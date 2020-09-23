@@ -347,7 +347,7 @@ PROCEDURE Init*;
       END
     END TraverseDir;
 
-  BEGIN k := 0; TraverseDir(A, k, DirRootAdr); MarkSectors(A, k)
+  BEGIN k := 0; SYSTEM.PUT(-60, 5000H); TraverseDir(A, k, DirRootAdr); MarkSectors(A, k)
   END Init; 
   
 END RVFileDir.

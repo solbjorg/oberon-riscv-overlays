@@ -6,6 +6,7 @@ MODULE RVOberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     off = 0; idle = 1; active = 2;   (*task states*)
     BasicCycle = 20;
     ESC = 1BX; SETSTAR = 1AX;
+    SP = 2;
 
   TYPE Painter* = PROCEDURE (x, y: INTEGER);
     Marker* = RECORD Fade*, Draw*: Painter END;
@@ -393,7 +394,7 @@ MODULE RVOberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE Reset*;
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
-    SYSTEM.LDREG(14, Kernel.stackOrg); (*reset stack pointer*) Loop
+    SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 
 BEGIN User[0] := 0X;
@@ -407,5 +408,5 @@ BEGIN User[0] := 0X;
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
-  Modules.Load("System", Mod); Mod := NIL; Loop
+  Modules.Load("RVSystem", Mod); Mod := NIL; Loop
 END RVOberon.

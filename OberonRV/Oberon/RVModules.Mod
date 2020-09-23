@@ -1,6 +1,6 @@
 MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   IMPORT SYSTEM, Files:=RVFiles;
-  CONST versionkey = 1X; MT = 12; DescSize = 80;
+  CONST versionkey = 1X; MT = 4; DescSize = 80;
 
   TYPE Module* = POINTER TO ModDesc;
     Command* = PROCEDURE;
@@ -220,6 +220,6 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H)
   END Init;
 
-BEGIN Init; Load("Oberon", M);
+BEGIN SYSTEM.PUT(-60, 77H); Init; Load("RVOberon", M);
     SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE  (*only if load fails*)
 END RVModules.
