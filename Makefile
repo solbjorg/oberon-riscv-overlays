@@ -6,7 +6,11 @@ norebo: Runtime/norebo.c Runtime/risc-cpu.c Runtime/risc-cpu.h
 oberonrv: OberonRV/*.Mod OberonRV/Oberon/*.Mod
 	cd OberonRV/Oberon; ./build-oberon-riscv.sh
 
+imagerv: norebo
+	make clean; make
+	./build-image.py -r OberonRV/Oberon
+
 
 clean:
 	rm -f norebo
-	rm -rf build
+	rm -rf build imagebuild
