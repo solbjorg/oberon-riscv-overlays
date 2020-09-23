@@ -2,7 +2,10 @@
 set -e
 make
 
-. source.sh
+DIR="$(dirname "$(readlink -f "$0")")"
+
+export NOREBO_BIN="${DIR}/norebo"
+export NOREBO_PATH="${DIR}/Norebo:${DIR}/Oberon:${DIR}/Bootstrap"
 
 mkdir -p build
 cd build
