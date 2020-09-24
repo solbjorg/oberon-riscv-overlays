@@ -42,11 +42,28 @@ def compile(modules, **kwargs):
 def rv_compile(modules, **kwargs):
     norebo(['RVOP.Compile'] + [m+'/s' for m in modules], **kwargs)
 
+def rv_build_norebo(target_dir):
+    compile(['Norebo.Mod', 'Kernel.Mod', 'FileDir.Mod', 'Files.Mod',
+             'Modules.Mod', 'Fonts.Mod', 'Texts.Mod', 'RS232.Mod', 'Oberon.Mod',
+             'ORS.Mod', 'ORB.Mod', 'ORG.Mod', 'ORP.Mod', 'RVCoreLinker.Mod',
+             'VDisk.Mod', 'VFileDir.Mod', 'VFiles.Mod', 'VDiskUtil.Mod', 'CoreLinker.Mod'],
+            working_directory=target_dir,
+            search_path=[os.path.join(NOREBO_ROOT, 'Norebo'),
+                         os.path.join(NOREBO_ROOT, 'Oberon'),
+                         os.path.join(NOREBO_ROOT, 'Bootstrap')])
+
+    bulk_rename(target_dir, 'rsc', 'rsx')
+    norebo(['CoreLinker.LinkSerial', 'Modules', 'InnerCore'],
+           working_directory=target_dir,
+           search_path=[os.path.join(NOREBO_ROOT, 'Norebo'),
+                        os.path.join(NOREBO_ROOT, 'Bootstrap')])
+    bulk_rename(target_dir, 'rsx', 'rsc')
+
 def build_norebo(target_dir):
     compile(['Norebo.Mod', 'Kernel.Mod', 'FileDir.Mod', 'Files.Mod',
              'Modules.Mod', 'Fonts.Mod', 'Texts.Mod', 'RS232.Mod', 'Oberon.Mod',
              'ORS.Mod', 'ORB.Mod', 'ORG.Mod', 'ORP.Mod', 'CoreLinker.Mod',
-             'VDisk.Mod', 'VFileDir.Mod', 'VFiles.Mod', 'VDiskUtil.Mod', 'RVCoreLinker.Mod'],
+             'VDisk.Mod', 'VFileDir.Mod', 'VFiles.Mod', 'VDiskUtil.Mod'],
             working_directory=target_dir,
             search_path=[os.path.join(NOREBO_ROOT, 'Norebo'),
                          os.path.join(NOREBO_ROOT, 'Oberon'),
@@ -69,7 +86,7 @@ def rv_build_image(sources_dir):
     oberon_dir = mksubdir(target_dir, 'oberon')
 
     logging.info('Building norebo')
-    build_norebo(norebo_dir)
+    rv_build_norebo(norebo_dir)
 
     logging.info('Building a cross-compiler')
     compile(['RVAssem.Mod', 'ORS.Mod', 'RVOB.Mod', 'RVOG.Mod', 'RVOP.Mod'],
@@ -87,7 +104,7 @@ def rv_build_image(sources_dir):
 
     logging.info('Linking the Inner Core')
     # Hide the rsc files, Norebo can't use them (CoreLinker knows to expect this extension)
-    #bulk_rename(oberon_dir, 'rsc', 'rsx')
+    bulk_rename(oberon_dir, 'rsv', 'rsx')
     norebo(['RVCoreLinker.LinkDisk', 'RVModules', 'Oberon.dsk'],
            working_directory=target_dir,
            search_path=[oberon_dir, norebo_dir])
@@ -98,21 +115,33 @@ def rv_build_image(sources_dir):
         return '%s=>%s' % (src, dst)
 
     install_args = ['Oberon.dsk']
-    install_args.extend(
-        copy(fn, fn)
-        for fn in sorted(os.listdir(sources_dir))
-        if not fn.startswith("."))
 
     for fi in FILE_LIST:
+        mod = fi['filename']
+        install_args.append(copy(mod, mod))
         if fi['mode'] == 'source':
-            smb = fi['filename'].replace('.Mod', '.smb')
-            rsv = fi['filename'].replace('.Mod', '.rsv')
-            rsc = fi['filename'].replace('.Mod', '.rsv')
+            smb = mod.replace('.Mod', '.smb')
+            rsx = mod.replace('.Mod', '.rsx')
+            rsc = mod.replace('.Mod', '.rsc')
             install_args.append(copy(smb, smb))
-            install_args.append(copy(rsv, rsc))
+            install_args.append(copy(rsx, rsc))
 
-    print(install_args);
     norebo(['VDiskUtil.InstallFiles'] + install_args,
+           working_directory=target_dir,
+           search_path=[oberon_dir, sources_dir, norebo_dir])
+
+    check_args = ['Oberon.dsk']
+    for fi in FILE_LIST:
+        mod = fi['filename']
+        check_args.append(mod)
+        if fi['mode'] == 'source':
+            smb = mod.replace('.Mod', '.smb')
+            rsc = mod.replace('.Mod', '.rsc')
+            check_args.append(smb)
+            check_args.append(rsc)
+
+    logging.info('Checking files were installed correctly')
+    norebo(['VDiskUtil.CheckFiles'] + check_args,
            working_directory=target_dir,
            search_path=[oberon_dir, sources_dir, norebo_dir])
 
@@ -157,12 +186,11 @@ def build_image(sources_dir):
         return '%s=>%s' % (src, dst)
 
     install_args = ['Oberon.dsk']
-    install_args.extend(
-        copy(fn, fn)
-        for fn in sorted(os.listdir(sources_dir))
-        if not fn.startswith("."))
 
+    # This only copies over files found in the manifest. This is deliberate, and way less of a headache!
     for fi in FILE_LIST:
+        mod = fi['filename']
+        install_args.append(copy(mod, mod))
         if fi['mode'] == 'source':
             smb = fi['filename'].replace('.Mod', '.smb')
             rsx = fi['filename'].replace('.Mod', '.rsx')
@@ -171,6 +199,16 @@ def build_image(sources_dir):
             install_args.append(copy(rsx, rsc))
 
     norebo(['VDiskUtil.InstallFiles'] + install_args,
+           working_directory=target_dir,
+           search_path=[oberon_dir, sources_dir, norebo_dir])
+
+    check_args = ['Oberon.dsk']
+    for fi in FILE_LIST:
+        mod = fi['filename']
+        check_args.append(mod)
+
+    logging.info('Checking files were installed correctly')
+    norebo(['VDiskUtil.CheckFiles'] + check_args,
            working_directory=target_dir,
            search_path=[oberon_dir, sources_dir, norebo_dir])
 

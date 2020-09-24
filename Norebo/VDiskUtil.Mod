@@ -18,6 +18,34 @@ MODULE VDiskUtil;
     RETURN V
   END OldVDisk;
 
+  PROCEDURE CheckFile(v: VDisk.VDisk; name: ARRAY OF CHAR);
+    VAR f: VFiles.File;
+  BEGIN
+    f := VFiles.Old(v, name);
+    Texts.WriteString(W, "Looking for file "); Texts.WriteString(W, name);
+    IF f = NIL THEN
+      Texts.WriteString(W, "... invalid file "); Texts.WriteString(W, name);
+    ELSE
+      Texts.WriteString(W, "... file found! ");
+    END;
+    EndLine
+  END CheckFile;
+
+  PROCEDURE CheckFiles*;
+    VAR S: Texts.Scanner;
+      V: VDisk.VDisk;
+  BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
+    IF S.class = Texts.Name THEN
+      V := OldVDisk(S.s);
+      IF V # NIL THEN Texts.Scan(S);
+        WHILE S.class = Texts.Name DO
+          CheckFile(V, S.s);
+          Texts.Scan(S);
+        END;
+      END;
+    END;
+  END CheckFiles;
+
   PROCEDURE InstallFile*(v: VDisk.VDisk; srcname, dstname: ARRAY OF CHAR);
     VAR f: Files.File;
       g: VFiles.File;
@@ -41,8 +69,11 @@ MODULE VDiskUtil;
   PROCEDURE InstallFiles*;
     VAR S: Texts.Scanner;
       name: ARRAY 32 OF CHAR;
+      destinations: ARRAY 100 OF ARRAY 32 OF CHAR;
+      i, j: INTEGER;
       V: VDisk.VDisk;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
+    i := 0;
     IF S.class = Texts.Name THEN
       V := OldVDisk(S.s);
       IF V # NIL THEN Texts.Scan(S);
@@ -51,13 +82,18 @@ MODULE VDiskUtil;
           IF (S.class = Texts.Char) & (S.c = "=") THEN Texts.Scan(S);
             IF (S.class = Texts.Char) & (S.c = ">") THEN Texts.Scan(S);
               IF S.class = Texts.Name THEN
-                InstallFile(V, name, S.s); Texts.Scan(S)
-              END
-            END
-          END
-        END
-      END
-    END
+                InstallFile(V, name, S.s);
+                destinations[i] := S.s; INC(i);
+                Texts.Scan(S);
+              END;
+            END;
+          END;
+        END;
+      END;
+    END;
+    FOR j := 0 TO i-1 BY 1 DO
+      CheckFile(V, destinations[j]);
+    END;
   END InstallFiles;
 
 BEGIN Texts.OpenWriter(W)

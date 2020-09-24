@@ -30,7 +30,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
       filename: ModuleName;
   BEGIN i := 0;
     WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
-    filename[i] := "."; filename[i+1] := "r"; filename[i+2] := "s"; filename[i+3] := "v";
+    filename[i] := "."; filename[i+1] := "r"; filename[i+2] := "s"; filename[i+3] := "x";
     filename[i+4] := 0X;
     Texts.WriteLn(W); Texts.WriteString(W, "Filename: "); Texts.WriteString(W, filename); Texts.Append(Oberon.Log, W.buf);
     RETURN Files.Old(filename)
