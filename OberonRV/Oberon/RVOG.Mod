@@ -375,7 +375,7 @@ BEGIN
 END GetSB;
 
 PROCEDURE NilCheck;
-BEGIN IF check THEN Trap(EQ, 4, RH-1, 0); END
+BEGIN IF check THEN Trap(EQ, 4, RH, 0); END
 END NilCheck;
 
 (* Used for immediate bitfield checks for ANDI/ORI/XORI insns *)
@@ -776,7 +776,8 @@ BEGIN
     ELSE
       GetSB(x.r);  Fetch(SB, x.a)
     END;
-    NilCheck; x.r := RH; incR
+    NilCheck;
+    x.r := RH; incR;
   ELSIF x.mode = ORB.Par THEN
     IF FitsIn12Bits(x.b) THEN
       Fetch(SP, x.a + frame);  put(RVAssem.lw(RH, RH, x.b));
@@ -786,7 +787,7 @@ BEGIN
       put(RVAssem.lw(RH, RH, 0))
     END;
     NilCheck;
-    x.r := RH;  incR
+    x.r := RH;  incR;
   ELSIF x.mode = RegI THEN
     IF FitsIn12Bits(x.a) THEN
       put(RVAssem.lw(x.r, x.r, x.a))
