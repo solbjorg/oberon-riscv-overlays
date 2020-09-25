@@ -1498,7 +1498,7 @@ BEGIN invalSB; frame := 0;
        (* So we pick the one big enough to be unaffected by parameters. *)
        (* A runtime check to see if we have too many parameters for an empty register to exist may be wise ... *)
        (* TODO. *)
-       freereg := parblksize DIV 4 + 1;
+       freereg := parblksize DIV 4 + firstReg + 1;
        LoadImmTo(freereg, locblksize);
        put(RVAssem.sub(SP, SP, freereg));
     ELSE put(RVAssem.addi(SP, SP, -locblksize));
