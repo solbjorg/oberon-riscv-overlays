@@ -375,7 +375,7 @@ BEGIN
 END GetSB;
 
 PROCEDURE NilCheck;
-BEGIN IF check THEN Trap(EQ, 4, RH-1, 0) END
+BEGIN IF check THEN Trap(EQ, 4, RH-1, 0); END
 END NilCheck;
 
 (* Used for immediate bitfield checks for ANDI/ORI/XORI insns *)
@@ -1487,14 +1487,20 @@ BEGIN (*x.type.form = ORB.Proc*)
 END Call;
 
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
-  VAR a, r: INTEGER;
+  VAR a, r, freereg: INTEGER;
 BEGIN invalSB; frame := 0;
   IF ~int THEN (*procedure prolog*)
     a := IntegerSize; r := firstReg;
-    IF ~FitsIn12Bits(locblksize) THEN
+    IF locblksize >= 10000H THEN ORS.Mark("too many locals") END ;
+    IF ~FitsIn12Bits(-locblksize) THEN
        Texts.WriteLn(W); Texts.WriteString(W, "Entering with big local block, untested: "); Texts.WriteHex(W, locblksize); Texts.Append(Oberon.Log, W.buf);
-       LoadImm(locblksize);
-       put(RVAssem.sub(SP, SP, RH));
+       (* RH does not point at an empty register here, because they're currently used for parameters. *)
+       (* So we pick the one big enough to be unaffected by parameters. *)
+       (* A runtime check to see if we have too many parameters for an empty register to exist may be wise ... *)
+       (* TODO. *)
+       freereg := parblksize DIV 4 + 1;
+       LoadImmTo(freereg, locblksize);
+       put(RVAssem.sub(SP, SP, freereg));
     ELSE put(RVAssem.addi(SP, SP, -locblksize));
     END;
     put(RVAssem.sw(RA, SP, 0));
@@ -1567,13 +1573,18 @@ BEGIN (*frame = 0*)
   END
 END Increment;
 
+(* inorex = Include or Exclude... 0 = include, 1 = exclude. *)
 PROCEDURE Include*(inorex: INTEGER; VAR x, y: Item);
   VAR zr: INTEGER;
 BEGIN
   loadAdr(x); zr := RH; put(RVAssem.lw(RH, x.r, 0)); incR;
   IF y.mode = ORB.Const THEN
-    IF inorex = 0 THEN put(RVAssem.ori(zr, zr, LSL(1, y.a)))
-    ELSE put(RVAssem.andi(zr, zr, (-LSL(1, y.a))-1))
+    IF inorex = 0 THEN
+      ASSERT(FitsIn12Bits(LSL(1, y.a)));
+      put(RVAssem.ori(zr, zr, LSL(1, y.a)))
+    ELSE
+      ASSERT(FitsIn12Bits(-LSL(1, y.a)-1));
+      put(RVAssem.andi(zr, zr, (-LSL(1, y.a))-1))
     END
   ELSE
     load(y);
@@ -1857,7 +1868,7 @@ PROCEDURE CloseModule(VAR modid: ORS.Ident; key, nofent: INTEGER);
   VAR obj: ORB.Object;
     i, comsize, nofimps, nofptrs, size: INTEGER;
     name, namecode: ORS.Ident;
-    F, Fn: Files.File; R, Rn: Files.Rider;
+    F: Files.File; R: Files.Rider;
 BEGIN
   obj := ORB.topScope.next; nofimps := 0;
   comsize := 4; nofptrs := 0;
@@ -1875,10 +1886,8 @@ BEGIN
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
       (pc + nofimps + nofent + nofptrs + 1)*4;
 
-  ORB.MakeFileName(name, modid, ".rsv"); (*write code file*)
-  ORB.MakeFileName(namecode, modid, ".rv64.Code"); (*write code file*)
+  ORB.MakeFileName(name, modid, ".rsc"); (*write code file*)
   F := Files.New(name); Files.Set(R, F, 0);
-  Fn := Files.New(namecode); Files.Set(Rn, Fn, 0);
   Files.WriteString(R, modid); Files.WriteInt(R, key); Files.WriteByte(R, version);
   Files.WriteInt(R, size);
   obj := ORB.topScope.next;
@@ -1894,7 +1903,7 @@ BEGIN
   Files.WriteInt(R, strx);
   FOR i := 0 TO strx-1 DO Files.Write(R, str[i]) END ;  (*strings*)
   Files.WriteInt(R, pc);  (*code len*)
-  FOR i := 0 TO pc-1 DO Files.WriteInt(R, code[i]); Files.WriteInt(Rn, code[i]); END ;  (*program*)
+  FOR i := 0 TO pc-1 DO Files.WriteInt(R, code[i]); END ;  (*program*)
   obj := ORB.topScope.next;
   WHILE obj # NIL DO  (*commands*)
     IF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc) &
@@ -1927,7 +1936,6 @@ BEGIN
   Files.WriteInt(R, -1);
   Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, entry);
   Files.Write(R, "O"); Files.Register(F);
-  (*Files.Write(Rn, "O"); Files.Register(Fn);*)
 END CloseModule;
 
 PROCEDURE writeDword(VAR R: Files.Rider; i: INTEGER);
