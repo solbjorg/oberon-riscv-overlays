@@ -3,6 +3,7 @@ import sys, os, os.path, argparse, logging, csv, subprocess
 
 NOREBO_ROOT = os.path.dirname(os.path.realpath(__file__))
 FILE_LIST = list(csv.DictReader(open(os.path.join(NOREBO_ROOT, 'manifest.csv'))))
+top = 'RVModules'
 
 def read_file_list(manifest):
     global FILE_LIST
@@ -34,7 +35,10 @@ def norebo(args, working_directory='.', search_path=()):
     os.environ['NOREBO_PATH'] = norebo_path
     logging.debug('Running norebo\n\tCWD = %s\n\tPATH = %s\n\t%s',
                   working_directory, norebo_path, ' '.join(args))
-    subprocess.check_call([norebo] + list(args), cwd=working_directory)
+    output = subprocess.check_output([norebo] + list(args), cwd=working_directory).decode("utf-8")
+    print(output)
+    if "FAILED" in output:
+        raise Exception("Compilation failed.")
 
 def compile(modules, **kwargs):
     norebo(['ORP.Compile'] + [m+'/s' for m in modules], **kwargs)
@@ -104,8 +108,8 @@ def rv_build_image(sources_dir):
 
     logging.info('Linking the Inner Core')
     # Hide the rsc files, Norebo can't use them (CoreLinker knows to expect this extension)
-    bulk_rename(oberon_dir, 'rsv', 'rsx')
-    norebo(['RVCoreLinker.LinkDisk', 'RVModules', 'Oberon.dsk'],
+    bulk_rename(oberon_dir, 'rsc', 'rsx')
+    norebo(['RVCoreLinker.LinkDisk', top, 'Oberon.dsk'],
            working_directory=target_dir,
            search_path=[oberon_dir, norebo_dir])
 
@@ -226,12 +230,23 @@ def main():
     parser.add_argument(
         '-m', '--manifest', dest='manifest', type=str, default='manifest.csv', help='pass in a different manifest'
     )
+    parser.add_argument(
+        '-t', '--test', dest='testfile', type=str, default=None, help='pass in a file to test'
+    )
     parser.add_argument('SOURCES')
     args = parser.parse_args()
     log_level = logging.DEBUG if args.debug else logging.INFO
     use_riscv = args.riscv
     if (args.manifest and args.manifest != 'manifest.csv'):
         read_file_list(args.manifest)
+
+    # overwrites -m
+    # this should be documented much better, TODO...
+    # also only works with RV atm, mostly because I don't really need this with R5.
+    if (args.testfile):
+        global FILE_LIST, top
+        FILE_LIST = [{"mode":"source","filename":args.testfile}]
+        top = FILE_LIST[0]["filename"].replace('.Mod', '')
 
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
