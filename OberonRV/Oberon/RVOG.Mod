@@ -149,6 +149,22 @@ BEGIN
   IF pc >= maxCode - 40 THEN ORS.Mark("Program too long") END
 END CheckRegs;
 
+(* Used for immediate bitfield checks for ANDI/ORI/XORI insns *)
+PROCEDURE FitsIn11Bits(n: INTEGER): BOOLEAN;
+BEGIN
+  RETURN (0 <= n) & (n < 2048)
+END FitsIn11Bits;
+
+PROCEDURE FitsIn12Bits(n: INTEGER): BOOLEAN;
+BEGIN
+  RETURN (-2048 <= n) & (n < 2048)
+END FitsIn12Bits;
+
+PROCEDURE FitsIn32Bits(n: INTEGER): BOOLEAN;
+BEGIN
+  RETURN TRUE  (* hack for 32-bit Oberon bootstrap (-80000000H <= n) & (n < 80000000H) *)
+END FitsIn32Bits;
+
 (*
   Initialize an item that represents a conditional jump later on.
   The true and false fixup chains are zeroed.  Additionally, the left and
@@ -270,6 +286,8 @@ BEGIN
   IF cond = ALW THEN code[at] := RVAssem.jal(0, displacement)
   ELSIF cond = NEV THEN code[at] := RVAssem.ori(0, 0, 0)
   ELSE
+    (* TODO make this more userfriendly... *)
+    ASSERT(FitsIn12Bits(displacement DIV 2));
     code[at] := RVAssem.fmtSB(63H, cond, lr, rr, displacement)
   END
 END fix;
@@ -384,22 +402,6 @@ END GetSB;
 PROCEDURE NilCheck;
 BEGIN IF check THEN Trap(EQ, 4, RH, 0); END
 END NilCheck;
-
-(* Used for immediate bitfield checks for ANDI/ORI/XORI insns *)
-PROCEDURE FitsIn11Bits(n: INTEGER): BOOLEAN;
-BEGIN
-  RETURN (0 <= n) & (n < 2048)
-END FitsIn11Bits;
-
-PROCEDURE FitsIn12Bits(n: INTEGER): BOOLEAN;
-BEGIN
-  RETURN (-2048 <= n) & (n < 2048)
-END FitsIn12Bits;
-
-PROCEDURE FitsIn32Bits(n: INTEGER): BOOLEAN;
-BEGIN
-  RETURN TRUE  (* hack for 32-bit Oberon bootstrap (-80000000H <= n) & (n < 80000000H) *)
-END FitsIn32Bits;
 
 PROCEDURE LuiForXorIn(dest, n: INTEGER);
 BEGIN
