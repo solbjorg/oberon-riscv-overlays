@@ -1,5 +1,4 @@
 MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
-
 IMPORT SYSTEM, Files, Texts, Oberon, RVAssem,  ORS, ORB:=RVOB; (*RVDis;*)
 
 (*
@@ -58,6 +57,13 @@ CONST
   TrapAssertFailure = 7;
   TrapNegativeSize = 8;
 
+  (* Useful constants for bit manip *)
+  C24 = 1000000H;
+  C20 = 100000H;
+  C16 = 10000H;
+  C12 = 1000H;
+  C8  = 100H;
+
 TYPE
   Item* = RECORD
     mode*: INTEGER;
@@ -100,6 +106,7 @@ VAR
   frame: INTEGER;         (* frame offset changed in SaveRegs, RestoreRegs *)
   check: BOOLEAN;         (* emit run-time checks *)
   version: INTEGER;       (* ABI Version: 0 = boot ROM, 1 = Oberon System *)
+  modid: ORS.Ident;
 
   sym2rel: ARRAY 6 OF INTEGER;
   sym2uRel: ARRAY 6 OF INTEGER;
@@ -740,7 +747,8 @@ BEGIN
     END;
     (* y < lim *)
     s1 := log2(s, e);
-    IF s1 = 1 THEN put(RVAssem.slli(y.r, y.r, e))
+    IF s1 = 1 THEN
+      IF e > 0 THEN put(RVAssem.slli(y.r, y.r, e)) END;
     ELSIF s > 1 THEN
       LoadImm(s);
       put(RVAssem.mul(y.r, y.r, RH))
@@ -770,6 +778,7 @@ END Index;
 
 PROCEDURE DeRef*(VAR x: Item);
 BEGIN
+  (*Texts.WriteLn(W); Texts.WriteString(W, "Deref"); Texts.Append(Oberon.Log, W.buf);*)
   IF x.mode = ORB.Var THEN
     IF x.r > 0 THEN (*local*)
       Fetch(SP, x.a + frame)
@@ -1286,7 +1295,7 @@ BEGIN loadAdr(x); loadAdr(y);
   put(RVAssem.addi(x.r, x.r, IntegerSize));
   put(RVAssem.addi(RH, RH, -1));
   put(RVAssem.bne(RH, 0, -20));
-  decR; decR
+  decR; decR;
 END StoreStruct;
 
 PROCEDURE CopyString*(VAR x, y: Item);  (*from x to y*)
@@ -1300,11 +1309,11 @@ BEGIN loadAdr(y); len := y.type.len;
     Trap(GE, TrapSourceTooBig, RH, RH+1)
   END ;
   loadStringAdr(x);
-  put(RVAssem.lw(RH, x.r, 0));  put(RVAssem.add(x.r, x.r, IntegerSize));
-  put(RVAssem.sw(RH, y.r, 0));  put(RVAssem.add(y.r, y.r, IntegerSize));
+  put(RVAssem.lw(RH, x.r, 0));  put(RVAssem.addi(x.r, x.r, IntegerSize));
+  put(RVAssem.sw(RH, y.r, 0));  put(RVAssem.addi(y.r, y.r, IntegerSize));
   put(RVAssem.srli(RH, RH, BitsPerInteger-8));
   put(RVAssem.bne(RH, 0, -20));
-  decR; decR
+  decR; decR;
 END CopyString;
 
 (* Code generation for parameters *)
@@ -1458,7 +1467,19 @@ END PrepCall;
   with the appropriate JAL instruction.
 *)
 PROCEDURE Call*(VAR x: Item; r: INTEGER);
+  VAR i: INTEGER;
 BEGIN (*x.type.form = ORB.Proc*)
+  (* Store where we call the function from to a magic IO port - for debugging purposes *)
+  incR;
+  i := 2;
+  WHILE (modid[i] # 0X) & (i < 7) DO
+    LoadImm(LSL(0AAH, 24) + ORD(modid[i]) MOD C24);
+    put(RVAssem.sw(RH, 0, -32));
+    INC(i);
+  END;
+  LoadImm(LSL(0CCH, 24) + ORS.Pos() MOD C24);
+  put(RVAssem.sw(RH, 0, -32));
+  decR;
   IF x.mode = ORB.Const THEN
     IF x.r >= 0 THEN
       put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
@@ -1479,6 +1500,8 @@ BEGIN (*x.type.form = ORB.Proc*)
     IF check THEN Trap(EQ, TrapNilProcedure, RH, 0) END ;
     put(RVAssem.jalr(RA, RH, 0))
   END ;
+  (* Store that we return from that call context - debug *)
+  put(RVAssem.sw(0, 0, -32));
   IF x.type.base.form = ORB.NoTyp THEN (*procedure*) RH := firstReg
   ELSE (*function*)
     IF r > firstReg THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
@@ -1494,7 +1517,6 @@ BEGIN invalSB; frame := 0;
     a := IntegerSize; r := firstReg;
     IF locblksize >= 10000H THEN ORS.Mark("too many locals") END ;
     IF ~FitsIn12Bits(-locblksize) THEN
-       Texts.WriteLn(W); Texts.WriteString(W, "Entering with big local block, untested: "); Texts.WriteHex(W, locblksize); Texts.Append(Oberon.Log, W.buf);
        (* RH does not point at an empty register here, because they're currently used for parameters. *)
        (* So we pick the one big enough to be unaffected by parameters. *)
        (* A runtime check to see if we have too many parameters for an empty register to exist may be wise ... *)
@@ -1522,7 +1544,6 @@ BEGIN
   IF ~int THEN (*procedure epilog*)
     put(RVAssem.lw(RA, SP, 0));
     IF ~FitsIn12Bits(size) THEN
-       Texts.WriteLn(W); Texts.WriteString(W, "Returning from big local block, untested: "); Texts.WriteHex(W, size); Texts.Append(Oberon.Log, W.buf);
        LoadImm(size);
        put(RVAssem.add(SP, SP, RH));
     ELSE put(RVAssem.addi(SP, SP, size));
@@ -1610,7 +1631,6 @@ BEGIN
   IF x.a = 0 THEN
     cond := opposite(x.r)
   ELSE
-    Texts.WriteLn(W); Texts.WriteString(W, "Assertion with forward branch"); Texts.Append(Oberon.Log, W.buf);
     put(MakeFwdBranch(x.r, RH-1, 0, x.b)); FixLink(x.a);
     x.b := pc-1; cond := ALW
   END ;
@@ -1816,9 +1836,10 @@ BEGIN
   END
 END CSRop;
 
-PROCEDURE Open*(v: INTEGER);
+PROCEDURE Open*(v: INTEGER; id: ORS.Ident);
 BEGIN pc := 0; tdx := 0; strx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
-  IF v = 0 THEN pc := 8 END
+  IF v = 0 THEN pc := 8 END;
+  modid := id;
 END Open;
 
 PROCEDURE SetDataSize*(dc: INTEGER);
@@ -1944,98 +1965,6 @@ BEGIN
   Files.WriteInt(R, i);
   IF i < 0 THEN Files.WriteInt(R, -1) ELSE Files.WriteInt(R, 0) END
 END writeDword;
-
-PROCEDURE CloseRom(VAR modid: ORS.Ident; key, nofent: INTEGER);
-VAR
-  i, j, size: INTEGER;
-  name: ORS.Ident;
-  F: Files.File; R: Files.Rider;
-BEGIN
-  ORB.MakeFileName(name, modid, ".rv64.Rom"); (*write ROM image file*)
-  F := Files.New(name); Files.Set(R, F, 0);
-  ASSERT(Files.Pos(R) = 0);
-
-  (*
-    ROM images are slightly different from module files.  The format
-    is as follows:
-
-    ORG     baseOfRom
-
-    DWORD   x
-    DWORD*x typeDescriptorData
-    DWORD   uninitializedDataSizeInBytes
-    DWORD   y
-    BYTE*y  stringData
-    BYTE*a  alignment32bit  (0 <= a < 4)
-    DWORD   numberOfWordsInCode
-    JAL     0, ...    (code starts here)
-    ...etc...
-
-    The main body of the ROM module is expected to copy any type descriptors
-    into RAM, then zero out the uninitialized data space, then copy strings
-    immediately after that.  Once that's done, dynamic type checks and
-    static string constants should "just work" as expected, even if code
-    itself is running in RAM.
-  *)
-
-  Texts.WriteString(W, "Writing type descriptors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-
-  writeDword(R, tdx);                 (* Type descriptors *)
-  i := 0;  j := 8;
-  WHILE i < tdx DO
-    writeDword(R, data[i]);
-    INC(i); INC(j, 8)
-  END;
-  ASSERT(Files.Pos(R) = j);
-
-  Texts.WriteString(W, "Writing variable space needed"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-
-  writeDword(R, varsize - tdx*8);     (* Data size *)
-  INC(j, 8);
-  ASSERT(Files.Pos(R) = j);
-
-  Texts.WriteString(W, "Writing string constants"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-
-  writeDword(R, strx);                (* String Constants *)
-  INC(j, 8);
-  FOR i := 0 TO strx-1 DO
-    Files.Write(R, str[i]);
-    INC(j)
-  END;
-  ASSERT(Files.Pos(R) = j);
-
-  Texts.WriteString(W, "Writing filler for 64-bit alignment"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-
-  (* instruction alignment for code segment *)
-  WHILE j MOD 8 # 0 DO
-    Files.Write(R, 00X); INC(j)
-  END;
-  ASSERT(Files.Pos(R) = j);
-
-  Texts.WriteString(W, "Writing program code"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-
-  writeDword(R, pc);                  (* Program *)
-  INC(j, 8);
-  entry := j;
-  FOR i := 0 TO pc-1 DO
-    Files.WriteInt(R, code[i]);
-    INC(j, 4);
-  END;
-  ASSERT(Files.Pos(R) = j);
-
-  Texts.WriteString(W, "Filling space for interrupt vectors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-
-  (* Reset Vector *)
-  WHILE j < 0FFF00H DO
-    Files.Write(R, 00X); INC(j)
-  END;
-  ASSERT(Files.Pos(R) = j);
-
-  Texts.WriteString(W, "Writing reset and interrupt vectors"); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-
-  Files.WriteInt(R, RVAssem.jal(0, entry-0FFF00H));
-  Files.Register(F);
-END CloseRom;
 
 PROCEDURE Close*(VAR modid: ORS.Ident; key, nofent: INTEGER);
   VAR obj: ORB.Object;
