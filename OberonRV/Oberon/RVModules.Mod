@@ -1,6 +1,7 @@
 MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   IMPORT SYSTEM, Files:=RVFiles;
   CONST versionkey = 1X; MT = 4; DescSize = 80;
+    addi = 19; load = 3; store = 35;
 
   TYPE Module* = POINTER TO ModDesc;
     Command* = PROCEDURE;
@@ -21,14 +22,18 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
     VAR i: INTEGER;
       filename: ModuleName;
-  BEGIN i := 0;
+  BEGIN
+    i := 0;
     WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
     filename[i] := "."; filename[i+1] := "r"; filename[i+2] := "s"; filename[i+3] := "c"; filename[i+4] := 0X;
     RETURN Files.Old(filename)
   END ThisFile;
 
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
-  BEGIN res := n; importing := name
+  BEGIN res := n; importing := name;
+    IF res > 0 THEN
+      SYSTEM.PUT(-60, res);
+    END;
   END error;
 
   PROCEDURE Check(s: ARRAY OF CHAR);
@@ -52,13 +57,50 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       ch: CHAR;
       body: Command;
       fixorgP, fixorgD, fixorgT: INTEGER;
-      disp, adr, inst, pno, vno, dest, offset: INTEGER;
+      op, imm, disp, adr, inst, pno, vno, dest, offset: INTEGER;
       name1, impname: ModuleName;
       F: Files.File; R: Files.Rider;
       import: ARRAY 16 OF Module;
-  BEGIN mod := root; error(0, name); nofimps := 0;
+
+     (* Returns a `jal ra, imm` instruction. *)
+    PROCEDURE Jal(imm: INTEGER) : INTEGER;
+      VAR imm20, imm19to12, imm11, imm10to1: INTEGER;
+    BEGIN
+      imm20 := imm DIV 100000H;
+      imm19to12 := (imm - imm20 * 100000H) DIV 1000H;
+      imm11 := (imm - (imm20 * 100000H + imm19to12 * 1000H)) DIV 800H;
+      imm10to1 := (imm - (imm20 * 100000H + imm19to12 * 1000H + imm11 * 800H)) DIV 2H;
+      RETURN ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 1) * 80H + 111
+    END Jal;
+
+    PROCEDURE Lw(imm: INTEGER) : INTEGER;
+      VAR rd, rs1, funct3: INTEGER;
+    BEGIN
+      rd := 3; (* SB *)
+      funct3 := 2; (* lw, not lb or lh *)
+      rs1 := 4; (* MT *)
+      RETURN (((imm * 20H + rs1) * 8H + funct3) * 20H + rd) * 80H + 3 (* opcode for all loads is 3 *)
+    END Lw;
+
+    (* returns immediate of an I-type instruction *)
+    PROCEDURE GetIImm(inst: INTEGER) : INTEGER;
+    BEGIN
+      RETURN inst DIV 100000H
+    END GetIImm;
+
+    PROCEDURE GetSImm(inst: INTEGER) : INTEGER;
+    BEGIN
+      RETURN (inst DIV 2000000H MOD 80H) + (inst DIV 80H MOD 20H)
+    END GetSImm;
+
+  BEGIN
+    mod := root; error(0, name); nofimps := 0;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
-    IF mod = NIL THEN (*load*)
+    SYSTEM.PUT(-60, 0AA100000H);
+    IF mod # NIL THEN
+      SYSTEM.PUT(-60, 0F000DH);
+    ELSE
+      SYSTEM.PUT(-60, 0AA000000H);
       Check(name);
       IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END ;
       IF F # NIL THEN
@@ -135,32 +177,44 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         adr := mod.code + fixorgP*4;
         WHILE adr # mod.code DO
           SYSTEM.GET(adr, inst);
-          mno := inst DIV 100000H MOD 10H;
-          pno := inst DIV 1000H MOD 100H;
-          disp := inst MOD 1000H;
+          mno := inst DIV 100H MOD 100H;
+          pno := inst MOD 100H;
+          disp := inst DIV 10000H MOD 10000H;
           SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
           SYSTEM.GET(impmod.ent + pno*4, dest); dest := dest + impmod.code;
-          offset := (dest - adr - 4) DIV 4;
-          SYSTEM.PUT(adr, (offset MOD 1000000H) + 0F7000000H);
-          adr := adr - disp*4
+          offset := (dest - adr);
+          SYSTEM.PUT(adr, Jal(offset MOD 200000H));
+          adr := mod.code + disp*4
         END ;
         (*fixup of LDR/STR/ADD*)
         adr := mod.code + fixorgD*4;
         WHILE adr # mod.code DO
           SYSTEM.GET(adr, inst);
-          mno := inst DIV 100000H MOD 10H;
-          disp := inst MOD 1000H;
+          mno := inst DIV 10H MOD 128;
+          disp := inst DIV 10000H;
           IF mno = 0 THEN (*global*)
-            SYSTEM.PUT(adr, (inst DIV 1000000H * 10H + MT) * 100000H + mod.num * 4)
+            SYSTEM.PUT(adr, Lw(mod.num * 4))
           ELSE (*import*)
             SYSTEM.GET(mod.imp + (mno-1)*4, impmod); v := impmod.num;
-            SYSTEM.PUT(adr, (inst DIV 1000000H * 10H + MT) * 100000H + v*4);
-            SYSTEM.GET(adr+4, inst); vno := inst MOD 100H;
+            SYSTEM.PUT(adr, Lw(v * 4));
+            SYSTEM.GET(adr+4, inst);
+            op := inst MOD 80H;
+            IF (op = addi) OR (op = load) THEN
+              imm := GetIImm(inst);
+            ELSIF op = store THEN
+              imm := GetSImm(inst);
+            ELSE error(5, name);
+            END;
+            vno := imm MOD 100H;
             SYSTEM.GET(impmod.ent + vno*4, offset);
-            IF ODD(inst DIV 100H) THEN offset := offset + impmod.code - impmod.data END ;
-            SYSTEM.PUT(adr+4, inst DIV 10000H * 10000H + offset)
+            IF ODD(imm DIV 100H) THEN offset := offset + impmod.code - impmod.data END ;
+            IF (op = store) THEN
+              SYSTEM.PUT(adr+4, (inst - LSL(imm MOD 20H, 7) - LSL(imm DIV 20H, 25)) + LSL(offset MOD 20H, 7) + LSL(offset DIV 20H, 25));
+            ELSE
+              SYSTEM.PUT(adr+4, (inst - LSL(imm, 20)) + LSL(offset, 20));
+            END;
           END ;
-          adr := adr - disp*4
+          adr := mod.code + disp*4
         END ;
         (*fixup of type descriptors*)
         adr := mod.data + fixorgT*4;
