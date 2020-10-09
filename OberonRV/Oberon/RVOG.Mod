@@ -536,7 +536,7 @@ PROCEDURE load(VAR x: Item);
   VAR op: INTEGER;
 BEGIN
   (* op = 3 if 64-bit *)
-  IF x.type.size = 1 THEN op := 0 ELSE op := 2 END;
+  IF x.type.size = 1 THEN op := 4 ELSE op := 2 END;
   IF x.mode # Reg THEN
     IF x.mode = ORB.Const THEN
       IF x.type.form = ORB.Proc THEN
@@ -571,8 +571,8 @@ BEGIN
       END ;
       x.r := RH; incR
     ELSIF x.mode = ORB.Par THEN
-      (*ASSERT(FitsIn12Bits(x.a + frame));
-      ASSERT(FitsIn12Bits(x.b));*)
+      ASSERT(FitsIn12Bits(x.a + frame));
+      ASSERT(FitsIn12Bits(x.b));
       put(RVAssem.lw(RH, SP, x.a + frame));
       put(RVAssem.fmtI(03H, op, RH, RH, x.b));
       x.r := RH; incR;
@@ -1211,9 +1211,9 @@ PROCEDURE StringRelation*(op: INTEGER; VAR x, y: Item);   (* x := x < y *)
 BEGIN
   IF x.type.form = ORB.String THEN loadStringAdr(x) ELSE loadAdr(x) END ;
   IF y.type.form = ORB.String THEN loadStringAdr(y) ELSE loadAdr(y) END ;
-  put(RVAssem.lb(RH, x.r, 0));
+  put(RVAssem.lbu(RH, x.r, 0));
   put(RVAssem.addi(x.r, x.r, 1));
-  put(RVAssem.lb(RH+1, y.r, 0));
+  put(RVAssem.lbu(RH+1, y.r, 0));
   put(RVAssem.addi(y.r, y.r, 1));
   put(RVAssem.bne(RH, RH+1, 8));
   put(RVAssem.bne(RH, 0, -20));
@@ -1425,7 +1425,7 @@ PROCEDURE Fixup*(VAR x: Item);
 BEGIN FixLink(x.a)
 END Fixup;
 
-PROCEDURE SaveRegs(r: INTEGER);  (* R[frstReg .. r-1]*)
+PROCEDURE SaveRegs(r: INTEGER);  (* R[firstReg .. r-1]*)
   VAR r0: INTEGER;
 BEGIN
   ASSERT(r >= firstReg);
@@ -1435,10 +1435,10 @@ BEGIN
   REPEAT put(RVAssem.sw(r0, SP, (r-r0-1)*IntegerSize)); INC(r0) UNTIL r0 = r
 END SaveRegs;
 
-PROCEDURE RestoreRegs(r: INTEGER); (*R[0 .. r-1]*)
+PROCEDURE RestoreRegs(r: INTEGER); (*R[firstReg .. r-1]*)
   VAR r0: INTEGER;
 BEGIN
-  ASSERT(r >= firstReg );
+  ASSERT(r >= firstReg);
   r0 := r;
   REPEAT DEC(r0); put(RVAssem.lw(r0, SP, (r-r0-1)*IntegerSize))
   UNTIL r0 = firstReg;
@@ -1523,9 +1523,9 @@ BEGIN invalSB; frame := 0;
        (* So we pick the one big enough to be unaffected by parameters. *)
        (* A runtime check to see if we have too many parameters for an empty register to exist may be wise ... *)
        (* TODO. *)
-       freereg := parblksize DIV 4 + firstReg + 1;
-       LoadImmTo(freereg, locblksize);
-       put(RVAssem.sub(SP, SP, freereg));
+      freereg := parblksize DIV 4 + firstReg + 1;
+      LoadImmTo(freereg, locblksize);
+      put(RVAssem.sub(SP, SP, freereg));
     ELSE put(RVAssem.addi(SP, SP, -locblksize));
     END;
     put(RVAssem.sw(RA, SP, 0));
@@ -1535,7 +1535,7 @@ BEGIN invalSB; frame := 0;
   ELSE (*interrupt procedure*)
   (*
     Put1(Sub, SP, SP, 12); Put2(Str, 0, SP, 0); Put2(Str, 1, SP, 4); Put2(Str, SB, SP, 8)
-    (*R0, R1, SB saved os stack*)
+    (*R0, R1, SB saved on stack*)
   *)  ORS.Mark("Interrupt procedures not yet supported")
   END
 END Enter;
