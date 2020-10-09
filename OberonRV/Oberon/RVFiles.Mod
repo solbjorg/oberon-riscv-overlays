@@ -73,8 +73,26 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       END
     ELSIF ch = 0X THEN name[0] := 0X; res := -1
     ELSE res := 3
-    END
+    END;
   END Check;
+
+  PROCEDURE Search(name: FileDir.FileName; dpg: INTEGER; VAR A: INTEGER);
+    VAR i: INTEGER;
+      dpg1: INTEGER; a: FileDir.DirPage;
+  BEGIN Kernel.GetSector(dpg, a); ASSERT(a.mark = FileDir.DirMark); i := 0;
+    WHILE (i < a.m) & (A = 0) DO
+      IF a.e[i].name = name THEN
+        A := a.e[i].adr; (* found *)
+      ELSE
+        IF i = 0 THEN dpg1 := a.p0 ELSE dpg1 := a.e[i-1].p END ;
+        IF dpg1 # 0 THEN Search(name, dpg1, A) END ;
+      END;
+      INC(i)
+    END ;
+    IF (i > 0) & (a.e[i-1].p # 0) & (A = 0) THEN
+      Search(name, a.e[i-1].p, A)
+    END
+  END Search;
 
   PROCEDURE Old*(name: ARRAY OF CHAR): File;
     VAR i, k, res: INTEGER;
@@ -371,11 +389,6 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   BEGIN ReadInt(R, SYSTEM.VAL(INTEGER, s))
   END ReadSet;
 
-  PROCEDURE ReadReal*(VAR R: Rider; VAR x: REAL);
-    VAR n: INTEGER;
-  BEGIN ReadInt(R, SYSTEM.VAL(INTEGER, x))
-  END ReadReal;
-
   PROCEDURE ReadString*(VAR R: Rider; VAR x: ARRAY OF CHAR);
     VAR i: INTEGER; ch: CHAR;
   BEGIN i := 0; Read(R, ch);
@@ -460,10 +473,6 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   PROCEDURE WriteSet*(VAR R: Rider; s: SET);
   BEGIN WriteInt(R, ORD(s))
   END WriteSet;
-
-  PROCEDURE WriteReal*(VAR R: Rider; x: REAL);
-  BEGIN  WriteInt(R, ORD(x))
-  END WriteReal;
 
   PROCEDURE WriteString*(VAR R: Rider; x: ARRAY OF CHAR);
     VAR i: INTEGER; ch: CHAR;
