@@ -1981,7 +1981,7 @@ BEGIN  (* module body epilog *)
     CloseModule(modid, key, nofent);
   ELSE
     put(RVAssem.lw(RA, SP, 0));
-    put(RVAssem.addi(SP, SP, 8));
+    put(RVAssem.addi(SP, SP, 4));
     put(RVAssem.jalr(0, RA, 0));
     CloseModule(modid, key, nofent);
   END ;
