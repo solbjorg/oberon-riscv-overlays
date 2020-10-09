@@ -24,7 +24,7 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       filename: ModuleName;
   BEGIN
     i := 0;
-    WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
+    WHILE name[i] # 0X DO filename[i] := name[i]; SYSTEM.PUT(-60, filename[i]); INC(i) END ;
     filename[i] := "."; filename[i+1] := "r"; filename[i+2] := "s"; filename[i+3] := "c"; filename[i+4] := 0X;
     RETURN Files.Old(filename)
   END ThisFile;
@@ -96,11 +96,12 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   BEGIN
     mod := root; error(0, name); nofimps := 0;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
-    SYSTEM.PUT(-60, 0AA100000H);
-    IF mod # NIL THEN
-      SYSTEM.PUT(-60, 0F000DH);
+    IF mod # NIL THEN (* Hacky workaround. The if statement is so large that the number of *)
+                      (* instructions to jump over does not fit in a branch statement... *)
+                      (* But ELSE uses JAL -- so we have much more room to work with there. *)
+      SYSTEM.PUT(-60, 0FACCH);
     ELSE
-      SYSTEM.PUT(-60, 0AA000000H);
+      SYSTEM.PUT(-60, 0FBAC0000H);
       Check(name);
       IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END ;
       IF F # NIL THEN
@@ -110,7 +111,10 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           Files.ReadString(R, impname);   (*imports*)
           WHILE (impname[0] # 0X) & (res = 0) DO
             Files.ReadInt(R, impkey);
+            SYSTEM.PUT(-60, 0EBH);
+            SYSTEM.PUT(-60, impkey);
             Load(impname, impmod); import[nofimps] := impmod; importing := name1;
+            SYSTEM.PUT(-60, impmod.key);
             IF res = 0 THEN
               IF impmod.key = impkey THEN INC(impmod.refcnt); INC(nofimps)
               ELSE error(3, name1); imported := impname
@@ -123,6 +127,7 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       ELSE error(1, name)
       END ;
       IF res = 0 THEN (*search for a hole in the list allocate and link*)
+        SYSTEM.PUT(-60, 0FBAC1000H);
         INC(size, DescSize); mod := root;
         WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END ;
         IF mod = NIL THEN (*no large enough hole was found*)
@@ -134,8 +139,9 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           END
         ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
         END
-      END ; 
+      END ;
       IF res = 0 THEN (*read file*)
+        SYSTEM.PUT(-60, 0FBAC2000H);
         INC(p, DescSize); (*allocate descriptor*)
         mod.name := name; mod.key := key; mod.refcnt := 0;
         mod.data := p;  (*data*)
@@ -174,24 +180,28 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         IF ch # "O" THEN (*corrupted file*)  mod := NIL; error(4, name) END
       END ;
       IF res = 0 THEN (*fixup of BL*)
+        SYSTEM.PUT(-60, 0FBAC3000H);
         adr := mod.code + fixorgP*4;
         WHILE adr # mod.code DO
           SYSTEM.GET(adr, inst);
+          disp := inst DIV 10000H MOD 10000H;
           mno := inst DIV 100H MOD 100H;
           pno := inst MOD 100H;
-          disp := inst DIV 10000H MOD 10000H;
           SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
           SYSTEM.GET(impmod.ent + pno*4, dest); dest := dest + impmod.code;
           offset := (dest - adr);
           SYSTEM.PUT(adr, Jal(offset MOD 200000H));
           adr := mod.code + disp*4
         END ;
+        SYSTEM.PUT(-60, 0FBAC3000H);
         (*fixup of LDR/STR/ADD*)
         adr := mod.code + fixorgD*4;
         WHILE adr # mod.code DO
           SYSTEM.GET(adr, inst);
+          IF (inst MOD 8H # 5) THEN SYSTEM.PUT(-60, 0FFFFFH); END;
           mno := inst DIV 10H MOD 128;
           disp := inst DIV 10000H;
+          SYSTEM.PUT(-60, disp);
           IF mno = 0 THEN (*global*)
             SYSTEM.PUT(adr, Lw(mod.num * 4))
           ELSE (*import*)
@@ -216,13 +226,18 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           END ;
           adr := mod.code + disp*4
         END ;
+        SYSTEM.PUT(-60, 0FBAC3100H);
         (*fixup of type descriptors*)
         adr := mod.data + fixorgT*4;
+        SYSTEM.PUT(-60, mod.data);
+        SYSTEM.PUT(-60, adr);
         WHILE adr # mod.data DO
           SYSTEM.GET(adr, inst);
           mno := inst DIV 1000000H MOD 10H;
           vno := inst DIV 1000H MOD 1000H;
           disp := inst MOD 1000H;
+          SYSTEM.PUT(-60, inst);
+          SYSTEM.PUT(-60, disp);
           IF mno = 0 THEN (*global*) inst := mod.data + vno
           ELSE (*import*)
             SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
@@ -231,12 +246,14 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           END ;
           SYSTEM.PUT(adr, inst); adr := adr - disp*4
         END ;
+        SYSTEM.PUT(-60, 0FECC0000H);
         body   (*initialize module*)
       ELSIF res >= 3 THEN importing := name;
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END
-      END 
+      END
     END ;
-    newmod :=  mod
+    newmod := mod;
+    SYSTEM.PUT(-60, 0FC000DH);
   END Load;
 
   PROCEDURE ThisCommand*(mod: Module; name: ARRAY OF CHAR): Command;
