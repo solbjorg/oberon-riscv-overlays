@@ -309,14 +309,14 @@ MODULE RVOberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR mod: Modules.Module;
   BEGIN
     IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
-      mod := Modules.root; LED(21H);
+      mod := Modules.root; SYSTEM.PUT(-60, 21H);
       WHILE mod # NIL DO
         IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
         mod := mod.next
       END ;
-      LED(23H);
-      Files.RestoreList; LED(27H);
-      Kernel.Scan; LED(20H);
+      SYSTEM.PUT(-60, 23H);
+      Files.RestoreList; SYSTEM.PUT(-60, 27H);
+      Kernel.Scan; SYSTEM.PUT(-60, 20H);
       ActCnt := BasicCycle
     END
   END GC;
