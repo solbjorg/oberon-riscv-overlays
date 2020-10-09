@@ -1,5 +1,5 @@
 MODULE RVTextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
-  IMPORT Modules:=RVModules, Input:=RVInput, Display:=RVDisplay, Viewers:=RVViewers, Fonts:=RVFonts, Texts:=RVTexts, Oberon:=RVOberon, MenuViewers:=RVMenuViewers;
+  IMPORT Files:=RVFiles, Modules:=RVModules, Input:=RVInput, Display:=RVDisplay, Viewers:=RVViewers, Fonts:=RVFonts, Texts:=RVTexts, Oberon:=RVOberon, MenuViewers:=RVMenuViewers;
 
   CONST replace* = 0; insert* = 1; delete* = 2; unmark* = 3; (*message id*)
     BS = 8X; TAB = 9X; CR = 0DX; DEL = 7FX;

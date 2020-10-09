@@ -1,5 +1,5 @@
 MODULE RVMenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
-  IMPORT Input:=RVInput, Display:=RVDisplay, Viewers:=RVViewers, Oberon:=RVOberon;
+  IMPORT Files:=RVFiles, Fonts:=RVFonts, Texts:=RVTexts, Input:=RVInput, Display:=RVDisplay, Viewers:=RVViewers, Oberon:=RVOberon;
 
   CONST extend* = 0; reduce* = 1; FrameColor = Display.white;
 
