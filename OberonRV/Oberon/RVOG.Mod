@@ -1029,8 +1029,8 @@ BEGIN
       load(x);
       IF e <= 11 THEN put(RVAssem.andi(x.r, x.r, y.a-1))
       ELSE
+        put(RVAssem.slli(x.r, x.r, BitsPerInteger-e));
         put(RVAssem.srli(x.r, x.r, BitsPerInteger-e));
-        put(RVAssem.slli(x.r, x.r, BitsPerInteger-e))
       END
     ELSIF y.mode = ORB.Const THEN
       IF y.a > 0 THEN
