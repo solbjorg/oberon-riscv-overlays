@@ -621,7 +621,7 @@ BEGIN
       IF FitsIn12Bits(x.b) THEN
         put(RVAssem.addi(RH, RH, x.b))
       ELSE
-        incR; LoadImm(x.b); decR;
+        incR; Load32BitImm(x.b); decR;
         put(RVAssem.add(RH, RH, RH+1))
       END
     END;
@@ -811,7 +811,7 @@ BEGIN
       put(RVAssem.add(x.r, x.r, RH));
       put(RVAssem.ld(x.r, x.r, 0))
     END;
-    NilCheck
+    IF check THEN Trap(EQ, 4, x.r, 0); END
   ELSIF x.mode # Reg THEN ORS.Mark("bad mode in DeRef")
   END ;
   x.mode := RegI; x.a := 0; x.b := 0
@@ -868,18 +868,22 @@ BEGIN (*fetch tag into RH*)
   IF varpar THEN Fetch(SP, x.a + frame + IntegerSize)
   ELSE
     load(x);  pc0 := pc;
-    put(MakeFwdBranch(EQ, RH, 0, 0));  (*NIL belongs to every pointer type*)
+    put(MakeFwdBranch(EQ, x.r, 0, 0));  (*NIL belongs to every pointer type*)
     put(RVAssem.lw(RH, x.r, -8))
   END;
   Fetch(RH, T.nofpar * IntegerSize); incR;
-  loadTypTagAdr(T);  (*tag of T*)
-  put(RVAssem.sub(RH-1, RH-1, RH-2)); decR; decR;
-  IF ~varpar THEN fix(pc0, pc) END ;
+  loadTypTagAdr(T);  (*tag of T is in RH-1 *)
+  put(RVAssem.sub(RH-1, RH-1, RH-2));
   IF isguard THEN
-    IF check THEN Trap(NE, TrapTypeMismatch, RH, 0) END
-  ELSE SetCC0(x, EQ);
+    IF check THEN Trap(NE, TrapTypeMismatch, RH-1, 0) END
+  END;
+
+  IF ~varpar THEN fix(pc0, pc) END ;
+  IF ~isguard THEN
+    SetCC0(x, EQ);
     IF ~varpar THEN decR END
-  END
+  END;
+  decR; decR;
 END TypeTest;
 
 (* Code generation for Boolean operators *)
@@ -1481,21 +1485,23 @@ BEGIN (*x.type.form = ORB.Proc*)
   END;
   LoadImm(LSL(0CCH, 24) + ORS.Pos() MOD C24);
   put(RVAssem.sw(RH, 0, -32));
-  decR;
+  decR; 
   IF x.mode = ORB.Const THEN
     IF x.r >= 0 THEN
       put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
     ELSE (*imported*)
       IF (fixorgP < 10000H) & (x.a < 100H) & (-x.r < 80H) THEN
         (* -x.r = moduleID?? *)
-        put(x.a + LSL(-x.r, 8) + LSL(fixorgP, 16)); fixorgP := pc-1
+        put(x.a MOD 100H + LSL(-x.r, 8) + LSL(fixorgP MOD 10000H, 16)); fixorgP := pc-1
       ELSE ORS.Mark("fixup impossible")
       END
     END
   ELSE
-    IF x.mode <= ORB.Par THEN load(x); decR
+    IF x.mode <= ORB.Par THEN
+      Texts.WriteLn(W); Texts.WriteString(W, "dynamic dispatch"); Texts.Append(Oberon.Log, W.buf);
+      load(x); decR
     ELSE
-      put(RVAssem.lw(RH, SP, 0));  put(RVAssem.addi(SP, SP, IntegerSize));
+      put(RVAssem.lw(RH, SP, 0)); put(RVAssem.addi(SP, SP, IntegerSize));
       DEC(r);
       DEC(frame, IntegerSize)
     END ;
