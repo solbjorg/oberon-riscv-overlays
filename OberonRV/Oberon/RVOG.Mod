@@ -1022,7 +1022,7 @@ BEGIN
       END
     ELSE
       load(y);
-      IF check THEN Trap(EQ, TrapDivByZero, RH, 0) END ;
+      IF check THEN Trap(EQ, TrapDivByZero, y.r, 0) END ;
       load(x);  put(RVAssem.div(RH-2, x.r, y.r)); decR;
       x.r := RH-1
     END
@@ -1045,7 +1045,7 @@ BEGIN
       END
     ELSE
       load(y);
-      IF check THEN Trap(EQ, TrapDivByZero, RH, 0) END ;
+      IF check THEN Trap(EQ, TrapDivByZero, y.r, 0) END ;
       load(x);
       put(RVAssem.rem(RH-2, x.r, y.r)); decR;
       x.r := RH-1
@@ -1081,7 +1081,7 @@ END Singleton;
 
 PROCEDURE Set*(VAR x, y: Item);   (* x := {x .. y} *)
 BEGIN
-  IF (x.mode = ORB.Const) & ( y.mode = ORB.Const) THEN
+  IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN
     IF x.a <= y.a THEN
       x.a := LSL(2, y.a) - LSL(1, x.a)
     ELSE
@@ -1118,14 +1118,14 @@ PROCEDURE In*(VAR x, y: Item);  (* x := x IN y *)
 BEGIN
   load(y);
   IF x.mode = ORB.Const THEN
-    put(RVAssem.slli(y.r, y.r, (BitsPerInteger-1)-x.a)); decR
+    put(RVAssem.slli(y.r, y.r, (BitsPerInteger)-x.a));
   ELSE
     load(x);  LoadImm(63);
     put(RVAssem.sub(x.r, RH, x.r));
     put(RVAssem.sll(y.r, y.r, x.r));
-    decR; decR
+    decR;
   END ;
-  SetCC0(x, LT)
+  SetCC0(x, LT); decR
 END In;
 
 PROCEDURE SetOp*(op: INTEGER; VAR x, y: Item);   (* x := x op y *)
