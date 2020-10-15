@@ -7,7 +7,6 @@
 MODULE RVAssem;
   IMPORT ORS;
 
-
 (*
   These two procedures are the lowest level assemblers in the module.
   The I- and U- format instructions are *the* fundamental instruction forms
@@ -17,7 +16,6 @@ MODULE RVAssem;
   Note that loc refers to a word-aligned location (measured in 32-bit words)
   in the code array.
 *)
-
 
 PROCEDURE fmtI*(opcode, fn3, rd, rs1, imm: INTEGER): INTEGER;
 BEGIN
@@ -195,7 +193,7 @@ BEGIN RETURN fmtI(13H, 5, rd, rs1, imm MOD 64)
 END srli;
 
 PROCEDURE srai*(rd, rs1, imm: INTEGER): INTEGER;
-BEGIN RETURN fmtI(13H, 5, rd, rs1, imm MOD 64 + 40000000H)
+BEGIN RETURN fmtI(13H, 5, rd, rs1, imm MOD 64 + 400H)
 END srai;
 
 PROCEDURE ori*(rd, rs1, imm: INTEGER): INTEGER;
@@ -379,4 +377,3 @@ BEGIN RETURN fmtR(33H, 7, 1, rd, rs1, rs2)
 END remu;
 
 END RVAssem.
-
