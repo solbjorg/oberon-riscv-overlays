@@ -1118,7 +1118,7 @@ PROCEDURE In*(VAR x, y: Item);  (* x := x IN y *)
 BEGIN
   load(y);
   IF x.mode = ORB.Const THEN
-    put(RVAssem.slli(y.r, y.r, (BitsPerInteger)-x.a));
+    put(RVAssem.slli(y.r, y.r, (BitsPerInteger-1)-x.a));
   ELSE
     load(x);  LoadImm(63);
     put(RVAssem.sub(x.r, RH, x.r));

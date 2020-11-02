@@ -69,11 +69,8 @@ MODULE VDiskUtil;
   PROCEDURE InstallFiles*;
     VAR S: Texts.Scanner;
       name: ARRAY 32 OF CHAR;
-      destinations: ARRAY 100 OF ARRAY 32 OF CHAR;
-      i, j: INTEGER;
       V: VDisk.VDisk;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
-    i := 0;
     IF S.class = Texts.Name THEN
       V := OldVDisk(S.s);
       IF V # NIL THEN Texts.Scan(S);
@@ -83,16 +80,12 @@ MODULE VDiskUtil;
             IF (S.class = Texts.Char) & (S.c = ">") THEN Texts.Scan(S);
               IF S.class = Texts.Name THEN
                 InstallFile(V, name, S.s);
-                destinations[i] := S.s; INC(i);
                 Texts.Scan(S);
               END;
             END;
           END;
         END;
       END;
-    END;
-    FOR j := 0 TO i-1 BY 1 DO
-      CheckFile(V, destinations[j]);
     END;
   END InstallFiles;
 

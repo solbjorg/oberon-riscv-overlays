@@ -1,5 +1,5 @@
 MODULE RVTexts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10.1.2019*)
-  IMPORT Files:=RVFiles, Fonts:=RVFonts;
+  IMPORT SYSTEM, Files:=RVFiles, Fonts:=RVFonts;
 
   CONST (*scanner symbol classes*)
     Inval* = 0;         (*invalid symbol*)
@@ -241,7 +241,10 @@ MODULE RVTexts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 
     T.len := T.len + B.len; end := pos + B.len;
     B.last := B.header; B.last.next := NIL; B.len := 0;
     T.changed := TRUE;
-    IF T.notify # NIL THEN  T.notify(T, insert, pos, end) END
+    (* Broadcast comes from here; calls TextFrames.NotifyDisplay: *)
+    IF T.notify # NIL THEN
+      SYSTEM.PUT(-60, 0A0A0H);
+      T.notify(T, insert, pos, end) END
   END Insert;
 
   PROCEDURE Append* (T: Text; B: Buffer);
@@ -342,7 +345,7 @@ MODULE RVTexts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 
     VAR ch: CHAR;
       neg, negE, hex: BOOLEAN;
       i, j, h, d, e, n, s: INTEGER;
-      x: REAL;
+      (*x: REAL;*)
   BEGIN ch := S.nextCh; i := 0;
     WHILE (ch = " ") OR (ch = TAB) OR (ch = CR) DO
       IF ch = CR THEN INC(S.line) END ;
@@ -430,8 +433,9 @@ MODULE RVTexts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 
     IF (W.buf.last.fnt # W.fnt) OR (W.buf.last.col # W.col) OR (W.buf.last.voff # W.voff) THEN
       NEW(p); p.f := Files.Base(W.rider); p.off := Files.Pos(W.rider); p.len := 0;
       p.fnt := W.fnt; p.col := W.col; p.voff:= W.voff;
-      p.next := NIL; W.buf.last.next := p;
-      p.prev := W.buf.last; W.buf.last := p
+      p.next := NIL;
+      W.buf.last.next := p;
+      p.prev := W.buf.last; W.buf.last := p;
     END;
     Files.Write(W.rider, ch);
     INC(W.buf.last.len); INC(W.buf.len)
@@ -444,6 +448,7 @@ MODULE RVTexts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 
   PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
     VAR i: INTEGER;
   BEGIN i := 0;
+    SYSTEM.PUT(-60, 05716H);
     WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
   END WriteString;
 

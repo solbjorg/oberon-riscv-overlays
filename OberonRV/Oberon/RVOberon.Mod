@@ -366,13 +366,14 @@ MODULE RVOberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       Input.Mouse(keys, X, Y);
       IF Input.Available() > 0 THEN Input.Read(ch);
         IF ch = ESC THEN
-          N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer); LED(0)
+          N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer); SYSTEM.PUT(-60, 0);
         ELSIF ch = SETSTAR THEN
           N.id := mark; N.X := X; N.Y := Y; V := Viewers.This(X, Y); V.handle(V, N)
         ELSE M.id := consume; M.ch := ch; M.fnt := CurFnt; M.col := CurCol; M.voff := CurOff;
           FocusViewer.handle(FocusViewer, M); DEC(ActCnt)
         END
       ELSIF keys # {} THEN
+        SYSTEM.PUT(-60, 0EEH);
         M.id := track; M.X := X; M.Y := Y; M.keys := keys;
         REPEAT V := Viewers.This(M.X, M.Y); V.handle(V, M); Input.Mouse(M.keys, M.X, M.Y)
         UNTIL M.keys = {};
@@ -394,6 +395,7 @@ MODULE RVOberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE Reset*;
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
+    SYSTEM.PUT(-60, 0AAAAAAAAH);
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 

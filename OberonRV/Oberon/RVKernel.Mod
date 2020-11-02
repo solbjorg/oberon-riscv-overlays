@@ -69,7 +69,6 @@ MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (*called by NEW via MT[0]; ptr and tag are pointers*)
     VAR p, size, lim: LONGINT;
   BEGIN SYSTEM.GET(tag, size);
-    SYSTEM.PUT(-60, 1234H);
     IF size = 32 THEN GetBlock32(p)
     ELSIF size = 64 THEN GetBlock64(p)
     ELSIF size = 128 THEN GetBlock128(p)
@@ -203,7 +202,6 @@ MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   END InitSecMap;
 
   (* Sector numbers are always a multiple of 29 for the purpose of redundancy checks. (p. 110) *)
-  (* Additionally, sec MOD 29 = 0 must be true for this to be a valid sector number. *)
   PROCEDURE MarkSector*(sec: INTEGER);
   BEGIN ASSERT(sec MOD 29 = 0); sec := sec DIV 29;
     INCL(sectorMap[sec DIV 32], sec MOD 32); INC(NofSectors)
@@ -225,7 +223,8 @@ MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   END AllocSector;
 
   PROCEDURE GetSector*(src: INTEGER; VAR dst: Sector);
-  BEGIN ASSERT(src MOD 29 = 0); src := src DIV 29;
+  BEGIN SYSTEM.PUT(-60, 0DEAD0000H + src);
+    ASSERT(src MOD 29 = 0); src := src DIV 29;
     src := src * 2 + FSoffset;
     ReadSD(src, SYSTEM.ADR(dst)); ReadSD(src+1, SYSTEM.ADR(dst)+512) 
   END GetSector;
@@ -280,14 +279,15 @@ MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
     IF w = 0 THEN New(a, b)
     (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
-    ELSE (*stop*) SYSTEM.PUT(led, w + 192); REPEAT UNTIL FALSE
+    ELSE (*stop*) SYSTEM.PUT(led, v); REPEAT UNTIL FALSE
     END;
-    SYSTEM.PUT(-60, 7CH);
     (* Ok, more explanation of some of the low-level hacks in use here. *)
     (* We had to deposit the trap number _after_ the instruction, which means if we *)
     (* return to that location, we're in trouble, as it will execute gobbledygook. *)
     (* Ideal solution: we just add 4 to RA, and we'll jump to after the trap number. *)
     (* That doesn't work, as the function epilogue overwrites RA... *)
+    (* So currently there is a jump instruction to skip over the trapnum as we return... *)
+    (* It is ugly. *)
     (* Note that this will never execute if trapnum > 0; but we had to do *)
     (* this for NEW() to work as it's supposed to. *)
     (* There may be a better scheme for RISC-V! TODO. *)

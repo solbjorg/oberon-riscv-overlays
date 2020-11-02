@@ -46,6 +46,9 @@ MODULE RVInput; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Cere
     VAR w: INTEGER;
   BEGIN SYSTEM.GET(msAdr, w);
     keys := SYSTEM.VAL(SET, w DIV 1000000H MOD 8);
+    IF 0 IN keys THEN
+      SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, keys));
+    END;
     x := w MOD 400H; y := (w DIV 1000H) MOD 400H;
     IF y >= MH THEN y := MH-1 END
   END Mouse;
@@ -56,6 +59,7 @@ MODULE RVInput; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Cere
 
   PROCEDURE Init*;
   BEGIN Up := FALSE; Shift := FALSE; Ctrl := FALSE; Recd := FALSE;
+    (* This isn't covered by the Oberon07 report. What's happening here??? *)
     KTabAdr := SYSTEM.ADR($
       00 00 00 00 00 1A 00 00  00 00 00 00 00 09 60 00
       00 00 00 00 00 71 31 00  00 00 7A 73 61 77 32 00
@@ -75,5 +79,5 @@ MODULE RVInput; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Cere
       00 7F 00 00 00 00 1B 00  00 00 00 00 00 00 00 00$)
   END Init;
 
-BEGIN Init
+BEGIN Init();
 END RVInput.

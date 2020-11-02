@@ -162,7 +162,8 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         Files.ReadInt(R, n);
         WHILE n > 0 DO buffer[p] := 0; INC(p); DEC(n, 4) END ;  (*variable space*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
+        Texts.WriteLn(W); Texts.WriteString(W, "String is ");
+        WHILE n > 0 DO Files.ReadInt(R, w);Texts.WriteHex(W, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
         mod.desc.code := p * 4;  (*program*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n) END ;  (*program code*)
@@ -312,15 +313,19 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
     FOR n := 0 TO LEN(buffer) - 1 DO buffer[n] := 0 END ;
     AllocPtr := 100H;
     Load(name, buffer, mod);
-    Texts.WriteLn(W); Texts.WriteHex(W, res); Texts.Append(Oberon.Log, W.buf);
-    buffer[4] := AllocPtr;
-    buffer[5] := mod.addr; (* crashes here :(  *)
-    buffer[6] := 40000H;  (*module limit*)
-    (*store module descriptors*)
-    WHILE root # NIL DO
-      Copy(SYSTEM.ADR(root.desc), SYSTEM.ADR(buffer) + root.addr, DescSize DIV 4);
-      root := root.next
-    END
+    Texts.WriteLn(W); Texts.WriteString(W, "Result of link (0 is good): "); Texts.WriteHex(W, res); Texts.Append(Oberon.Log, W.buf);
+    IF res = 0 THEN
+      Texts.WriteLn(W); Texts.WriteString(W, "Root address: "); Texts.WriteHex(W, mod.addr); Texts.Append(Oberon.Log, W.buf);
+      Texts.WriteLn(W); Texts.WriteString(W, "Alloc ptr: "); Texts.WriteHex(W, AllocPtr); Texts.Append(Oberon.Log, W.buf);
+      buffer[4] := AllocPtr;
+      buffer[5] := mod.addr; (* crashes here :(  *)
+      buffer[6] := 40000H;  (*module limit*)
+      (*store module descriptors*)
+      WHILE root # NIL DO
+        Copy(SYSTEM.ADR(root.desc), SYSTEM.ADR(buffer) + root.addr, DescSize DIV 4);
+        root := root.next
+      END
+    END;
   END Link;
 
   PROCEDURE LinkDiskImage*(modname: ARRAY OF CHAR; corename: ARRAY OF CHAR);
@@ -358,7 +363,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
     IF S.class = Texts.Name THEN modname := S.s; Texts.Scan(S);
       IF S.class = Texts.Name THEN corename := S.s;
         linkProc(modname, corename);
-        Texts.WriteString(W, "Linking "); Texts.WriteString(W, corename);
+        Texts.WriteLn(W); Texts.WriteString(W, "Linking "); Texts.WriteString(W, corename);
         IF res = 0 THEN
           Texts.WriteInt(W, AllocPtr, 6)
         ELSE

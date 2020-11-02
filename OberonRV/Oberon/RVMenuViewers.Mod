@@ -174,6 +174,7 @@ MODULE RVMenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
         IF M.id = Oberon.track THEN
           X := M.X; Y := M.Y;
           IF Y < V.Y + 1 THEN Oberon.DrawMouseArrow(X, Y)
+            (*Crashes on this type guard:*)
           ELSIF Y < V.Y + V.H - V(Viewer).menuH THEN Main.handle(Main, M)
           ELSIF Y < V.Y + V.H - V(Viewer).menuH + 2 THEN Menu.handle(Menu, M)
           ELSIF Y < V.Y + V.H - 1 THEN

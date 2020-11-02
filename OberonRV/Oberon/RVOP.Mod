@@ -911,7 +911,7 @@ END RoundUp;
       ORB.Init; ORB.OpenScope;
       IF sym = ORS.ident THEN
         ORS.CopyId(modid); ORS.Get(sym);
-        Texts.WriteString(W, modid); Texts.Append(Oberon.Log, W.buf)
+        Texts.WriteString(W, modid); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
       ELSE ORS.Mark("identifier expected")
       END ;
       Check(ORS.semicolon, "no ;"); level := 0; dc := 0; exno := 1; key := 0;
@@ -934,7 +934,7 @@ END RoundUp;
         Check(ORS.semicolon, "no ;")
       END ;
       obj := ORB.topScope.next;
-      RVOG.Open(version); Declarations(dc); RVOG.SetDataSize(RoundUp(dc));
+      RVOG.Open(version, modid); Declarations(dc); RVOG.SetDataSize(RoundUp(dc));
       WHILE sym = ORS.procedure DO ProcedureDecl; Check(ORS.semicolon, "no ;") END ;
       RVOG.Header;
       IF sym = ORS.begin THEN ORS.Get(sym); StatSequence END ;
@@ -950,6 +950,7 @@ END RoundUp;
         IF newSF THEN Texts.WriteString(W, " new symbol file") END
       END ;
       IF ORS.errcnt = 0 THEN
+        RVOG.CheckRegs();
         RVOG.Close(modid, key, exno);
         Texts.WriteInt(W, RVOG.pc, 6); Texts.WriteInt(W, dc, 6); Texts.WriteHex(W, key)
       ELSE Texts.WriteLn(W); Texts.WriteString(W, "compilation FAILED")
@@ -1000,7 +1001,7 @@ END RoundUp;
     Oberon.Collect(0)
   END Compile;
 
-BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "OR Compiler  7.6.2014");
+BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "RISC-V OR Compiler  2020-09-23");
   Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
   NEW(dummy); dummy.class := ORB.Var; dummy.type := ORB.intType;
   expression := expression0; Type := Type0; FormalType := FormalType0

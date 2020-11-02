@@ -199,7 +199,8 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
 
   PROCEDURE Buf(f: File; pos: INTEGER): Buffer;
     VAR buf: Buffer;
-  BEGIN buf := f.firstbuf;
+  BEGIN
+    buf := f.firstbuf; (* crashes here *)
     WHILE (buf.apos # pos) & (buf.next # f.firstbuf) DO buf := buf.next END ;
     IF buf.apos # pos THEN buf := NIL END ;
     RETURN buf
@@ -207,7 +208,8 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
 
   PROCEDURE GetBuf(f: File; pos: INTEGER): Buffer;
     VAR buf: Buffer;
-  BEGIN buf := f.firstbuf;
+  BEGIN
+    buf := f.firstbuf;
     WHILE (buf.apos # pos) & (buf.next # f.firstbuf) DO buf := buf.next END ;
     IF buf.apos # pos THEN 
       IF f.nofbufs < MaxBufs THEN  (*allocate new buffer*)
@@ -325,9 +327,9 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         a := (pos + HS) DIV SS; b := (pos + HS) MOD SS;
       ELSE a := f.aleng; b := f.bleng
       END ;
-      r.file := f; r.apos := a; r.bpos := b; r.buf := f.firstbuf
-    ELSE r.file:= NIL
-    END
+      r.file := f; r.apos := a; r.bpos := b; r.buf := f.firstbuf;
+    ELSE r.file := NIL
+    END;
   END Set;
 
   PROCEDURE Pos*(VAR r: Rider): INTEGER;
@@ -375,13 +377,13 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       END ;
       ch := CHR(r.buf.data[0]); r.bpos := 1
     ELSE ch := 0X; r.eof := TRUE
-    END
+    END;
   END Read;
 
   PROCEDURE ReadInt*(VAR R: Rider; VAR x: INTEGER);
     VAR x0, x1, x2, x3: BYTE;
   BEGIN ReadByte(R, x0); ReadByte(R, x1); ReadByte(R, x2); ReadByte(R, x3);
-    x := ((x3 * 100H + x2) * 100H + x1) * 100H + x0
+    x := ((x3 * 100H + x2) * 100H + x1) * 100H + x0;
   END ReadInt;
 
   PROCEDURE ReadSet*(VAR R: Rider; VAR s: SET);
@@ -489,7 +491,7 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   (*---------------------------System use---------------------------*)
 
   PROCEDURE Init*;
-  BEGIN root := 0; Kernel.Init; FileDir.Init
+  BEGIN root := 0; Kernel.Init; FileDir.Init; SYSTEM.PUT(-60, 0F0FCDH)
   END Init;
 
   PROCEDURE RestoreList*; (*after mark phase of garbage collection*)

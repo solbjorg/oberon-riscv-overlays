@@ -3,7 +3,7 @@ import sys, os, os.path, argparse, logging, csv, subprocess
 
 NOREBO_ROOT = os.path.dirname(os.path.realpath(__file__))
 FILE_LIST = list(csv.DictReader(open(os.path.join(NOREBO_ROOT, 'manifest.csv'))))
-top = 'RVModules'
+top = ""
 
 def read_file_list(manifest):
     global FILE_LIST
@@ -81,6 +81,9 @@ def build_norebo(target_dir):
     bulk_rename(target_dir, 'rsx', 'rsc')
 
 def rv_build_image(sources_dir):
+    global top
+    if top == "":
+        top = "RVModules"
     sources_dir  = os.path.realpath(sources_dir)
 
     target_dir = os.path.join(NOREBO_ROOT, 'imagebuild')
@@ -122,12 +125,13 @@ def rv_build_image(sources_dir):
 
     for fi in FILE_LIST:
         mod = fi['filename']
-        install_args.append(copy(mod, mod))
+        if not mod.endswith('.Mod'):
+            install_args.append(copy(mod, mod))
         if fi['mode'] == 'source':
             smb = mod.replace('.Mod', '.smb')
             rsx = mod.replace('.Mod', '.rsx')
             rsc = mod.replace('.Mod', '.rsc')
-            install_args.append(copy(smb, smb))
+            #install_args.append(copy(smb, smb))
             install_args.append(copy(rsx, rsc))
 
     norebo(['VDiskUtil.InstallFiles'] + install_args,
@@ -152,6 +156,10 @@ def rv_build_image(sources_dir):
     logging.info('All done! Finished disk image is %s', os.path.join(target_dir, 'Oberon.dsk'))
 
 def build_image(sources_dir):
+    global top
+    if top == "":
+        top = "Modules"
+
     sources_dir  = os.path.realpath(sources_dir)
 
     target_dir = os.path.join(NOREBO_ROOT, 'imagebuild')
@@ -180,7 +188,7 @@ def build_image(sources_dir):
     logging.info('Linking the Inner Core')
     # Hide the rsc files, Norebo can't use them (CoreLinker knows to expect this extension)
     bulk_rename(oberon_dir, 'rsc', 'rsx')
-    norebo(['CoreLinker.LinkDisk', 'Modules', 'Oberon.dsk'],
+    norebo(['CoreLinker.LinkDisk', top, 'Oberon.dsk'],
            working_directory=target_dir,
            search_path=[oberon_dir, norebo_dir])
 
@@ -190,6 +198,11 @@ def build_image(sources_dir):
         return '%s=>%s' % (src, dst)
 
     install_args = ['Oberon.dsk']
+    install_args.extend(
+        copy(fn, fn)
+        for fn in sorted(os.listdir(sources_dir))
+        if not fn.startswith("."))
+
 
     # This only copies over files found in the manifest. This is deliberate, and way less of a headache!
     for fi in FILE_LIST:
@@ -240,13 +253,14 @@ def main():
     if (args.manifest and args.manifest != 'manifest.csv'):
         read_file_list(args.manifest)
 
-    # overwrites -m
+    # modifies -m
     # this should be documented much better, TODO...
     # also only works with RV atm, mostly because I don't really need this with R5.
     if (args.testfile):
         global FILE_LIST, top
-        FILE_LIST = [{"mode":"source","filename":args.testfile}]
-        top = FILE_LIST[0]["filename"].replace('.Mod', '')
+        FILE_LIST.append({"mode":"source","filename":args.testfile});
+        top = FILE_LIST[-1]["filename"].replace('.Mod', '')
+        print(top)
 
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 

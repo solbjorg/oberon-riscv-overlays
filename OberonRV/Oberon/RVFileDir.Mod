@@ -68,10 +68,9 @@ MODULE RVFileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
       ELSIF R = 0 THEN dadr := a.p0
       ELSE dadr := a.e[R-1].p
       END ;
-    UNTIL (dadr = 0) OR (A # 0)
+    UNTIL (dadr = 0) OR (A # 0);
   END Search;
 
-  (* Seems like the sheer size of these variables is too large for the current compiler *)
   PROCEDURE insert(name: FileName;
                    dpg0:  DiskAdr;
                    VAR h: BOOLEAN;
@@ -289,32 +288,34 @@ MODULE RVFileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
 
 (* ----- initialization ----- *)
 
-PROCEDURE Init*;
-    VAR k: INTEGER;
+  PROCEDURE Init*;
+    VAR k, i: INTEGER;
         A: ARRAY 2000 OF DiskAdr;
 
     PROCEDURE MarkSectors(VAR A: ARRAY OF DiskAdr; k: INTEGER);
-      VAR L, R, i, j, n: INTEGER; x: DiskAdr;
+      VAR L, R, i, j, n, p: INTEGER; y: DiskAdr;
         hd: FileHeader;
         B: IndexSector;
 
       PROCEDURE sift(VAR A: ARRAY OF DiskAdr; L, R: INTEGER);
-        VAR i, j: INTEGER; x: DiskAdr;
-      BEGIN j := L; x := A[j];
-        REPEAT i := j; j := 2*j + 1;
-          IF (j+1 < R) & (A[j] < A[j+1]) THEN INC(j) END ;
-          IF (j < R) & (x <= A[j]) THEN A[i] := A[j] END
-        UNTIL (j >= R) OR (x > A[j]);
-        A[i] := x
+        VAR k, l: INTEGER; x: DiskAdr;
+      BEGIN l := L; x := A[l];
+        REPEAT k := l; l := 2*l + 1;
+          IF (l+1 < R) & (A[l] < A[l+1]) THEN INC(l) END ;
+          IF (l < R) & (x <= A[l]) THEN A[k] := A[l] END
+        UNTIL (l >= R) OR (x > A[l]);
+        A[k] := x;
       END sift;
 
-    BEGIN L := k DIV 2; R := k; (*heapsort*)
+    BEGIN
+      L := k DIV 2; R := k; (*heapsort*)
       WHILE L > 0 DO DEC(L); sift(A, L, R) END ;
       WHILE R > 0 DO
-        DEC(R); x := A[0]; A[0] := A[R]; A[R] := x; sift(A, L, R)
+        DEC(R); y := A[0]; A[0] := A[R]; A[R] := y; sift(A, L, R)
       END ;
-      WHILE L < k DO
-        Kernel.GetSector(A[L], hd); ASSERT(hd.mark = HeaderMark);
+      WHILE L < k DO (* L goes from 0 to k *)
+        Kernel.GetSector(A[L], hd);
+        ASSERT(hd.mark = HeaderMark);
         IF hd.aleng < SecTabSize THEN j := hd.aleng + 1;
           REPEAT DEC(j); Kernel.MarkSector(hd.sec[j]) UNTIL j = 0
         ELSE j := SecTabSize;
@@ -347,7 +348,9 @@ PROCEDURE Init*;
       END
     END TraverseDir;
 
-  BEGIN k := 0; SYSTEM.PUT(-60, 5000H); TraverseDir(A, k, DirRootAdr); MarkSectors(A, k)
+  BEGIN
+    k := 0; TraverseDir(A, k, DirRootAdr);
+    MarkSectors(A, k)
   END Init; 
   
 END RVFileDir.

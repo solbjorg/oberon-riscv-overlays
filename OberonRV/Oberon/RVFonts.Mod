@@ -105,5 +105,5 @@ PROCEDURE Free*;  (*remove all but first two from font list*)
 BEGIN IF root.next # NIL THEN root.next.next := NIL END
 END Free;
 
-BEGIN root := NIL; Default := This("Oberon10.Scn.Fnt")
+BEGIN root := NIL; SYSTEM.PUT(-60, 0BFF4H); Default := This("Oberon10.Scn.Fnt");
 END RVFonts.

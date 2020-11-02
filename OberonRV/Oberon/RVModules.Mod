@@ -24,7 +24,7 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       filename: ModuleName;
   BEGIN
     i := 0;
-    WHILE name[i] # 0X DO filename[i] := name[i]; SYSTEM.PUT(-60, filename[i]); INC(i) END ;
+    WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
     filename[i] := "."; filename[i+1] := "r"; filename[i+2] := "s"; filename[i+3] := "c"; filename[i+4] := 0X;
     RETURN Files.Old(filename)
   END ThisFile;
@@ -99,9 +99,7 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     IF mod # NIL THEN (* Hacky workaround. The if statement is so large that the number of *)
                       (* instructions to jump over does not fit in a branch statement... *)
                       (* But ELSE uses JAL -- so we have much more room to work with there. *)
-      SYSTEM.PUT(-60, 0FACCH);
     ELSE
-      SYSTEM.PUT(-60, 0FBAC0000H);
       Check(name);
       IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END ;
       IF F # NIL THEN
@@ -201,7 +199,6 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           IF (inst MOD 8H # 5) THEN SYSTEM.PUT(-60, 0FFFFFH); END;
           mno := inst DIV 10H MOD 128;
           disp := inst DIV 10000H;
-          SYSTEM.PUT(-60, disp);
           IF mno = 0 THEN (*global*)
             SYSTEM.PUT(adr, Lw(mod.num * 4))
           ELSE (*import*)
@@ -229,15 +226,11 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         SYSTEM.PUT(-60, 0FBAC3100H);
         (*fixup of type descriptors*)
         adr := mod.data + fixorgT*4;
-        SYSTEM.PUT(-60, mod.data);
-        SYSTEM.PUT(-60, adr);
         WHILE adr # mod.data DO
           SYSTEM.GET(adr, inst);
           mno := inst DIV 1000000H MOD 10H;
           vno := inst DIV 1000H MOD 1000H;
           disp := inst MOD 1000H;
-          SYSTEM.PUT(-60, inst);
-          SYSTEM.PUT(-60, disp);
           IF mno = 0 THEN (*global*) inst := mod.data + vno
           ELSE (*import*)
             SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
