@@ -267,7 +267,9 @@ PROCEDURE MakeFwdBranch(cond, l, r, link: INTEGER): INTEGER;
 BEGIN
   ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU, NEV, ALW});
 (*  ASSERT((firstReg <= l) & (l < maxReg)); *)
-  ASSERT(((firstReg <= r) & (r < maxReg)) OR (r = 0));
+  IF ~(((firstReg <= r) & (r < maxReg)) OR (r = 0)) THEN
+    ORS.Mark("Invalid comparison register");
+  END;
   ASSERT((0 <= link) & (link < maxCode));
   RETURN
     LSL(cond MOD 16, 0) +
@@ -287,7 +289,9 @@ BEGIN
   ELSIF cond = NEV THEN code[at] := RVAssem.ori(0, 0, 0)
   ELSE
     (* TODO make this more userfriendly... *)
-    ASSERT(FitsIn12Bits(displacement DIV 2));
+    IF ~FitsIn12Bits(displacement DIV 2) THEN
+      ORS.Mark("Conditional too large");
+    END;
     code[at] := RVAssem.fmtSB(63H, cond, lr, rr, displacement)
   END
 END fix;
@@ -644,7 +648,8 @@ PROCEDURE loadCond(VAR x: Item);
 BEGIN
   IF x.type.form = ORB.Bool THEN
     IF x.mode = ORB.Const THEN
-      IF x.a # 0 THEN x.r := ALW ELSE x.r := NEV END
+      IF x.a # 0 THEN x.r := ALW ELSE x.r := NEV END;
+      x.cr := 0; x.cl := 0;
     ELSE
       load(x);
       x.r := NE; x.cl := RH-1; x.cr := 0; DEC(RH)
@@ -1477,8 +1482,8 @@ PROCEDURE Call*(VAR x: Item; r: INTEGER);
 BEGIN (*x.type.form = ORB.Proc*)
   (* Store where we call the function from to a magic IO port - for debugging purposes *)
   incR;
-  i := 2;
-  WHILE (modid[i] # 0X) & (i < 7) DO
+  i := 0;
+  WHILE (modid[i] # 0X) & (i < 5) DO
     LoadImm(LSL(0AAH, 24) + ORD(modid[i]) MOD C24);
     put(RVAssem.sw(RH, 0, -32));
     INC(i);
@@ -1498,7 +1503,6 @@ BEGIN (*x.type.form = ORB.Proc*)
     END
   ELSE
     IF x.mode <= ORB.Par THEN
-      Texts.WriteLn(W); Texts.WriteString(W, "dynamic dispatch"); Texts.Append(Oberon.Log, W.buf);
       load(x); decR
     ELSE
       put(RVAssem.lw(RH, SP, 0)); put(RVAssem.addi(SP, SP, IntegerSize));
