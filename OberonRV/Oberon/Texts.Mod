@@ -1,5 +1,5 @@
-MODULE RVTexts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10.1.2019*)
-  IMPORT SYSTEM, Files:=RVFiles, Fonts:=RVFonts;
+MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10.1.2019*)
+  IMPORT SYSTEM, Files, Fonts;
 
   CONST (*scanner symbol classes*)
     Inval* = 0;         (*invalid symbol*)
@@ -546,4 +546,4 @@ MODULE RVTexts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 
   END WriteClock;
 
 BEGIN TrailerFile := Files.New("")
-END RVTexts.
+END Texts.

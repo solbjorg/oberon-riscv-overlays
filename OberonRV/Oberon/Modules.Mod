@@ -1,5 +1,5 @@
-MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
-  IMPORT SYSTEM, Files:=RVFiles;
+MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
+  IMPORT SYSTEM, Files;
   CONST versionkey = 1X; MT = 4; DescSize = 80;
     addi = 19; load = 3; store = 35;
 
@@ -284,6 +284,6 @@ MODULE RVModules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H)
   END Init;
 
-BEGIN SYSTEM.PUT(-60, 77H); Init; Load("RVOberon", M);
+BEGIN SYSTEM.PUT(-60, 77H); Init; Load("Oberon", M);
     SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE  (*only if load fails*)
-END RVModules.
+END Modules.

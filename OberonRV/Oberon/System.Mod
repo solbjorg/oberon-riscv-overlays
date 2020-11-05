@@ -1,6 +1,5 @@
-MODULE RVSystem; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
-  IMPORT SYSTEM, Kernel:=RVKernel, FileDir:=RVFileDir, Files:=RVFiles, Modules:=RVModules,
-    Input:=RVInput, Display:=RVDisplay, Viewers:=RVViewers, Fonts:=RVFonts, Texts:=RVTexts, Oberon:=RVOberon, MenuViewers:=RVMenuViewers, TextFrames:=RVTextFrames;
+MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
+  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
   CONST
     StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store";
@@ -416,4 +415,4 @@ MODULE RVSystem; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 BEGIN Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
   Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);
-END RVSystem.
+END System.

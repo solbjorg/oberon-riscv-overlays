@@ -1,4 +1,4 @@
-MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
+MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   IMPORT SYSTEM;
   CONST SectorLength* = 1024;
     timer = -64; led = -60; spiData = -48; spiCtrl = -44;
@@ -304,4 +304,4 @@ MODULE RVKernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     allocated := 0; clock := 0; InitSecMap
   END Init;
 
-END RVKernel.
+END Kernel.

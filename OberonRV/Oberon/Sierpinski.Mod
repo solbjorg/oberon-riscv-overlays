@@ -1,7 +1,7 @@
 MODULE Sierpinski;  (*NW 15.1.2013*)
-  IMPORT Files:=RVFiles, Fonts:=RVFonts, Display:=RVDisplay, Viewers:=RVViewers, Texts:=RVTexts, Oberon:=RVOberon, MenuViewers:=RVMenuViewers, TextFrames:=RVTextFrames;
+  IMPORT Display, Viewers, Oberon, MenuViewers, TextFrames;
 
-  CONST Menu = "RVSystem.Close  RVSystem.Copy  RVSystem.Grow";
+  CONST Menu = "System.Close  System.Copy  System.Grow";
 
   VAR x, y, d: INTEGER;
     A, B, C, D: PROCEDURE (i: INTEGER);

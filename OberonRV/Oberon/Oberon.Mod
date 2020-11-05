@@ -1,5 +1,5 @@
-MODULE RVOberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
-  IMPORT SYSTEM, Kernel:=RVKernel, Files:=RVFiles, Modules:=RVModules, Input:=RVInput, Display:=RVDisplay, Viewers:=RVViewers, Fonts:=RVFonts, Texts:=RVTexts;
+MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
+  IMPORT SYSTEM, Kernel, Files, Modules, Input, Display, Viewers, Fonts, Texts;
 
   CONST (*message ids*)
     consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
@@ -395,7 +395,6 @@ MODULE RVOberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE Reset*;
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
-    SYSTEM.PUT(-60, 0AAAAAAAAH);
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 
@@ -410,5 +409,5 @@ BEGIN User[0] := 0X;
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
-  Modules.Load("RVSystem", Mod); Mod := NIL; Loop
-END RVOberon.
+  Modules.Load("System", Mod); Mod := NIL; Loop
+END Oberon.

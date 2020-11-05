@@ -1,5 +1,5 @@
 MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
-  IMPORT SYSTEM, Files:=RVFiles, Fonts:=RVFonts, Display:=RVDisplay, Viewers:=RVViewers, Texts:=RVTexts, Oberon:=RVOberon, MenuViewers:=RVMenuViewers, TextFrames:=RVTextFrames;
+  IMPORT SYSTEM, Display, Viewers, Texts, Oberon, MenuViewers, TextFrames;
 
   CONST N = 6;  (*nof stars*)
     w = 16;   (*width of star*)
@@ -77,7 +77,7 @@ MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
   BEGIN NEW(F); F.handle := Handle;
     Oberon.AllocateUserViewer(Oberon.Par.vwr.X, X, Y);
     V := MenuViewers.New(
-      TextFrames.NewMenu("Stars", "Stars.Close  RVSystem.Grow  RVSystem.Copy  Stars.Step  Stars.Run  Stars.Stop"),
+      TextFrames.NewMenu("Stars", "Stars.Close  System.Grow  System.Copy  Stars.Step  Stars.Run  Stars.Stop"),
       F, TextFrames.menuH, X, Y)
   END Open;
 

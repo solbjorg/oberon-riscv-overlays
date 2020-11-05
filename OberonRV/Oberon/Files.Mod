@@ -1,5 +1,5 @@
-MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
-  IMPORT SYSTEM, Kernel:=RVKernel, FileDir:=RVFileDir;
+MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
+  IMPORT SYSTEM, Kernel, FileDir;
 
   (*A file consists of a sequence of pages. The first page
     contains the header. Part of the header is the page table, an array
@@ -514,4 +514,4 @@ MODULE RVFiles;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     END
   END RestoreList;
 
-END RVFiles.
+END Files.

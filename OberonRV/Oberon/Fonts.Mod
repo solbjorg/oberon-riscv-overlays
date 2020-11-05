@@ -1,5 +1,5 @@
-MODULE RVFonts; (*JG 18.11.90; PDR 8.6.12; NW 18.1.2019*)
-  IMPORT SYSTEM, Files:=RVFiles;
+MODULE Fonts; (*JG 18.11.90; PDR 8.6.12; NW 18.1.2019*)
+  IMPORT SYSTEM, Files;
 
   CONST FontFileId = 0DBH;
 
@@ -106,4 +106,4 @@ BEGIN IF root.next # NIL THEN root.next.next := NIL END
 END Free;
 
 BEGIN root := NIL; SYSTEM.PUT(-60, 0BFF4H); Default := This("Oberon10.Scn.Fnt");
-END RVFonts.
+END Fonts.

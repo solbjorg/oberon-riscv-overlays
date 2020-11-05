@@ -1,4 +1,4 @@
-MODULE RVDisplay;  (*NW 5.11.2013 / 17.1.2019*)
+MODULE Display;  (*NW 5.11.2013 / 17.1.2019*)
   IMPORT SYSTEM;
 
   CONST black* = 0; white* = 1;  (*black = background*)
@@ -188,4 +188,4 @@ BEGIN Base := base; Width := 1024; Height := 768;
   cross := SYSTEM.ADR($0F0F 0140 0220 0410 0808 1004 2002 4001 0000 4001 2002 1004 0808 0410 0220 0140$);
   grey := SYSTEM.ADR($2002 0000 5555 5555 AAAA AAAA$);
   SYSTEM.PUT(-60, 0BFF2H);
-END RVDisplay.
+END Display.
