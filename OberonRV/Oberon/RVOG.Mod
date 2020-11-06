@@ -1193,13 +1193,14 @@ BEGIN
   load(x);
   IF (op = ORS.eql) OR (op = ORS.neq) THEN
     IF (y.mode = ORB.Const) & FitsIn11Bits(y.a) THEN
-      put(RVAssem.xori(x.r, x.r, y.a)); decR
+      put(RVAssem.xori(x.r, x.r, y.a)); 
     ELSE
       load(y);
       put(RVAssem.xor(x.r, x.r, y.r));
-      decR; decR
+      decR
     END;
     IF op = ORS.eql THEN SetCC0(x, EQ) ELSE SetCC0(x, NE) END;
+    decR;
   ELSE ORS.Mark("illegal relation")
   END
 END SetRelation;
