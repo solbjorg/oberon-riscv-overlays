@@ -1,21 +1,21 @@
 MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07*)
-  IMPORT Texts, Oberon, ORS, ORB:=RVOB, RVOG;
+  IMPORT Texts, Oberon, RVOS, RVOB, RVOG;
   (*Author: Niklaus Wirth, 2014.
-    Parser of Oberon-RISC compiler. Uses Scanner ORS to obtain symbols (tokens),
-    ORB for definition of data structures and for handling import and export, and
+    Parser of Oberon-RISC compiler. Uses Scanner RVOS to obtain symbols (tokens),
+    RVOB for definition of data structures and for handling import and export, and
     RVOG to produce binary code. RVOP performs type checking and data allocation.
     Parser is target-independent, except for part of the handling of allocations.*)
 
   CONST
-    IntegerSize = ORB.IntegerSize;
-    InsnSize = ORB.InsnSize;
-    BitsPerSet = ORB.BitsPerSet;
+    IntegerSize = RVOB.IntegerSize;
+    InsnSize = RVOB.InsnSize;
+    BitsPerSet = RVOB.BitsPerSet;
 
     BytesForParameters = (RVOG.maxReg - RVOG.firstReg) * IntegerSize;
 
   TYPE PtrBase = POINTER TO PtrBaseDesc;
     PtrBaseDesc = RECORD  (*list of names of pointer base types*)
-      name: ORS.Ident; type: ORB.Type; next: PtrBase
+      name: RVOS.Ident; type: RVOB.Type; next: PtrBase
     END ;
   
   VAR sym: INTEGER;   (*last symbol read*)
@@ -23,11 +23,11 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
     level, exno, version: INTEGER;
     newSF: BOOLEAN;  (*option flag*)
     expression: PROCEDURE (VAR x: RVOG.Item);  (*to avoid forward reference*)
-    Type: PROCEDURE (VAR type: ORB.Type);
-    FormalType: PROCEDURE (VAR typ: ORB.Type; dim: INTEGER);
-    modid: ORS.Ident;
+    Type: PROCEDURE (VAR type: RVOB.Type);
+    FormalType: PROCEDURE (VAR typ: RVOB.Type; dim: INTEGER);
+    modid: RVOS.Ident;
     pbsList: PtrBase;   (*list of names of pointer base types*)
-    dummy: ORB.Object;
+    dummy: RVOB.Object;
     W: Texts.Writer;
 
 PROCEDURE RoundUp(x: INTEGER): INTEGER;
@@ -36,156 +36,156 @@ END RoundUp;
 
   PROCEDURE Check(s: INTEGER; msg: ARRAY OF CHAR);
   BEGIN
-    IF sym = s THEN ORS.Get(sym) ELSE ORS.Mark(msg) END
+    IF sym = s THEN RVOS.Get(sym) ELSE RVOS.Mark(msg) END
   END Check;
 
-  PROCEDURE qualident(VAR obj: ORB.Object);
-  BEGIN obj := ORB.thisObj(); ORS.Get(sym);
-    IF obj = NIL THEN ORS.Mark("undef"); obj := dummy END ;
-    IF (sym = ORS.period) & (obj.class = ORB.Mod) THEN
-      ORS.Get(sym);
-      IF sym = ORS.ident THEN obj := ORB.thisimport(obj); ORS.Get(sym);
-        IF obj = NIL THEN ORS.Mark("undef"); obj := dummy END
-      ELSE ORS.Mark("identifier expected"); obj := dummy
+  PROCEDURE qualident(VAR obj: RVOB.Object);
+  BEGIN obj := RVOB.thisObj(); RVOS.Get(sym);
+    IF obj = NIL THEN RVOS.Mark("undef"); obj := dummy END ;
+    IF (sym = RVOS.period) & (obj.class = RVOB.Mod) THEN
+      RVOS.Get(sym);
+      IF sym = RVOS.ident THEN obj := RVOB.thisimport(obj); RVOS.Get(sym);
+        IF obj = NIL THEN RVOS.Mark("undef"); obj := dummy END
+      ELSE RVOS.Mark("identifier expected"); obj := dummy
       END
     END
   END qualident;
 
   PROCEDURE CheckBool(VAR x: RVOG.Item);
   BEGIN
-    IF x.type.form # ORB.Bool THEN ORS.Mark("not Boolean"); x.type := ORB.boolType END
+    IF x.type.form # RVOB.Bool THEN RVOS.Mark("not Boolean"); x.type := RVOB.boolType END
   END CheckBool;
 
   PROCEDURE CheckInt(VAR x: RVOG.Item);
   BEGIN
-    IF x.type.form # ORB.Int THEN ORS.Mark("not Integer"); x.type := ORB.intType END
+    IF x.type.form # RVOB.Int THEN RVOS.Mark("not Integer"); x.type := RVOB.intType END
   END CheckInt;
 
   PROCEDURE CheckIntOrSet(VAR x: RVOG.Item);
   BEGIN
-    IF (x.type.form # ORB.Int) & (x.type.form # ORB.Set) THEN
-      ORS.Mark("neither integer nor set"); x.type := ORB.intType
+    IF (x.type.form # RVOB.Int) & (x.type.form # RVOB.Set) THEN
+      RVOS.Mark("neither integer nor set"); x.type := RVOB.intType
     END
   END CheckIntOrSet;
 
   PROCEDURE CheckReal(VAR x: RVOG.Item);
   BEGIN
-    IF x.type.form # ORB.Real THEN ORS.Mark("not Real"); x.type := ORB.realType END
+    IF x.type.form # RVOB.Real THEN RVOS.Mark("not Real"); x.type := RVOB.realType END
   END CheckReal;
 
   PROCEDURE CheckSet(VAR x: RVOG.Item);
   BEGIN
-    IF x.type.form # ORB.Set THEN ORS.Mark("not Set"); x.type := ORB.setType END 
+    IF x.type.form # RVOB.Set THEN RVOS.Mark("not Set"); x.type := RVOB.setType END
   END CheckSet;
 
   PROCEDURE CheckSetVal(VAR x: RVOG.Item);
   BEGIN
-    IF x.type.form # ORB.Int THEN ORS.Mark("not Int"); x.type := ORB.setType
-    ELSIF x.mode = ORB.Const THEN
-      IF (x.a < 0) OR (x.a >= BitsPerSet) THEN ORS.Mark("invalid set") END
+    IF x.type.form # RVOB.Int THEN RVOS.Mark("not Int"); x.type := RVOB.setType
+    ELSIF x.mode = RVOB.Const THEN
+      IF (x.a < 0) OR (x.a >= BitsPerSet) THEN RVOS.Mark("invalid set") END
     END 
   END CheckSetVal;
 
   PROCEDURE CheckConst(VAR x: RVOG.Item);
   BEGIN
-    IF x.mode # ORB.Const THEN ORS.Mark("not a constant"); x.mode := ORB.Const END
+    IF x.mode # RVOB.Const THEN RVOS.Mark("not a constant"); x.mode := RVOB.Const END
   END CheckConst;
 
   PROCEDURE CheckReadOnly(VAR x: RVOG.Item);
   BEGIN
-    IF x.rdo THEN ORS.Mark("read-only") END
+    IF x.rdo THEN RVOS.Mark("read-only") END
   END CheckReadOnly;
 
   PROCEDURE CheckExport(VAR expo: BOOLEAN);
   BEGIN
-    IF sym = ORS.times THEN
-      expo := TRUE; ORS.Get(sym);
-      IF level # 0 THEN ORS.Mark("remove asterisk") END
+    IF sym = RVOS.times THEN
+      expo := TRUE; RVOS.Get(sym);
+      IF level # 0 THEN RVOS.Mark("remove asterisk") END
     ELSE expo := FALSE
     END
   END CheckExport;
 
-  PROCEDURE IsExtension(t0, t1: ORB.Type): BOOLEAN;
+  PROCEDURE IsExtension(t0, t1: RVOB.Type): BOOLEAN;
   BEGIN (*t1 is an extension of t0*)
     RETURN (t0 = t1) OR (t1 # NIL) & IsExtension(t0, t1.base)
   END IsExtension;
 
   (* expressions *)
 
-  PROCEDURE TypeTest(VAR x: RVOG.Item; T: ORB.Type; guard: BOOLEAN);
-    VAR xt: ORB.Type;
+  PROCEDURE TypeTest(VAR x: RVOG.Item; T: RVOB.Type; guard: BOOLEAN);
+    VAR xt: RVOB.Type;
   BEGIN xt := x.type;
     WHILE (xt # T) & (xt # NIL) DO xt := xt.base END ;
     IF xt # T THEN xt := x.type;
-      IF (xt.form = ORB.Pointer) & (T.form = ORB.Pointer) THEN
+      IF (xt.form = RVOB.Pointer) & (T.form = RVOB.Pointer) THEN
         IF IsExtension(xt.base, T.base) THEN RVOG.TypeTest(x, T.base, FALSE, guard); x.type := T
-        ELSE ORS.Mark("not an extension")
+        ELSE RVOS.Mark("not an extension")
         END
-      ELSIF (xt.form = ORB.Record) & (T.form = ORB.Record) & (x.mode = ORB.Par) THEN
+      ELSIF (xt.form = RVOB.Record) & (T.form = RVOB.Record) & (x.mode = RVOB.Par) THEN
         IF IsExtension(xt, T) THEN  RVOG.TypeTest(x, T, TRUE, guard); x.type := T
-        ELSE ORS.Mark("not an extension")
+        ELSE RVOS.Mark("not an extension")
         END
-      ELSE ORS.Mark("incompatible types")
+      ELSE RVOS.Mark("incompatible types")
       END
-    ELSIF ~guard THEN RVOG.MakeConstItem(x, ORB.boolType, 1)
+    ELSIF ~guard THEN RVOG.MakeConstItem(x, RVOB.boolType, 1)
     END ;
-    IF ~guard THEN x.type := ORB.boolType END
+    IF ~guard THEN x.type := RVOB.boolType END
   END TypeTest;
 
   PROCEDURE selector(VAR x: RVOG.Item);
-    VAR y: RVOG.Item; obj: ORB.Object;
+    VAR y: RVOG.Item; obj: RVOB.Object;
   BEGIN
-    WHILE (sym = ORS.lbrak) OR (sym = ORS.period) OR (sym = ORS.arrow)
-        OR (sym = ORS.lparen) & (x.type.form IN {ORB.Record, ORB.Pointer}) DO
-      IF sym = ORS.lbrak THEN
-        REPEAT ORS.Get(sym); expression(y);
-          IF x.type.form = ORB.Array THEN
+    WHILE (sym = RVOS.lbrak) OR (sym = RVOS.period) OR (sym = RVOS.arrow)
+        OR (sym = RVOS.lparen) & (x.type.form IN {RVOB.Record, RVOB.Pointer}) DO
+      IF sym = RVOS.lbrak THEN
+        REPEAT RVOS.Get(sym); expression(y);
+          IF x.type.form = RVOB.Array THEN
             CheckInt(y); RVOG.Index(x, y); x.type := x.type.base
-          ELSE ORS.Mark("not an array")
+          ELSE RVOS.Mark("not an array")
           END
-        UNTIL sym # ORS.comma;
-        Check(ORS.rbrak, "no ]")
-      ELSIF sym = ORS.period THEN ORS.Get(sym);
-        IF sym = ORS.ident THEN
-          IF x.type.form = ORB.Pointer THEN RVOG.DeRef(x); x.type := x.type.base END ;
-          IF x.type.form = ORB.Record THEN
-            obj := ORB.thisfield(x.type); ORS.Get(sym);
+        UNTIL sym # RVOS.comma;
+        Check(RVOS.rbrak, "no ]")
+      ELSIF sym = RVOS.period THEN RVOS.Get(sym);
+        IF sym = RVOS.ident THEN
+          IF x.type.form = RVOB.Pointer THEN RVOG.DeRef(x); x.type := x.type.base END ;
+          IF x.type.form = RVOB.Record THEN
+            obj := RVOB.thisfield(x.type); RVOS.Get(sym);
             IF obj # NIL THEN RVOG.Field(x, obj); x.type := obj.type
-            ELSE ORS.Mark("undef")
+            ELSE RVOS.Mark("undef")
             END
-          ELSE ORS.Mark("not a record")
+          ELSE RVOS.Mark("not a record")
           END
-        ELSE ORS.Mark("ident?")
+        ELSE RVOS.Mark("ident?")
         END
-      ELSIF sym = ORS.arrow THEN
-        ORS.Get(sym);
-        IF x.type.form = ORB.Pointer THEN RVOG.DeRef(x); x.type := x.type.base
-        ELSE ORS.Mark("not a pointer")
+      ELSIF sym = RVOS.arrow THEN
+        RVOS.Get(sym);
+        IF x.type.form = RVOB.Pointer THEN RVOG.DeRef(x); x.type := x.type.base
+        ELSE RVOS.Mark("not a pointer")
         END
-      ELSIF (sym = ORS.lparen) & (x.type.form IN {ORB.Record, ORB.Pointer}) THEN (*type guard*)
-        ORS.Get(sym);
-        IF sym = ORS.ident THEN
+      ELSIF (sym = RVOS.lparen) & (x.type.form IN {RVOB.Record, RVOB.Pointer}) THEN (*type guard*)
+        RVOS.Get(sym);
+        IF sym = RVOS.ident THEN
           qualident(obj);
-          IF obj.class = ORB.Typ THEN TypeTest(x, obj.type, TRUE)
-          ELSE ORS.Mark("guard type expected")
+          IF obj.class = RVOB.Typ THEN TypeTest(x, obj.type, TRUE)
+          ELSE RVOS.Mark("guard type expected")
           END
-        ELSE ORS.Mark("not an identifier")
+        ELSE RVOS.Mark("not an identifier")
         END ;
-        Check(ORS.rparen, " ) missing")
+        Check(RVOS.rparen, " ) missing")
       END
     END
   END selector;
 
-  PROCEDURE CompTypes(t0, t1: ORB.Type; varpar: BOOLEAN): BOOLEAN;
+  PROCEDURE CompTypes(t0, t1: RVOB.Type; varpar: BOOLEAN): BOOLEAN;
 
-    PROCEDURE EqualSignatures(t0, t1: ORB.Type): BOOLEAN;
-      VAR p0, p1: ORB.Object; com: BOOLEAN;
+    PROCEDURE EqualSignatures(t0, t1: RVOB.Type): BOOLEAN;
+      VAR p0, p1: RVOB.Object; com: BOOLEAN;
     BEGIN com := TRUE;
       IF (t0.base = t1.base) & (t0.nofpar = t1.nofpar) THEN
         p0 := t0.dsc; p1 := t1.dsc;
         WHILE p0 # NIL DO
           IF (p0.class = p1.class) & CompTypes(p0.type, p1.type, TRUE) & (ORD(p0.rdo) = ORD(p1.rdo)) THEN
-            IF p0.type.form >= ORB.Array THEN com := CompTypes(p0.type, p1.type, (p0.class = ORB.Par)) END ;
+            IF p0.type.form >= RVOB.Array THEN com := CompTypes(p0.type, p1.type, (p0.class = RVOB.Par)) END ;
             p0 := p0.next; p1 := p1.next
           ELSE p0 := NIL; com := FALSE
           END
@@ -197,20 +197,20 @@ END RoundUp;
   
   BEGIN (*Compatible Types*)
     RETURN (t0 = t1)
-      OR (t0.form = ORB.Array) & (t1.form = ORB.Array) & CompTypes(t0.base, t1.base, varpar)
-      OR (t0.form = ORB.Pointer) & (t1.form = ORB.Pointer) & IsExtension(t0.base, t1.base)
-      OR (t0.form = ORB.Record) & (t1.form = ORB.Record) & IsExtension(t0, t1)
-      OR (t0.form = ORB.Proc) & (t1.form = ORB.Proc) & EqualSignatures(t0, t1)
-      OR (t0.form IN {ORB.Pointer, ORB.Proc}) & (t1.form = ORB.NilTyp)
-      OR (t0.form = ORB.NilTyp) & (t1.form IN {ORB.Pointer, ORB.Proc})
-      OR ~varpar & (t0.form = ORB.Int) & (t1.form = ORB.Int)
+      OR (t0.form = RVOB.Array) & (t1.form = RVOB.Array) & CompTypes(t0.base, t1.base, varpar)
+      OR (t0.form = RVOB.Pointer) & (t1.form = RVOB.Pointer) & IsExtension(t0.base, t1.base)
+      OR (t0.form = RVOB.Record) & (t1.form = RVOB.Record) & IsExtension(t0, t1)
+      OR (t0.form = RVOB.Proc) & (t1.form = RVOB.Proc) & EqualSignatures(t0, t1)
+      OR (t0.form IN {RVOB.Pointer, RVOB.Proc}) & (t1.form = RVOB.NilTyp)
+      OR (t0.form = RVOB.NilTyp) & (t1.form IN {RVOB.Pointer, RVOB.Proc})
+      OR ~varpar & (t0.form = RVOB.Int) & (t1.form = RVOB.Int)
   END CompTypes;
 
-  PROCEDURE Parameter(par: ORB.Object);
+  PROCEDURE Parameter(par: RVOB.Object);
     VAR x: RVOG.Item; varpar: BOOLEAN;
   BEGIN expression(x);
     IF par # NIL THEN
-      varpar := par.class = ORB.Par;
+      varpar := par.class = RVOB.Par;
 
       IF CompTypes(par.type, x.type, varpar) THEN
         IF ~varpar THEN RVOG.ValueParam(x)
@@ -218,160 +218,160 @@ END RoundUp;
           IF ~par.rdo THEN CheckReadOnly(x) END ;
           RVOG.VarParam(x, par.type)
         END
-      ELSIF ~varpar & (par.type.form = ORB.Int) & (x.type.form = ORB.Int) THEN
+      ELSIF ~varpar & (par.type.form = RVOB.Int) & (x.type.form = RVOB.Int) THEN
         RVOG.ValueParam(x) 
-      ELSIF (x.type.form = ORB.String) & (x.b = 2) & (par.class = ORB.Var) & (par.type.form = ORB.Char) THEN
+      ELSIF (x.type.form = RVOB.String) & (x.b = 2) & (par.class = RVOB.Var) & (par.type.form = RVOB.Char) THEN
         RVOG.StrToChar(x); RVOG.ValueParam(x)
-      ELSIF (x.type.form = ORB.Array) & (par.type.form = ORB.Array) &
+      ELSIF (x.type.form = RVOB.Array) & (par.type.form = RVOB.Array) &
           (x.type.base.form = par.type.base.form) & (par.type.len < 0) THEN
         RVOG.OpenArrayParam(x);
-      ELSIF (x.type.form = ORB.String) & varpar & par.rdo & (par.type.form = ORB.Array) & 
-          (par.type.base.form = ORB.Char) & (par.type.len < 0) THEN RVOG.StringParam(x)
-      ELSIF (par.type.form = ORB.Array) & (par.type.base.form = ORB.Int) & (par.type.size = x.type.size) THEN
+      ELSIF (x.type.form = RVOB.String) & varpar & par.rdo & (par.type.form = RVOB.Array) &
+          (par.type.base.form = RVOB.Char) & (par.type.len < 0) THEN RVOG.StringParam(x)
+      ELSIF (par.type.form = RVOB.Array) & (par.type.base.form = RVOB.Int) & (par.type.size = x.type.size) THEN
         RVOG.VarParam(x, par.type)
-      ELSE ORS.Mark("incompatible parameters")
+      ELSE RVOS.Mark("incompatible parameters")
       END
     END
   END Parameter;
 
   PROCEDURE ParamList(VAR x: RVOG.Item);
-    VAR n: INTEGER; par: ORB.Object;
+    VAR n: INTEGER; par: RVOB.Object;
   BEGIN par := x.type.dsc; n := 0;
-    IF sym # ORS.rparen THEN
+    IF sym # RVOS.rparen THEN
       Parameter(par); n := 1;
-      WHILE sym <= ORS.comma DO
+      WHILE sym <= RVOS.comma DO
         Check(sym, "comma?");
         IF par # NIL THEN par := par.next END ;
         INC(n); Parameter(par)
       END ;
-      Check(ORS.rparen, ") missing")
-    ELSE ORS.Get(sym);
+      Check(RVOS.rparen, ") missing")
+    ELSE RVOS.Get(sym);
     END ;
-    IF n < x.type.nofpar THEN ORS.Mark("too few params")
-    ELSIF n > x.type.nofpar THEN ORS.Mark("too many params")
+    IF n < x.type.nofpar THEN RVOS.Mark("too few params")
+    ELSIF n > x.type.nofpar THEN RVOS.Mark("too many params")
     END
   END ParamList;
 
-  PROCEDURE StandFunc(VAR x: RVOG.Item; fct: LONGINT; restyp: ORB.Type);
+  PROCEDURE StandFunc(VAR x: RVOG.Item; fct: LONGINT; restyp: RVOB.Type);
     VAR y: RVOG.Item; n, npar: LONGINT;
-  BEGIN Check(ORS.lparen, "no (");
+  BEGIN Check(RVOS.lparen, "no (");
     npar := fct MOD 10; fct := fct DIV 10; expression(x); n := 1;
-    WHILE sym = ORS.comma DO ORS.Get(sym); expression(y); INC(n) END ;
-    Check(ORS.rparen, "no )");
+    WHILE sym = RVOS.comma DO RVOS.Get(sym); expression(y); INC(n) END ;
+    Check(RVOS.rparen, "no )");
     IF n = npar THEN
       IF fct = 0 THEN (*ABS*)
-        IF x.type.form IN {ORB.Int, ORB.Real} THEN RVOG.Abs(x); restyp := x.type ELSE ORS.Mark("bad type") END
+        IF x.type.form IN {RVOB.Int, RVOB.Real} THEN RVOG.Abs(x); restyp := x.type ELSE RVOS.Mark("bad type") END
       ELSIF fct = 1 THEN (*ODD*) CheckInt(x); RVOG.Odd(x)
       ELSIF fct = 2 THEN (*FLOOR*) CheckReal(x); RVOG.Floor(x)
       ELSIF fct = 3 THEN (*FLT*) CheckInt(x); RVOG.Float(x)
       ELSIF fct = 4 THEN (*ORD*)
-        IF x.type.form <= ORB.Proc THEN RVOG.Ord(x)
-        ELSIF (x.type.form = ORB.String) & (x.b = 2) THEN RVOG.StrToChar(x)
-        ELSE ORS.Mark("bad type")
+        IF x.type.form <= RVOB.Proc THEN RVOG.Ord(x)
+        ELSIF (x.type.form = RVOB.String) & (x.b = 2) THEN RVOG.StrToChar(x)
+        ELSE RVOS.Mark("bad type")
         END
       ELSIF fct = 5 THEN (*CHR*) CheckInt(x); RVOG.Ord(x)
       ELSIF fct = 6 THEN (*LEN*)
-          IF x.type.form = ORB.Array THEN RVOG.Len(x) ELSE ORS.Mark("not an array") END
+          IF x.type.form = RVOB.Array THEN RVOG.Len(x) ELSE RVOS.Mark("not an array") END
       ELSIF fct IN {7, 8, 9} THEN (*LSL, ASR, ROR*) CheckInt(y);
-        IF x.type.form IN {ORB.Int, ORB.Set} THEN RVOG.Shift(fct-7, x, y); restyp := x.type ELSE ORS.Mark("bad type") END
-      ELSIF fct = 11 THEN (*ADC*) ORS.Mark("no ADC")
-      ELSIF fct = 12 THEN (*SBC*) ORS.Mark("no SBC")
-      ELSIF fct = 13 THEN (*UML*) ORS.Mark("no UML")
+        IF x.type.form IN {RVOB.Int, RVOB.Set} THEN RVOG.Shift(fct-7, x, y); restyp := x.type ELSE RVOS.Mark("bad type") END
+      ELSIF fct = 11 THEN (*ADC*) RVOS.Mark("no ADC")
+      ELSIF fct = 12 THEN (*SBC*) RVOS.Mark("no SBC")
+      ELSIF fct = 13 THEN (*UML*) RVOS.Mark("no UML")
       ELSIF fct = 14 THEN (*BIT*) CheckInt(x); CheckInt(y); RVOG.Bit(x, y)
       ELSIF fct = 15 THEN (*REG*) CheckConst(x); CheckInt(x); RVOG.Register(x)
       ELSIF fct = 16 THEN (*VAL*)
-        IF (x.mode= ORB.Typ) & (x.type.size <= y.type.size) THEN restyp := x.type; x := y
-        ELSE ORS.Mark("casting not allowed")
+        IF (x.mode= RVOB.Typ) & (x.type.size <= y.type.size) THEN restyp := x.type; x := y
+        ELSE RVOS.Mark("casting not allowed")
         END
       ELSIF fct = 17 THEN (*ADR*) RVOG.Adr(x)
       ELSIF fct = 18 THEN (*SIZE*)
-        IF x.mode = ORB.Typ THEN RVOG.MakeConstItem(x, ORB.intType, x.type.size)
-        ELSE ORS.Mark("must be a type")
+        IF x.mode = RVOB.Typ THEN RVOG.MakeConstItem(x, RVOB.intType, x.type.size)
+        ELSE RVOS.Mark("must be a type")
         END
       ELSIF fct IN {19, 20, 21} THEN
         CheckConst(x); CheckInt(x); CheckIntOrSet(y); RVOG.CSRop(fct-19, x, y);
-      ELSIF fct = 19 THEN (*COND*) ORS.Mark("no COND")
-      ELSIF fct = 20 THEN (*H*) ORS.Mark("no H")
+      ELSIF fct = 19 THEN (*COND*) RVOS.Mark("no COND")
+      ELSIF fct = 20 THEN (*H*) RVOS.Mark("no H")
       END ;
       x.type := restyp
-    ELSE ORS.Mark("wrong nof params")
+    ELSE RVOS.Mark("wrong nof params")
     END
   END StandFunc;
 
   PROCEDURE element(VAR x: RVOG.Item);
     VAR y: RVOG.Item;
   BEGIN expression(x); CheckSetVal(x);
-    IF sym = ORS.upto THEN ORS.Get(sym); expression(y); CheckSetVal(y); RVOG.Set(x, y)
+    IF sym = RVOS.upto THEN RVOS.Get(sym); expression(y); CheckSetVal(y); RVOG.Set(x, y)
     ELSE RVOG.Singleton(x)
     END ;
-    x.type := ORB.setType
+    x.type := RVOB.setType
   END element;
   
   PROCEDURE set(VAR x: RVOG.Item);
     VAR y: RVOG.Item;
   BEGIN
-    IF sym >= ORS.if THEN
-      IF sym # ORS.rbrace THEN ORS.Mark(" } missing") END ;
-      RVOG.MakeConstItem(x, ORB.setType, 0) (*empty set*)
+    IF sym >= RVOS.if THEN
+      IF sym # RVOS.rbrace THEN RVOS.Mark(" } missing") END ;
+      RVOG.MakeConstItem(x, RVOB.setType, 0) (*empty set*)
     ELSE element(x);
-      WHILE (sym < ORS.rparen) OR (sym > ORS.rbrace) DO
-        IF sym = ORS.comma THEN ORS.Get(sym)
-        ELSIF sym # ORS.rbrace THEN ORS.Mark("missing comma")
+      WHILE (sym < RVOS.rparen) OR (sym > RVOS.rbrace) DO
+        IF sym = RVOS.comma THEN RVOS.Get(sym)
+        ELSIF sym # RVOS.rbrace THEN RVOS.Mark("missing comma")
         END ;
-        element(y); RVOG.SetOp(ORS.plus, x, y)
+        element(y); RVOG.SetOp(RVOS.plus, x, y)
       END
     END
   END set; 
 
   PROCEDURE factor(VAR x: RVOG.Item);
-    VAR obj: ORB.Object; rx: LONGINT;
+    VAR obj: RVOB.Object; rx: LONGINT;
   BEGIN (*sync*)
-    IF (sym < ORS.char) OR (sym > ORS.ident) THEN ORS.Mark("expression expected");
-      REPEAT ORS.Get(sym) UNTIL (sym >= ORS.char) & (sym <= ORS.ident)
+    IF (sym < RVOS.char) OR (sym > RVOS.ident) THEN RVOS.Mark("expression expected");
+      REPEAT RVOS.Get(sym) UNTIL (sym >= RVOS.char) & (sym <= RVOS.ident)
     END ;
-    IF sym = ORS.ident THEN
+    IF sym = RVOS.ident THEN
       qualident(obj);  
-      IF obj.class = ORB.SFunc THEN StandFunc(x, obj.val, obj.type)
+      IF obj.class = RVOB.SFunc THEN StandFunc(x, obj.val, obj.type)
       ELSE RVOG.MakeItem(x, obj, level); selector(x);
-        IF sym = ORS.lparen THEN
-          ORS.Get(sym);
-          IF (x.type.form = ORB.Proc) & (x.type.base.form # ORB.NoTyp) THEN
+        IF sym = RVOS.lparen THEN
+          RVOS.Get(sym);
+          IF (x.type.form = RVOB.Proc) & (x.type.base.form # RVOB.NoTyp) THEN
             RVOG.PrepCall(x, rx); ParamList(x); RVOG.Call(x, rx); x.type := x.type.base
-          ELSE ORS.Mark("not a function"); ParamList(x)
+          ELSE RVOS.Mark("not a function"); ParamList(x)
           END
         END
       END
-    ELSIF sym = ORS.int THEN RVOG.MakeConstItem(x, ORB.intType, ORS.ival); ORS.Get(sym)
-    ELSIF sym = ORS.real THEN RVOG.MakeRealItem(x, ORS.rval); ORS.Get(sym)
-    ELSIF sym = ORS.char THEN RVOG.MakeConstItem(x, ORB.charType, ORS.ival); ORS.Get(sym)
-    ELSIF sym = ORS.nil THEN ORS.Get(sym); RVOG.MakeConstItem(x, ORB.nilType, 0)
-    ELSIF sym = ORS.string THEN RVOG.MakeStringItem(x, ORS.slen); ORS.Get(sym)
-    ELSIF sym = ORS.lparen THEN ORS.Get(sym); expression(x); Check(ORS.rparen, "no )")
-    ELSIF sym = ORS.lbrace THEN ORS.Get(sym); set(x); Check(ORS.rbrace, "no }")
-    ELSIF sym = ORS.not THEN ORS.Get(sym); factor(x); CheckBool(x); RVOG.Not(x)
-    ELSIF sym = ORS.false THEN ORS.Get(sym); RVOG.MakeConstItem(x, ORB.boolType, 0)
-    ELSIF sym = ORS.true THEN ORS.Get(sym); RVOG.MakeConstItem(x, ORB.boolType, 1)
-    ELSE ORS.Mark("not a factor"); RVOG.MakeItem(x, NIL, level)
+    ELSIF sym = RVOS.int THEN RVOG.MakeConstItem(x, RVOB.intType, RVOS.ival); RVOS.Get(sym)
+      (*ELSIF sym = RVOS.real THEN RVOG.MakeRealItem(x, RVOS.rval); RVOS.Get(sym)*)
+    ELSIF sym = RVOS.char THEN RVOG.MakeConstItem(x, RVOB.charType, RVOS.ival); RVOS.Get(sym)
+    ELSIF sym = RVOS.nil THEN RVOS.Get(sym); RVOG.MakeConstItem(x, RVOB.nilType, 0)
+    ELSIF sym = RVOS.string THEN RVOG.MakeStringItem(x, RVOS.slen); RVOS.Get(sym)
+    ELSIF sym = RVOS.lparen THEN RVOS.Get(sym); expression(x); Check(RVOS.rparen, "no )")
+    ELSIF sym = RVOS.lbrace THEN RVOS.Get(sym); set(x); Check(RVOS.rbrace, "no }")
+    ELSIF sym = RVOS.not THEN RVOS.Get(sym); factor(x); CheckBool(x); RVOG.Not(x)
+    ELSIF sym = RVOS.false THEN RVOS.Get(sym); RVOG.MakeConstItem(x, RVOB.boolType, 0)
+    ELSIF sym = RVOS.true THEN RVOS.Get(sym); RVOG.MakeConstItem(x, RVOB.boolType, 1)
+    ELSE RVOS.Mark("not a factor"); RVOG.MakeItem(x, NIL, level)
     END
   END factor;
 
   PROCEDURE term(VAR x: RVOG.Item);
     VAR y: RVOG.Item; op, f: INTEGER;
   BEGIN factor(x); f := x.type.form;
-    WHILE (sym >= ORS.times) & (sym <= ORS.and) DO
-      op := sym; ORS.Get(sym);
-      IF op = ORS.times THEN
-        IF f = ORB.Int THEN factor(y); CheckInt(y); RVOG.MulOp(x, y)
-        ELSIF f = ORB.Real THEN factor(y); CheckReal(y); RVOG.RealOp(op, x, y)
-        ELSIF f = ORB.Set THEN factor(y); CheckSet(y); RVOG.SetOp(op, x, y)
-        ELSE ORS.Mark("bad type")
+    WHILE (sym >= RVOS.times) & (sym <= RVOS.and) DO
+      op := sym; RVOS.Get(sym);
+      IF op = RVOS.times THEN
+        IF f = RVOB.Int THEN factor(y); CheckInt(y); RVOG.MulOp(x, y)
+        ELSIF f = RVOB.Real THEN factor(y); CheckReal(y); RVOG.RealOp(op, x, y)
+        ELSIF f = RVOB.Set THEN factor(y); CheckSet(y); RVOG.SetOp(op, x, y)
+        ELSE RVOS.Mark("bad type")
         END
-      ELSIF (op = ORS.div) OR (op = ORS.mod) THEN
+      ELSIF (op = RVOS.div) OR (op = RVOS.mod) THEN
         CheckInt(x); factor(y); CheckInt(y); RVOG.DivOp(op, x, y)
-      ELSIF op = ORS.rdiv THEN
-        IF f = ORB.Real THEN factor(y); CheckReal(y); RVOG.RealOp(op, x, y)
-        ELSIF f = ORB.Set THEN factor(y); CheckSet(y); RVOG.SetOp(op, x, y)
-        ELSE ORS.Mark("bad type")
+      ELSIF op = RVOS.rdiv THEN
+        IF f = RVOB.Real THEN factor(y); CheckReal(y); RVOG.RealOp(op, x, y)
+        ELSIF f = RVOB.Set THEN factor(y); CheckSet(y); RVOG.SetOp(op, x, y)
+        ELSE RVOS.Mark("bad type")
         END
       ELSE (*op = and*) CheckBool(x); RVOG.And1(x); factor(y); CheckBool(y); RVOG.And2(x, y)
       END
@@ -381,57 +381,57 @@ END RoundUp;
   PROCEDURE SimpleExpression(VAR x: RVOG.Item);
     VAR y: RVOG.Item; op: INTEGER;
   BEGIN
-    IF sym = ORS.minus THEN ORS.Get(sym); term(x);
-      IF x.type.form IN {ORB.Int, ORB.Real, ORB.Set} THEN RVOG.Neg(x) ELSE CheckInt(x) END
-    ELSIF sym = ORS.plus THEN ORS.Get(sym); term(x);
+    IF sym = RVOS.minus THEN RVOS.Get(sym); term(x);
+      IF x.type.form IN {RVOB.Int, RVOB.Real, RVOB.Set} THEN RVOG.Neg(x) ELSE CheckInt(x) END
+    ELSIF sym = RVOS.plus THEN RVOS.Get(sym); term(x);
     ELSE term(x)
     END ;
-    WHILE (sym >= ORS.plus) & (sym <= ORS.or) DO
-      op := sym; ORS.Get(sym);
-      IF op = ORS.or THEN RVOG.Or1(x); CheckBool(x); term(y); CheckBool(y); RVOG.Or2(x, y)
-      ELSIF x.type.form = ORB.Int THEN term(y); CheckInt(y); RVOG.AddOp(op, x, y)
-      ELSIF x.type.form = ORB.Real THEN term(y); CheckReal(y); RVOG.RealOp(op, x, y)
+    WHILE (sym >= RVOS.plus) & (sym <= RVOS.or) DO
+      op := sym; RVOS.Get(sym);
+      IF op = RVOS.or THEN RVOG.Or1(x); CheckBool(x); term(y); CheckBool(y); RVOG.Or2(x, y)
+      ELSIF x.type.form = RVOB.Int THEN term(y); CheckInt(y); RVOG.AddOp(op, x, y)
+      ELSIF x.type.form = RVOB.Real THEN term(y); CheckReal(y); RVOG.RealOp(op, x, y)
       ELSE CheckSet(x); term(y); CheckSet(y); RVOG.SetOp(op, x, y)
       END
     END
   END SimpleExpression;
 
   PROCEDURE expression0(VAR x: RVOG.Item);
-    VAR y: RVOG.Item; obj: ORB.Object; rel, xf, yf: INTEGER;
+    VAR y: RVOG.Item; obj: RVOB.Object; rel, xf, yf: INTEGER;
   BEGIN SimpleExpression(x);
-    IF (sym >= ORS.eql) & (sym <= ORS.geq) THEN
-      rel := sym; ORS.Get(sym); SimpleExpression(y); xf := x.type.form; yf := y.type.form;
+    IF (sym >= RVOS.eql) & (sym <= RVOS.geq) THEN
+      rel := sym; RVOS.Get(sym); SimpleExpression(y); xf := x.type.form; yf := y.type.form;
       IF CompTypes(x.type, y.type, FALSE) OR
-          (xf = ORB.Pointer) & (yf = ORB.Pointer) & IsExtension(y.type.base, x.type.base) THEN
-        IF (xf IN {ORB.Char, ORB.Int}) THEN RVOG.IntRelation(rel, x, y)
-        ELSIF xf = ORB.Real THEN RVOG.RealRelation(rel, x, y)
-        ELSIF xf = ORB.Set THEN RVOG.SetRelation(rel, x, y)
-        ELSIF (xf IN {ORB.Pointer, ORB.Proc, ORB.NilTyp}) THEN
-          IF rel <= ORS.neq THEN RVOG.IntRelation(rel, x, y) ELSE ORS.Mark("only = or #") END
-        ELSIF (xf = ORB.Array) & (x.type.base.form = ORB.Char) OR (xf = ORB.String) THEN
+          (xf = RVOB.Pointer) & (yf = RVOB.Pointer) & IsExtension(y.type.base, x.type.base) THEN
+        IF (xf IN {RVOB.Char, RVOB.Int}) THEN RVOG.IntRelation(rel, x, y)
+        ELSIF xf = RVOB.Real THEN RVOG.RealRelation(rel, x, y)
+        ELSIF xf = RVOB.Set THEN RVOG.SetRelation(rel, x, y)
+        ELSIF (xf IN {RVOB.Pointer, RVOB.Proc, RVOB.NilTyp}) THEN
+          IF rel <= RVOS.neq THEN RVOG.IntRelation(rel, x, y) ELSE RVOS.Mark("only = or #") END
+        ELSIF (xf = RVOB.Array) & (x.type.base.form = RVOB.Char) OR (xf = RVOB.String) THEN
           RVOG.StringRelation(rel, x, y)
-        ELSE ORS.Mark("illegal comparison")
+        ELSE RVOS.Mark("illegal comparison")
         END
-      ELSIF (xf = ORB.Array) & (x.type.base.form = ORB.Char) &
-            ((yf = ORB.String) OR (yf = ORB.Array) & (y.type.base.form = ORB.Char))
-          OR (yf = ORB.Array) & (y.type.base.form = ORB.Char) & (xf = ORB.String) THEN
+      ELSIF (xf = RVOB.Array) & (x.type.base.form = RVOB.Char) &
+            ((yf = RVOB.String) OR (yf = RVOB.Array) & (y.type.base.form = RVOB.Char))
+          OR (yf = RVOB.Array) & (y.type.base.form = RVOB.Char) & (xf = RVOB.String) THEN
         RVOG.StringRelation(rel, x, y)
-      ELSIF (xf = ORB.Char) & (yf = ORB.String) & (y.b = 2) THEN
+      ELSIF (xf = RVOB.Char) & (yf = RVOB.String) & (y.b = 2) THEN
         RVOG.StrToChar(y); RVOG.IntRelation(rel, x, y)
-      ELSIF (yf = ORB.Char) & (xf = ORB.String) & (x.b = 2) THEN
+      ELSIF (yf = RVOB.Char) & (xf = RVOB.String) & (x.b = 2) THEN
         RVOG.StrToChar(x); RVOG.IntRelation(rel, x, y)
-      ELSE ORS.Mark("illegal comparison")
+      ELSE RVOS.Mark("illegal comparison")
       END ;
-      x.type := ORB.boolType
-    ELSIF sym = ORS.in THEN
-      ORS.Get(sym); SimpleExpression(y);
-      IF (x.type.form = ORB.Int) & (y.type.form = ORB.Set) THEN RVOG.In(x, y)
-      ELSE ORS.Mark("illegal operands of IN")
+      x.type := RVOB.boolType
+    ELSIF sym = RVOS.in THEN
+      RVOS.Get(sym); SimpleExpression(y);
+      IF (x.type.form = RVOB.Int) & (y.type.form = RVOB.Set) THEN RVOG.In(x, y)
+      ELSE RVOS.Mark("illegal operands of IN")
       END ;
-      x.type := ORB.boolType
-    ELSIF sym = ORS.is THEN
-      ORS.Get(sym); qualident(obj); TypeTest(x, obj.type, FALSE) ;
-      x.type := ORB.boolType
+      x.type := RVOB.boolType
+    ELSIF sym = RVOS.is THEN
+      RVOS.Get(sym); qualident(obj); TypeTest(x, obj.type, FALSE) ;
+      x.type := RVOB.boolType
     END
   END expression0;
 
@@ -440,386 +440,386 @@ END RoundUp;
   PROCEDURE StandProc(pno: LONGINT);
     VAR nap, npar: LONGINT; (*nof actual/formal parameters*)
       x, y, z: RVOG.Item;
-  BEGIN Check(ORS.lparen, "no (");
+  BEGIN Check(RVOS.lparen, "no (");
     npar := pno MOD 10; pno := pno DIV 10; expression(x); nap := 1;
-    IF sym = ORS.comma THEN
-      ORS.Get(sym); expression(y); nap := 2; z.type := ORB.noType;
-      WHILE sym = ORS.comma DO ORS.Get(sym); expression(z); INC(nap) END
-    ELSE y.type := ORB.noType
+    IF sym = RVOS.comma THEN
+      RVOS.Get(sym); expression(y); nap := 2; z.type := RVOB.noType;
+      WHILE sym = RVOS.comma DO RVOS.Get(sym); expression(z); INC(nap) END
+    ELSE y.type := RVOB.noType
     END ;
-    Check(ORS.rparen, "no )");
+    Check(RVOS.rparen, "no )");
     IF (npar = nap) OR (pno IN {0, 1}) THEN 
       IF pno IN {0, 1} THEN (*INC, DEC*)
         CheckInt(x); CheckReadOnly(x);
-        IF y.type # ORB.noType THEN CheckInt(y) END ;
+        IF y.type # RVOB.noType THEN CheckInt(y) END ;
         RVOG.Increment(pno, x, y)
       ELSIF pno IN {2, 3} THEN (*INCL, EXCL*)
         CheckSet(x); CheckReadOnly(x); CheckInt(y); RVOG.Include(pno-2, x, y)
       ELSIF pno = 4 THEN CheckBool(x); RVOG.Assert(x)
       ELSIF pno = 5 THEN(*NEW*) CheckReadOnly(x);
-         IF (x.type.form = ORB.Pointer) & (x.type.base.form = ORB.Record) THEN RVOG.New(x)
-         ELSE ORS.Mark("not a pointer to record")
+         IF (x.type.form = RVOB.Pointer) & (x.type.base.form = RVOB.Record) THEN RVOG.New(x)
+         ELSE RVOS.Mark("not a pointer to record")
          END
       ELSIF pno = 6 THEN CheckReal(x); CheckInt(y); CheckReadOnly(x); RVOG.Pack(x, y)
       ELSIF pno = 7 THEN CheckReal(x); CheckInt(y); CheckReadOnly(x); RVOG.Unpk(x, y)
       ELSIF pno = 8 THEN
-        IF x.type.form <= ORB.Set THEN RVOG.Led(x) ELSE ORS.Mark("bad type") END
+        IF x.type.form <= RVOB.Set THEN RVOG.Led(x) ELSE RVOS.Mark("bad type") END
       ELSIF pno = 10 THEN CheckInt(x); RVOG.Get(x, y)
       ELSIF pno = 11 THEN CheckInt(x); RVOG.Put(x, y)
       ELSIF pno = 12 THEN CheckInt(x); CheckInt(y); CheckInt(z); RVOG.Copy(x, y, z)
       ELSIF pno = 13 THEN CheckConst(x); CheckInt(x); RVOG.LDPSR(x)
       ELSIF pno = 14 THEN CheckInt(x); RVOG.LDREG(x, y)
       END
-    ELSE ORS.Mark("wrong nof parameters")
+    ELSE RVOS.Mark("wrong nof parameters")
     END
   END StandProc;
 
   PROCEDURE StatSequence;
-    VAR obj: ORB.Object;
-      orgtype: ORB.Type; (*original type of case var*)
+    VAR obj: RVOB.Object;
+      orgtype: RVOB.Type; (*original type of case var*)
       x, y, z, w: RVOG.Item;
       L0, L1, rx: LONGINT;
 
-    PROCEDURE TypeCase(obj: ORB.Object; VAR x: RVOG.Item);
-      VAR typobj: ORB.Object;
+    PROCEDURE TypeCase(obj: RVOB.Object; VAR x: RVOG.Item);
+      VAR typobj: RVOB.Object;
     BEGIN
-      IF sym = ORS.ident THEN
+      IF sym = RVOS.ident THEN
         qualident(typobj); RVOG.MakeItem(x, obj, level);
-        IF typobj.class # ORB.Typ THEN ORS.Mark("not a type") END ;
+        IF typobj.class # RVOB.Typ THEN RVOS.Mark("not a type") END ;
         TypeTest(x, typobj.type, FALSE); obj.type := typobj.type;
-        RVOG.CFJump(x); Check(ORS.colon, ": expected"); StatSequence
-      ELSE RVOG.CFJump(x); ORS.Mark("type id expected")
+        RVOG.CFJump(x); Check(RVOS.colon, ": expected"); StatSequence
+      ELSE RVOG.CFJump(x); RVOS.Mark("type id expected")
       END
      END TypeCase;
 
     PROCEDURE SkipCase;
     BEGIN 
-      WHILE sym # ORS.colon DO ORS.Get(sym) END ;
-      ORS.Get(sym); StatSequence
+      WHILE sym # RVOS.colon DO RVOS.Get(sym) END ;
+      RVOS.Get(sym); StatSequence
     END SkipCase;
 
   BEGIN (* StatSequence *)
     REPEAT (*sync*) obj := NIL;
-      IF ~((sym = ORS.ident) OR (sym >= ORS.if) & (sym <= ORS.for) OR (sym >= ORS.semicolon)) THEN
-        ORS.Mark("statement expected");
-        REPEAT ORS.Get(sym) UNTIL (sym = ORS.ident) OR (sym >= ORS.if)
+      IF ~((sym = RVOS.ident) OR (sym >= RVOS.if) & (sym <= RVOS.for) OR (sym >= RVOS.semicolon)) THEN
+        RVOS.Mark("statement expected");
+        REPEAT RVOS.Get(sym) UNTIL (sym = RVOS.ident) OR (sym >= RVOS.if)
       END ;
-      IF sym = ORS.ident THEN
+      IF sym = RVOS.ident THEN
         qualident(obj); RVOG.MakeItem(x, obj, level);
-        IF x.mode = ORB.SProc THEN StandProc(obj.val)
+        IF x.mode = RVOB.SProc THEN StandProc(obj.val)
         ELSE selector(x);
-          IF sym = ORS.becomes THEN (*assignment*)
-            ORS.Get(sym); CheckReadOnly(x); expression(y);
-            IF CompTypes(x.type, y.type, FALSE) OR (x.type.form = ORB.Int) & (y.type.form = ORB.Int) THEN
-              IF (x.type.form <= ORB.Pointer) OR (x.type.form = ORB.Proc) THEN RVOG.Store(x, y)
+          IF sym = RVOS.becomes THEN (*assignment*)
+            RVOS.Get(sym); CheckReadOnly(x); expression(y);
+            IF CompTypes(x.type, y.type, FALSE) OR (x.type.form = RVOB.Int) & (y.type.form = RVOB.Int) THEN
+              IF (x.type.form <= RVOB.Pointer) OR (x.type.form = RVOB.Proc) THEN RVOG.Store(x, y)
               ELSIF y.type.size # 0 THEN RVOG.StoreStruct(x, y)
               END
-            ELSIF (x.type.form = ORB.Char) & (y.type.form = ORB.String) & (y.b = 2) THEN
+            ELSIF (x.type.form = RVOB.Char) & (y.type.form = RVOB.String) & (y.b = 2) THEN
               RVOG.StrToChar(y); RVOG.Store(x, y)
-            ELSIF (x.type.form = ORB.Array) & (x.type.base.form = ORB.Char) & 
-                (y.type.form = ORB.String) THEN RVOG.CopyString(y, x)
-            ELSE ORS.Mark("illegal assignment")
+            ELSIF (x.type.form = RVOB.Array) & (x.type.base.form = RVOB.Char) &
+                (y.type.form = RVOB.String) THEN RVOG.CopyString(y, x)
+            ELSE RVOS.Mark("illegal assignment")
             END
-          ELSIF sym = ORS.eql THEN ORS.Mark("should be :="); ORS.Get(sym); expression(y)
-          ELSIF sym = ORS.lparen THEN (*procedure call*)
-            ORS.Get(sym);
-            IF (x.type.form = ORB.Proc) & (x.type.base.form = ORB.NoTyp) THEN
+          ELSIF sym = RVOS.eql THEN RVOS.Mark("should be :="); RVOS.Get(sym); expression(y)
+          ELSIF sym = RVOS.lparen THEN (*procedure call*)
+            RVOS.Get(sym);
+            IF (x.type.form = RVOB.Proc) & (x.type.base.form = RVOB.NoTyp) THEN
               RVOG.PrepCall(x, rx); ParamList(x); RVOG.Call(x, rx)
-            ELSE ORS.Mark("not a procedure"); ParamList(x)
+            ELSE RVOS.Mark("not a procedure"); ParamList(x)
             END
-          ELSIF x.type.form = ORB.Proc THEN (*procedure call without parameters*)
-            IF x.type.nofpar > 0 THEN ORS.Mark("missing parameters") END ;
-            IF x.type.base.form = ORB.NoTyp THEN RVOG.PrepCall(x, rx); RVOG.Call(x, rx) ELSE ORS.Mark("not a procedure") END
-          ELSIF x.mode = ORB.Typ THEN ORS.Mark("illegal assignment")
-          ELSE ORS.Mark("not a procedure")
+          ELSIF x.type.form = RVOB.Proc THEN (*procedure call without parameters*)
+            IF x.type.nofpar > 0 THEN RVOS.Mark("missing parameters") END ;
+            IF x.type.base.form = RVOB.NoTyp THEN RVOG.PrepCall(x, rx); RVOG.Call(x, rx) ELSE RVOS.Mark("not a procedure") END
+          ELSIF x.mode = RVOB.Typ THEN RVOS.Mark("illegal assignment")
+          ELSE RVOS.Mark("not a procedure")
           END
         END
-      ELSIF sym = ORS.if THEN
-        ORS.Get(sym); expression(x); CheckBool(x); RVOG.CFJump(x);
-        Check(ORS.then, "no THEN");
+      ELSIF sym = RVOS.if THEN
+        RVOS.Get(sym); expression(x); CheckBool(x); RVOG.CFJump(x);
+        Check(RVOS.then, "no THEN");
         StatSequence; L0 := 0;
-        WHILE sym = ORS.elsif DO
-          ORS.Get(sym); RVOG.FJump(L0); RVOG.Fixup(x); expression(x); CheckBool(x);
-          RVOG.CFJump(x); Check(ORS.then, "no THEN"); StatSequence
+        WHILE sym = RVOS.elsif DO
+          RVOS.Get(sym); RVOG.FJump(L0); RVOG.Fixup(x); expression(x); CheckBool(x);
+          RVOG.CFJump(x); Check(RVOS.then, "no THEN"); StatSequence
         END ;
-        IF sym = ORS.else THEN ORS.Get(sym); RVOG.FJump(L0); RVOG.Fixup(x); StatSequence
+        IF sym = RVOS.else THEN RVOS.Get(sym); RVOG.FJump(L0); RVOG.Fixup(x); StatSequence
         ELSE RVOG.Fixup(x)
         END ;
-        RVOG.FixLink(L0); Check(ORS.end, "no END")
-      ELSIF sym = ORS.while THEN
-        ORS.Get(sym); L0 := RVOG.Here(); expression(x); CheckBool(x); RVOG.CFJump(x);
-        Check(ORS.do, "no DO"); StatSequence; RVOG.BJump(L0);
-        WHILE sym = ORS.elsif DO
-          ORS.Get(sym); RVOG.Fixup(x); expression(x); CheckBool(x); RVOG.CFJump(x);
-          Check(ORS.do, "no DO"); StatSequence; RVOG.BJump(L0)
+        RVOG.FixLink(L0); Check(RVOS.end, "no END")
+      ELSIF sym = RVOS.while THEN
+        RVOS.Get(sym); L0 := RVOG.Here(); expression(x); CheckBool(x); RVOG.CFJump(x);
+        Check(RVOS.do, "no DO"); StatSequence; RVOG.BJump(L0);
+        WHILE sym = RVOS.elsif DO
+          RVOS.Get(sym); RVOG.Fixup(x); expression(x); CheckBool(x); RVOG.CFJump(x);
+          Check(RVOS.do, "no DO"); StatSequence; RVOG.BJump(L0)
         END ;
-        RVOG.Fixup(x); Check(ORS.end, "no END")
-      ELSIF sym = ORS.repeat THEN
-        ORS.Get(sym); L0 := RVOG.Here(); StatSequence;
-        IF sym = ORS.until THEN
-          ORS.Get(sym); expression(x); CheckBool(x); RVOG.CBJump(x, L0)
-        ELSE ORS.Mark("missing UNTIL")
+        RVOG.Fixup(x); Check(RVOS.end, "no END")
+      ELSIF sym = RVOS.repeat THEN
+        RVOS.Get(sym); L0 := RVOG.Here(); StatSequence;
+        IF sym = RVOS.until THEN
+          RVOS.Get(sym); expression(x); CheckBool(x); RVOG.CBJump(x, L0)
+        ELSE RVOS.Mark("missing UNTIL")
         END
-      ELSIF sym = ORS.for THEN
-        ORS.Get(sym);
-        IF sym = ORS.ident THEN
+      ELSIF sym = RVOS.for THEN
+        RVOS.Get(sym);
+        IF sym = RVOS.ident THEN
           qualident(obj); RVOG.MakeItem(x, obj, level); CheckInt(x); CheckReadOnly(x);
-          IF sym = ORS.becomes THEN
-            ORS.Get(sym); expression(y); CheckInt(y); RVOG.For0(x, y); L0 := RVOG.Here();
-            Check(ORS.to, "no TO"); expression(z); CheckInt(z); obj.rdo := TRUE;
-            IF sym = ORS.by THEN ORS.Get(sym); expression(w); CheckConst(w); CheckInt(w)
-            ELSE RVOG.MakeConstItem(w, ORB.intType, 1)
+          IF sym = RVOS.becomes THEN
+            RVOS.Get(sym); expression(y); CheckInt(y); RVOG.For0(x, y); L0 := RVOG.Here();
+            Check(RVOS.to, "no TO"); expression(z); CheckInt(z); obj.rdo := TRUE;
+            IF sym = RVOS.by THEN RVOS.Get(sym); expression(w); CheckConst(w); CheckInt(w)
+            ELSE RVOG.MakeConstItem(w, RVOB.intType, 1)
             END ;
-            Check(ORS.do, "no DO"); RVOG.For1(x, y, z, w, L1);
-            StatSequence; Check(ORS.end, "no END");
+            Check(RVOS.do, "no DO"); RVOG.For1(x, y, z, w, L1);
+            StatSequence; Check(RVOS.end, "no END");
             RVOG.For2(x, y, w); RVOG.BJump(L0); RVOG.FixLink(L1); obj.rdo := FALSE
-          ELSE ORS.Mark(":= expected")
+          ELSE RVOS.Mark(":= expected")
           END
-        ELSE ORS.Mark("identifier expected")
+        ELSE RVOS.Mark("identifier expected")
         END
-      ELSIF sym = ORS.case THEN
-        ORS.Get(sym);
-        IF sym = ORS.ident THEN
+      ELSIF sym = RVOS.case THEN
+        RVOS.Get(sym);
+        IF sym = RVOS.ident THEN
           qualident(obj); orgtype := obj.type;
-          IF (orgtype.form = ORB.Pointer) OR (orgtype.form = ORB.Record) & (obj.class = ORB.Par) THEN
-            Check(ORS.of, "OF expected"); TypeCase(obj, x); L0 := 0;
-            WHILE sym = ORS.bar DO
-              ORS.Get(sym); RVOG.FJump(L0); RVOG.Fixup(x); obj.type := orgtype; TypeCase(obj, x)
+          IF (orgtype.form = RVOB.Pointer) OR (orgtype.form = RVOB.Record) & (obj.class = RVOB.Par) THEN
+            Check(RVOS.of, "OF expected"); TypeCase(obj, x); L0 := 0;
+            WHILE sym = RVOS.bar DO
+              RVOS.Get(sym); RVOG.FJump(L0); RVOG.Fixup(x); obj.type := orgtype; TypeCase(obj, x)
             END ;
             RVOG.Fixup(x); RVOG.FixLink(L0); obj.type := orgtype
-          ELSE ORS.Mark("numeric case not implemented");
-            Check(ORS.of, "OF expected"); SkipCase;
-            WHILE sym = ORS.bar DO SkipCase END
+          ELSE RVOS.Mark("numeric case not implemented");
+            Check(RVOS.of, "OF expected"); SkipCase;
+            WHILE sym = RVOS.bar DO SkipCase END
           END
-        ELSE ORS.Mark("ident expected")
+        ELSE RVOS.Mark("ident expected")
         END ;
-        Check(ORS.end, "no END")
+        Check(RVOS.end, "no END")
       END ;
       RVOG.CheckRegs;
-      IF sym = ORS.semicolon THEN ORS.Get(sym)
-      ELSIF sym < ORS.semicolon THEN ORS.Mark("missing semicolon?")
+      IF sym = RVOS.semicolon THEN RVOS.Get(sym)
+      ELSIF sym < RVOS.semicolon THEN RVOS.Mark("missing semicolon?")
       END
-    UNTIL sym > ORS.semicolon
+    UNTIL sym > RVOS.semicolon
   END StatSequence;
 
   (* Types and declarations *)
 
-  PROCEDURE IdentList(class: INTEGER; VAR first: ORB.Object);
-    VAR obj: ORB.Object;
+  PROCEDURE IdentList(class: INTEGER; VAR first: RVOB.Object);
+    VAR obj: RVOB.Object;
   BEGIN
-    IF sym = ORS.ident THEN
-      ORB.NewObj(first, ORS.id, class); ORS.Get(sym); CheckExport(first.expo);
-      WHILE sym = ORS.comma DO
-        ORS.Get(sym);
-        IF sym = ORS.ident THEN ORB.NewObj(obj, ORS.id, class); ORS.Get(sym); CheckExport(obj.expo)
-        ELSE ORS.Mark("ident?")
+    IF sym = RVOS.ident THEN
+      RVOB.NewObj(first, RVOS.id, class); RVOS.Get(sym); CheckExport(first.expo);
+      WHILE sym = RVOS.comma DO
+        RVOS.Get(sym);
+        IF sym = RVOS.ident THEN RVOB.NewObj(obj, RVOS.id, class); RVOS.Get(sym); CheckExport(obj.expo)
+        ELSE RVOS.Mark("ident?")
         END
       END;
-      IF sym = ORS.colon THEN ORS.Get(sym) ELSE ORS.Mark(":?") END
+      IF sym = RVOS.colon THEN RVOS.Get(sym) ELSE RVOS.Mark(":?") END
     ELSE first := NIL
     END
   END IdentList;
   
-  PROCEDURE ArrayType(VAR type: ORB.Type);
-    VAR x: RVOG.Item; typ: ORB.Type; len: LONGINT;
-  BEGIN NEW(typ); typ.form := ORB.NoTyp;
-    IF sym = ORS.of THEN (*dynamic array*) len := -1
+  PROCEDURE ArrayType(VAR type: RVOB.Type);
+    VAR x: RVOG.Item; typ: RVOB.Type; len: LONGINT;
+  BEGIN NEW(typ); typ.form := RVOB.NoTyp;
+    IF sym = RVOS.of THEN (*dynamic array*) len := -1
     ELSE expression(x);
-      IF (x.mode = ORB.Const) & (x.type.form = ORB.Int) & (x.a >= 0) THEN len := x.a
-      ELSE len := 0; ORS.Mark("not a valid length")
+      IF (x.mode = RVOB.Const) & (x.type.form = RVOB.Int) & (x.a >= 0) THEN len := x.a
+      ELSE len := 0; RVOS.Mark("not a valid length")
       END
     END ;
-    IF sym = ORS.of THEN ORS.Get(sym); Type(typ.base);
-      IF (typ.base.form = ORB.Array) & (typ.base.len < 0) THEN ORS.Mark("dyn array not allowed") END
-    ELSIF sym = ORS.comma THEN ORS.Get(sym); ArrayType(typ.base)
-    ELSE ORS.Mark("missing OF"); typ.base := ORB.intType
+    IF sym = RVOS.of THEN RVOS.Get(sym); Type(typ.base);
+      IF (typ.base.form = RVOB.Array) & (typ.base.len < 0) THEN RVOS.Mark("dyn array not allowed") END
+    ELSIF sym = RVOS.comma THEN RVOS.Get(sym); ArrayType(typ.base)
+    ELSE RVOS.Mark("missing OF"); typ.base := RVOB.intType
     END ;
-    IF len >= 0 THEN typ.size := RoundUp(len * typ.base.size) ELSE typ.size := 2*ORB.IntegerSize  (*array desc*) END ;
-    typ.form := ORB.Array; typ.len := len; type := typ
+    IF len >= 0 THEN typ.size := RoundUp(len * typ.base.size) ELSE typ.size := 2*RVOB.IntegerSize  (*array desc*) END ;
+    typ.form := RVOB.Array; typ.len := len; type := typ
   END ArrayType;
 
-  PROCEDURE RecordType(VAR type: ORB.Type);
-    VAR obj, obj0, new, bot, base: ORB.Object;
-      typ, tp: ORB.Type;
+  PROCEDURE RecordType(VAR type: RVOB.Type);
+    VAR obj, obj0, new, bot, base: RVOB.Object;
+      typ, tp: RVOB.Type;
       offset, off, n: LONGINT;
-  BEGIN NEW(typ); typ.form := ORB.NoTyp; typ.base := NIL; typ.mno := -level; typ.nofpar := 0; offset := 0; bot := NIL;
-    IF sym = ORS.lparen THEN
-      ORS.Get(sym); (*record extension*)
-      IF level # 0 THEN ORS.Mark("extension of local types not implemented") END ;
-      IF sym = ORS.ident THEN
+  BEGIN NEW(typ); typ.form := RVOB.NoTyp; typ.base := NIL; typ.mno := -level; typ.nofpar := 0; offset := 0; bot := NIL;
+    IF sym = RVOS.lparen THEN
+      RVOS.Get(sym); (*record extension*)
+      IF level # 0 THEN RVOS.Mark("extension of local types not implemented") END ;
+      IF sym = RVOS.ident THEN
         qualident(base);
-        IF base.class = ORB.Typ THEN
-          IF base.type.form = ORB.Record THEN typ.base := base.type
-          ELSE typ.base := ORB.intType; ORS.Mark("invalid extension")
+        IF base.class = RVOB.Typ THEN
+          IF base.type.form = RVOB.Record THEN typ.base := base.type
+          ELSE typ.base := RVOB.intType; RVOS.Mark("invalid extension")
           END ;
           typ.nofpar := typ.base.nofpar + 1; (*"nofpar" here abused for extension level*)
           bot := typ.base.dsc; offset := typ.base.size
-        ELSE ORS.Mark("type expected")
+        ELSE RVOS.Mark("type expected")
         END
-      ELSE ORS.Mark("ident expected")
+      ELSE RVOS.Mark("ident expected")
       END ;
-      Check(ORS.rparen, "no )")
+      Check(RVOS.rparen, "no )")
     END ;
-    WHILE sym = ORS.ident DO  (*fields*)
+    WHILE sym = RVOS.ident DO  (*fields*)
       n := 0; obj := bot;
-      WHILE sym = ORS.ident DO
+      WHILE sym = RVOS.ident DO
         obj0 := obj;
-        WHILE (obj0 # NIL) & (obj0.name # ORS.id) DO obj0 := obj0.next END ;
-        IF obj0 # NIL THEN ORS.Mark("mult def") END ;
-        NEW(new); ORS.CopyId(new.name); new.class := ORB.Fld; new.next := obj; obj := new; INC(n);
-        ORS.Get(sym); CheckExport(new.expo);
-        IF (sym # ORS.comma) & (sym # ORS.colon) THEN ORS.Mark("comma expected")
-        ELSIF sym = ORS.comma THEN ORS.Get(sym)
+        WHILE (obj0 # NIL) & (obj0.name # RVOS.id) DO obj0 := obj0.next END ;
+        IF obj0 # NIL THEN RVOS.Mark("mult def") END ;
+        NEW(new); RVOS.CopyId(new.name); new.class := RVOB.Fld; new.next := obj; obj := new; INC(n);
+        RVOS.Get(sym); CheckExport(new.expo);
+        IF (sym # RVOS.comma) & (sym # RVOS.colon) THEN RVOS.Mark("comma expected")
+        ELSIF sym = RVOS.comma THEN RVOS.Get(sym)
         END
       END ;
-      Check(ORS.colon, "colon expected"); Type(tp);
-      IF (tp.form = ORB.Array) & (tp.len < 0) THEN ORS.Mark("dyn array not allowed") END ;
+      Check(RVOS.colon, "colon expected"); Type(tp);
+      IF (tp.form = RVOB.Array) & (tp.len < 0) THEN RVOS.Mark("dyn array not allowed") END ;
       IF tp.size > 1 THEN offset := RoundUp(offset) END ;
       offset := offset + n * tp.size; off := offset; obj0 := obj;
       WHILE obj0 # bot DO obj0.type := tp; obj0.lev := 0; off := off - tp.size; obj0.val := off; obj0 := obj0.next END ;
       bot := obj;
-      IF sym = ORS.semicolon THEN ORS.Get(sym) ELSIF sym # ORS.end THEN ORS.Mark(" ; or END") END
+      IF sym = RVOS.semicolon THEN RVOS.Get(sym) ELSIF sym # RVOS.end THEN RVOS.Mark(" ; or END") END
     END ;
-    typ.form := ORB.Record; typ.dsc := bot; typ.size := RoundUp(offset); type := typ
+    typ.form := RVOB.Record; typ.dsc := bot; typ.size := RoundUp(offset); type := typ
   END RecordType;
 
   PROCEDURE FPSection(VAR adr: LONGINT; VAR nofpar: INTEGER);
-    VAR obj, first: ORB.Object; tp: ORB.Type;
+    VAR obj, first: RVOB.Object; tp: RVOB.Type;
       parsize: LONGINT; cl: INTEGER; rdo: BOOLEAN;
   BEGIN
-    IF sym = ORS.var THEN ORS.Get(sym); cl := ORB.Par ELSE cl := ORB.Var END ;
+    IF sym = RVOS.var THEN RVOS.Get(sym); cl := RVOB.Par ELSE cl := RVOB.Var END ;
     IdentList(cl, first); FormalType(tp, 0); rdo := FALSE;
-    IF (cl = ORB.Var) & (tp.form >= ORB.Array) THEN cl := ORB.Par; rdo := TRUE END ;
-    IF (tp.form = ORB.Array) & (tp.len < 0) OR (tp.form = ORB.Record) THEN
-      parsize := 2*ORB.IntegerSize  (*open array or record, needs second word for length or type tag*)
-    ELSE parsize := ORB.IntegerSize
+    IF (cl = RVOB.Var) & (tp.form >= RVOB.Array) THEN cl := RVOB.Par; rdo := TRUE END ;
+    IF (tp.form = RVOB.Array) & (tp.len < 0) OR (tp.form = RVOB.Record) THEN
+      parsize := 2*RVOB.IntegerSize  (*open array or record, needs second word for length or type tag*)
+    ELSE parsize := RVOB.IntegerSize
     END ;
     obj := first;
     WHILE obj # NIL DO
       INC(nofpar); obj.class := cl; obj.type := tp; obj.rdo := rdo; obj.lev := level; obj.val := adr;
       adr := adr + parsize; obj := obj.next
     END ;
-    IF adr >= BytesForParameters THEN ORS.Mark("too many parameters") END
+    IF adr >= BytesForParameters THEN RVOS.Mark("too many parameters") END
   END FPSection;
 
-  PROCEDURE ProcedureType(ptype: ORB.Type; VAR parblksize: LONGINT);
-    VAR obj: ORB.Object; size: LONGINT; nofpar: INTEGER;
-  BEGIN ptype.base := ORB.noType; size := parblksize; nofpar := 0; ptype.dsc := NIL;
-    IF sym = ORS.lparen THEN
-      ORS.Get(sym);
-      IF sym = ORS.rparen THEN ORS.Get(sym)
+  PROCEDURE ProcedureType(ptype: RVOB.Type; VAR parblksize: LONGINT);
+    VAR obj: RVOB.Object; size: LONGINT; nofpar: INTEGER;
+  BEGIN ptype.base := RVOB.noType; size := parblksize; nofpar := 0; ptype.dsc := NIL;
+    IF sym = RVOS.lparen THEN
+      RVOS.Get(sym);
+      IF sym = RVOS.rparen THEN RVOS.Get(sym)
       ELSE FPSection(size, nofpar);
-        WHILE sym = ORS.semicolon DO ORS.Get(sym); FPSection(size, nofpar) END ;
-        Check(ORS.rparen, "no )")
+        WHILE sym = RVOS.semicolon DO RVOS.Get(sym); FPSection(size, nofpar) END ;
+        Check(RVOS.rparen, "no )")
       END ;
       ptype.nofpar := nofpar; parblksize := size;
-      IF sym = ORS.colon THEN  (*function*)
-        ORS.Get(sym);
-        IF sym = ORS.ident THEN qualident(obj);
-          IF (obj.class = ORB.Typ) & (obj.type.form IN {ORB.Byte .. ORB.Pointer, ORB.Proc}) THEN ptype.base := obj.type
-          ELSE ORS.Mark("illegal function type")
+      IF sym = RVOS.colon THEN  (*function*)
+        RVOS.Get(sym);
+        IF sym = RVOS.ident THEN qualident(obj);
+          IF (obj.class = RVOB.Typ) & (obj.type.form IN {RVOB.Byte .. RVOB.Pointer, RVOB.Proc}) THEN ptype.base := obj.type
+          ELSE RVOS.Mark("illegal function type")
           END
-        ELSE ORS.Mark("type identifier expected")
+        ELSE RVOS.Mark("type identifier expected")
         END
       END
     END
   END ProcedureType;
 
-  PROCEDURE FormalType0(VAR typ: ORB.Type; dim: INTEGER);
-    VAR obj: ORB.Object; dmy: LONGINT;
+  PROCEDURE FormalType0(VAR typ: RVOB.Type; dim: INTEGER);
+    VAR obj: RVOB.Object; dmy: LONGINT;
   BEGIN
-    IF sym = ORS.ident THEN
+    IF sym = RVOS.ident THEN
       qualident(obj);
-      IF obj.class = ORB.Typ THEN typ := obj.type ELSE ORS.Mark("not a type"); typ := ORB.intType END
-    ELSIF sym = ORS.array THEN
-      ORS.Get(sym); Check(ORS.of, "OF ?");
-      IF dim >= 1 THEN ORS.Mark("multi-dimensional open arrays not implemented") END ;
-      NEW(typ); typ.form := ORB.Array; typ.len := -1; typ.size := 2*ORB.IntegerSize; 
+      IF obj.class = RVOB.Typ THEN typ := obj.type ELSE RVOS.Mark("not a type"); typ := RVOB.intType END
+    ELSIF sym = RVOS.array THEN
+      RVOS.Get(sym); Check(RVOS.of, "OF ?");
+      IF dim >= 1 THEN RVOS.Mark("multi-dimensional open arrays not implemented") END ;
+      NEW(typ); typ.form := RVOB.Array; typ.len := -1; typ.size := 2*RVOB.IntegerSize;
       FormalType(typ.base, dim+1)
-    ELSIF sym = ORS.procedure THEN
-      ORS.Get(sym); ORB.OpenScope;
-      NEW(typ); typ.form := ORB.Proc; typ.size := ORB.PtrSize; dmy := 0; ProcedureType(typ, dmy);
-      typ.dsc := ORB.topScope.next; ORB.CloseScope
-    ELSE ORS.Mark("identifier expected"); typ := ORB.noType
+    ELSIF sym = RVOS.procedure THEN
+      RVOS.Get(sym); RVOB.OpenScope;
+      NEW(typ); typ.form := RVOB.Proc; typ.size := RVOB.PtrSize; dmy := 0; ProcedureType(typ, dmy);
+      typ.dsc := RVOB.topScope.next; RVOB.CloseScope
+    ELSE RVOS.Mark("identifier expected"); typ := RVOB.noType
     END
   END FormalType0;
 
   PROCEDURE CheckRecLevel(lev: INTEGER);
   BEGIN
-    IF lev # 0 THEN ORS.Mark("ptr base must be global") END
+    IF lev # 0 THEN RVOS.Mark("ptr base must be global") END
   END CheckRecLevel;
 
-  PROCEDURE Type0(VAR type: ORB.Type);
-    VAR dmy: LONGINT; obj: ORB.Object; ptbase: PtrBase;
-  BEGIN type := ORB.intType; (*sync*)
-    IF (sym # ORS.ident) & (sym < ORS.array) THEN ORS.Mark("not a type");
-      REPEAT ORS.Get(sym) UNTIL (sym = ORS.ident) OR (sym >= ORS.array)
+  PROCEDURE Type0(VAR type: RVOB.Type);
+    VAR dmy: LONGINT; obj: RVOB.Object; ptbase: PtrBase;
+  BEGIN type := RVOB.intType; (*sync*)
+    IF (sym # RVOS.ident) & (sym < RVOS.array) THEN RVOS.Mark("not a type");
+      REPEAT RVOS.Get(sym) UNTIL (sym = RVOS.ident) OR (sym >= RVOS.array)
     END ;
-    IF sym = ORS.ident THEN
+    IF sym = RVOS.ident THEN
       qualident(obj);
-      IF obj.class = ORB.Typ THEN
-        IF (obj.type # NIL) & (obj.type.form # ORB.NoTyp) THEN type := obj.type END
-      ELSE ORS.Mark("not a type or undefined")
+      IF obj.class = RVOB.Typ THEN
+        IF (obj.type # NIL) & (obj.type.form # RVOB.NoTyp) THEN type := obj.type END
+      ELSE RVOS.Mark("not a type or undefined")
       END
-    ELSIF sym = ORS.array THEN ORS.Get(sym); ArrayType(type)
-    ELSIF sym = ORS.record THEN
-      ORS.Get(sym); RecordType(type); Check(ORS.end, "no END")
-    ELSIF sym = ORS.pointer THEN
-      ORS.Get(sym); Check(ORS.to, "no TO");
-      NEW(type);  type.form := ORB.Pointer; type.size := ORB.PtrSize; type.base := ORB.intType;
-      IF sym = ORS.ident THEN
-        obj := ORB.thisObj(); ORS.Get(sym);
+    ELSIF sym = RVOS.array THEN RVOS.Get(sym); ArrayType(type)
+    ELSIF sym = RVOS.record THEN
+      RVOS.Get(sym); RecordType(type); Check(RVOS.end, "no END")
+    ELSIF sym = RVOS.pointer THEN
+      RVOS.Get(sym); Check(RVOS.to, "no TO");
+      NEW(type);  type.form := RVOB.Pointer; type.size := RVOB.PtrSize; type.base := RVOB.intType;
+      IF sym = RVOS.ident THEN
+        obj := RVOB.thisObj(); RVOS.Get(sym);
         IF obj # NIL THEN
-          IF (obj.class = ORB.Typ) & (obj.type.form IN {ORB.Record, ORB.NoTyp}) THEN
+          IF (obj.class = RVOB.Typ) & (obj.type.form IN {RVOB.Record, RVOB.NoTyp}) THEN
             CheckRecLevel(obj.lev); type.base := obj.type
-          ELSE ORS.Mark("no valid base type")
+          ELSE RVOS.Mark("no valid base type")
           END
         ELSE CheckRecLevel(level); (*enter into list of forward references to be fixed in Declarations*)
-          NEW(ptbase); ORS.CopyId(ptbase.name); ptbase.type := type; ptbase.next := pbsList; pbsList := ptbase
+          NEW(ptbase); RVOS.CopyId(ptbase.name); ptbase.type := type; ptbase.next := pbsList; pbsList := ptbase
         END
       ELSE Type(type.base);
-        IF type.base.form # ORB.Record THEN ORS.Mark("must point to record") END ;
+        IF type.base.form # RVOB.Record THEN RVOS.Mark("must point to record") END ;
         CheckRecLevel(level)
       END
-    ELSIF sym = ORS.procedure THEN
-      ORS.Get(sym); ORB.OpenScope;
-      NEW(type); type.form := ORB.Proc; type.size := ORB.PtrSize; dmy := 0;
-      ProcedureType(type, dmy); type.dsc := ORB.topScope.next; ORB.CloseScope
-    ELSE ORS.Mark("illegal type")
+    ELSIF sym = RVOS.procedure THEN
+      RVOS.Get(sym); RVOB.OpenScope;
+      NEW(type); type.form := RVOB.Proc; type.size := RVOB.PtrSize; dmy := 0;
+      ProcedureType(type, dmy); type.dsc := RVOB.topScope.next; RVOB.CloseScope
+    ELSE RVOS.Mark("illegal type")
     END
   END Type0;
 
   PROCEDURE Declarations(VAR varsize: LONGINT);
-    VAR obj, first: ORB.Object;
-      x: RVOG.Item; tp: ORB.Type; ptbase: PtrBase;
-      expo: BOOLEAN; id: ORS.Ident;
+    VAR obj, first: RVOB.Object;
+      x: RVOG.Item; tp: RVOB.Type; ptbase: PtrBase;
+      expo: BOOLEAN; id: RVOS.Ident;
   BEGIN (*sync*) pbsList := NIL;
-    IF (sym < ORS.const) & (sym # ORS.end) THEN ORS.Mark("declaration?");
-      REPEAT ORS.Get(sym) UNTIL (sym >= ORS.const) OR (sym = ORS.end)
+    IF (sym < RVOS.const) & (sym # RVOS.end) THEN RVOS.Mark("declaration?");
+      REPEAT RVOS.Get(sym) UNTIL (sym >= RVOS.const) OR (sym = RVOS.end)
     END ;
-    IF sym = ORS.const THEN
-      ORS.Get(sym);
-      WHILE sym = ORS.ident DO
-        ORS.CopyId(id); ORS.Get(sym); CheckExport(expo);
-        IF sym = ORS.eql THEN ORS.Get(sym) ELSE ORS.Mark("= ?") END;
+    IF sym = RVOS.const THEN
+      RVOS.Get(sym);
+      WHILE sym = RVOS.ident DO
+        RVOS.CopyId(id); RVOS.Get(sym); CheckExport(expo);
+        IF sym = RVOS.eql THEN RVOS.Get(sym) ELSE RVOS.Mark("= ?") END;
         expression(x);
-        IF (x.type.form = ORB.String) & (x.b = 2) THEN RVOG.StrToChar(x) END ;
-        ORB.NewObj(obj, id, ORB.Const); obj.expo := expo;
-        IF x.mode = ORB.Const THEN obj.val := x.a; obj.lev := x.b; obj.type := x.type
-        ELSE ORS.Mark("expression not constant"); obj.type := ORB.intType
+        IF (x.type.form = RVOB.String) & (x.b = 2) THEN RVOG.StrToChar(x) END ;
+        RVOB.NewObj(obj, id, RVOB.Const); obj.expo := expo;
+        IF x.mode = RVOB.Const THEN obj.val := x.a; obj.lev := x.b; obj.type := x.type
+        ELSE RVOS.Mark("expression not constant"); obj.type := RVOB.intType
         END;
-        Check(ORS.semicolon, "; missing")
+        Check(RVOS.semicolon, "; missing")
       END
     END ;
-    IF sym = ORS.type THEN
-      ORS.Get(sym);
-      WHILE sym = ORS.ident DO
-        ORS.CopyId(id); ORS.Get(sym); CheckExport(expo);
-        IF sym = ORS.eql THEN ORS.Get(sym) ELSE ORS.Mark("=?") END ;
+    IF sym = RVOS.type THEN
+      RVOS.Get(sym);
+      WHILE sym = RVOS.ident DO
+        RVOS.CopyId(id); RVOS.Get(sym); CheckExport(expo);
+        IF sym = RVOS.eql THEN RVOS.Get(sym) ELSE RVOS.Mark("=?") END ;
         Type(tp);
-        ORB.NewObj(obj, id, ORB.Typ); obj.type := tp; obj.expo := expo; obj.lev := level; tp.typobj := obj;
-        IF expo & (obj.type.form = ORB.Record) THEN obj.exno := exno; INC(exno) ELSE obj.exno := 0 END ;
-        IF tp.form = ORB.Record THEN
+        RVOB.NewObj(obj, id, RVOB.Typ); obj.type := tp; obj.expo := expo; obj.lev := level; tp.typobj := obj;
+        IF expo & (obj.type.form = RVOB.Record) THEN obj.exno := exno; INC(exno) ELSE obj.exno := 0 END ;
+        IF tp.form = RVOB.Record THEN
           ptbase := pbsList;  (*check whether this is base of a pointer type; search and fixup*)
           WHILE ptbase # NIL DO
             IF obj.name = ptbase.name THEN ptbase.type.base := obj.type END ;
@@ -827,13 +827,13 @@ END RoundUp;
           END ;
           IF level = 0 THEN RVOG.BuildTD(tp, dc) END    (*type descriptor; len used as its address*)
         END ;
-        Check(ORS.semicolon, "; missing")
+        Check(RVOS.semicolon, "; missing")
       END
     END ;
-    IF sym = ORS.var THEN
-      ORS.Get(sym);
-      WHILE sym = ORS.ident DO
-        IdentList(ORB.Var, first); Type(tp);
+    IF sym = RVOS.var THEN
+      RVOS.Get(sym);
+      WHILE sym = RVOS.ident DO
+        IdentList(RVOB.Var, first); Type(tp);
         obj := first;
         WHILE obj # NIL DO
           obj.type := tp; obj.lev := level;
@@ -842,59 +842,59 @@ END RoundUp;
           IF obj.expo THEN obj.exno := exno; INC(exno) END ;
           obj := obj.next
         END ;
-        Check(ORS.semicolon, "; missing")
+        Check(RVOS.semicolon, "; missing")
       END
     END ;
     varsize := RoundUp(varsize);
     ptbase := pbsList;
     WHILE ptbase # NIL DO
-      IF ptbase.type.base.form = ORB.Int THEN ORS.Mark("undefined pointer base of") END ;
+      IF ptbase.type.base.form = RVOB.Int THEN RVOS.Mark("undefined pointer base of") END ;
       ptbase := ptbase.next
     END ;
-    IF (sym >= ORS.const) & (sym <= ORS.var) THEN ORS.Mark("declaration in bad order") END
+    IF (sym >= RVOS.const) & (sym <= RVOS.var) THEN RVOS.Mark("declaration in bad order") END
   END Declarations;
 
   PROCEDURE ProcedureDecl;
-    VAR proc: ORB.Object;
-      type: ORB.Type;
-      procid: ORS.Ident;
+    VAR proc: RVOB.Object;
+      type: RVOB.Type;
+      procid: RVOS.Ident;
       x: RVOG.Item;
       locblksize, parblksize, L: LONGINT;
       int: BOOLEAN;
-  BEGIN (* ProcedureDecl *) int := FALSE; ORS.Get(sym);
-    IF sym = ORS.times THEN ORS.Get(sym); int := TRUE END ;
-    IF sym = ORS.ident THEN
-      ORS.CopyId(procid); ORS.Get(sym);
-      ORB.NewObj(proc, ORS.id, ORB.Const); parblksize := ORB.PtrSize;
-      NEW(type); type.form := ORB.Proc; type.size := ORB.IntegerSize; proc.type := type;
+  BEGIN (* ProcedureDecl *) int := FALSE; RVOS.Get(sym);
+    IF sym = RVOS.times THEN RVOS.Get(sym); int := TRUE END ;
+    IF sym = RVOS.ident THEN
+      RVOS.CopyId(procid); RVOS.Get(sym);
+      RVOB.NewObj(proc, RVOS.id, RVOB.Const); parblksize := RVOB.PtrSize;
+      NEW(type); type.form := RVOB.Proc; type.size := RVOB.IntegerSize; proc.type := type;
       CheckExport(proc.expo);
       IF proc.expo THEN proc.exno := exno; INC(exno) END ;
-      ORB.OpenScope; INC(level); proc.val := -1; type.base := ORB.noType;
+      RVOB.OpenScope; INC(level); proc.val := -1; type.base := RVOB.noType;
       ProcedureType(type, parblksize);  (*formal parameter list*)
-      Check(ORS.semicolon, "no ;"); locblksize := parblksize; 
+      Check(RVOS.semicolon, "no ;"); locblksize := parblksize;
       Declarations(locblksize);
-      proc.val := RVOG.Here() * InsnSize; proc.type.dsc := ORB.topScope.next;
-      IF sym = ORS.procedure THEN
+      proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next;
+      IF sym = RVOS.procedure THEN
         L := 0; RVOG.FJump(L);
-        REPEAT ProcedureDecl; Check(ORS.semicolon, "no ;") UNTIL sym # ORS.procedure;
-        RVOG.FixLink(L); proc.val := RVOG.Here() * InsnSize; proc.type.dsc := ORB.topScope.next
+        REPEAT ProcedureDecl; Check(RVOS.semicolon, "no ;") UNTIL sym # RVOS.procedure;
+        RVOG.FixLink(L); proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next
       END ;
       RVOG.Enter(parblksize, locblksize, int);
-      IF sym = ORS.begin THEN ORS.Get(sym); StatSequence END ;
-      IF sym = ORS.return THEN
-        ORS.Get(sym); expression(x);
-        IF type.base = ORB.noType THEN ORS.Mark("this is not a function")
-        ELSIF ~CompTypes(type.base, x.type, FALSE) THEN ORS.Mark("wrong result type")
+      IF sym = RVOS.begin THEN RVOS.Get(sym); StatSequence END ;
+      IF sym = RVOS.return THEN
+        RVOS.Get(sym); expression(x);
+        IF type.base = RVOB.noType THEN RVOS.Mark("this is not a function")
+        ELSIF ~CompTypes(type.base, x.type, FALSE) THEN RVOS.Mark("wrong result type")
         END
-      ELSIF type.base.form # ORB.NoTyp THEN
-        ORS.Mark("function without result"); type.base := ORB.noType
+      ELSIF type.base.form # RVOB.NoTyp THEN
+        RVOS.Mark("function without result"); type.base := RVOB.noType
       END ;
       RVOG.Return(type.base.form, x, locblksize, int);
-      ORB.CloseScope; DEC(level); Check(ORS.end, "no END");
-      IF sym = ORS.ident THEN
-        IF ORS.id # procid THEN ORS.Mark("no match") END ;
-        ORS.Get(sym)
-      ELSE ORS.Mark("no proc id")
+      RVOB.CloseScope; DEC(level); Check(RVOS.end, "no END");
+      IF sym = RVOS.ident THEN
+        IF RVOS.id # procid THEN RVOS.Mark("no match") END ;
+        RVOS.Get(sym)
+      ELSE RVOS.Mark("no proc id")
       END
     END ;
     int := FALSE
@@ -902,62 +902,62 @@ END RoundUp;
 
   PROCEDURE Module;
     VAR key: LONGINT;
-      obj: ORB.Object;
-      impid, impid1: ORS.Ident;
-  BEGIN Texts.WriteString(W, "  compiling "); ORS.Get(sym);
-    IF sym = ORS.module THEN
-      ORS.Get(sym);
-      IF sym = ORS.times THEN version := 0; Texts.Write(W, "*"); ORS.Get(sym) ELSE version := 1 END ;
-      ORB.Init; ORB.OpenScope;
-      IF sym = ORS.ident THEN
-        ORS.CopyId(modid); ORS.Get(sym);
+      obj: RVOB.Object;
+      impid, impid1: RVOS.Ident;
+  BEGIN Texts.WriteString(W, "  compiling "); RVOS.Get(sym);
+    IF sym # RVOS.module THEN RVOS.Mark("must start with MODULE")
+    ELSE
+      RVOS.Get(sym);
+      IF sym = RVOS.times THEN version := 0; Texts.Write(W, "*"); RVOS.Get(sym) ELSE version := 1 END ;
+      RVOB.Init; RVOB.OpenScope;
+      IF sym = RVOS.ident THEN
+        RVOS.CopyId(modid); RVOS.Get(sym);
         Texts.WriteString(W, modid); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
-      ELSE ORS.Mark("identifier expected")
+      ELSE RVOS.Mark("identifier expected")
       END ;
-      Check(ORS.semicolon, "no ;"); level := 0; dc := 0; exno := 1; key := 0;
-      IF sym = ORS.import THEN
-        ORS.Get(sym);
-        WHILE sym = ORS.ident DO
-          ORS.CopyId(impid); ORS.Get(sym);
-          IF sym = ORS.becomes THEN
-            ORS.Get(sym);
-            IF sym = ORS.ident THEN ORS.CopyId(impid1); ORS.Get(sym)
-            ELSE ORS.Mark("id expected")
+      Check(RVOS.semicolon, "no ;"); level := 0; dc := 0; exno := 1; key := 0;
+      IF sym = RVOS.import THEN
+        RVOS.Get(sym);
+        WHILE sym = RVOS.ident DO
+          RVOS.CopyId(impid); RVOS.Get(sym);
+          IF sym = RVOS.becomes THEN
+            RVOS.Get(sym);
+            IF sym = RVOS.ident THEN RVOS.CopyId(impid1); RVOS.Get(sym)
+            ELSE RVOS.Mark("id expected")
             END
           ELSE impid1 := impid
           END ;
-          ORB.Import(impid, impid1);
-          IF sym = ORS.comma THEN ORS.Get(sym)
-          ELSIF sym = ORS.ident THEN ORS.Mark("comma missing")
+          RVOB.Import(impid, impid1);
+          IF sym = RVOS.comma THEN RVOS.Get(sym)
+          ELSIF sym = RVOS.ident THEN RVOS.Mark("comma missing")
           END
         END ;
-        Check(ORS.semicolon, "no ;")
+        Check(RVOS.semicolon, "no ;")
       END ;
-      obj := ORB.topScope.next;
+      obj := RVOB.topScope.next;
       RVOG.Open(version, modid); Declarations(dc); RVOG.SetDataSize(RoundUp(dc));
-      WHILE sym = ORS.procedure DO ProcedureDecl; Check(ORS.semicolon, "no ;") END ;
+      WHILE sym = RVOS.procedure DO ProcedureDecl; Check(RVOS.semicolon, "no ;") END ;
       RVOG.Header;
-      IF sym = ORS.begin THEN ORS.Get(sym); StatSequence END ;
-      Check(ORS.end, "no END");
-      IF sym = ORS.ident THEN
-        IF ORS.id # modid THEN ORS.Mark("no match") END ;
-        ORS.Get(sym)
-      ELSE ORS.Mark("identifier missing")
+      IF sym = RVOS.begin THEN RVOS.Get(sym); StatSequence END ;
+      Check(RVOS.end, "no END");
+      IF sym = RVOS.ident THEN
+        IF RVOS.id # modid THEN RVOS.Mark("no match") END ;
+        RVOS.Get(sym)
+      ELSE RVOS.Mark("identifier missing")
       END ;
-      IF sym # ORS.period THEN ORS.Mark("period missing") END ;
-      IF (ORS.errcnt = 0) & (version # 0) THEN
-        ORB.Export(modid, newSF, key);
+      IF sym # RVOS.period THEN RVOS.Mark("period missing") END ;
+      IF (RVOS.errcnt = 0) & (version # 0) THEN
+        RVOB.Export(modid, newSF, key);
         IF newSF THEN Texts.WriteString(W, " new symbol file") END
       END ;
-      IF ORS.errcnt = 0 THEN
+      IF RVOS.errcnt = 0 THEN
         RVOG.CheckRegs();
         RVOG.Close(modid, key, exno);
         Texts.WriteInt(W, RVOG.pc, 6); Texts.WriteInt(W, dc, 6); Texts.WriteHex(W, key)
       ELSE Texts.WriteLn(W); Texts.WriteString(W, "compilation FAILED")
       END ;
       Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-      ORB.CloseScope; pbsList := NIL
-    ELSE ORS.Mark("must start with MODULE")
+      RVOB.CloseScope; pbsList := NIL
     END
   END Module;
 
@@ -977,25 +977,25 @@ END RoundUp;
     IF S.class = Texts.Char THEN
       IF S.c = "@" THEN
         Option(S); Oberon.GetSelection(T, beg, end, time);
-        IF time >= 0 THEN ORS.Init(T, beg); Module END
+        IF time >= 0 THEN RVOS.Init(T, beg); Module END
       ELSIF S.c = "^" THEN
         Option(S); Oberon.GetSelection(T, beg, end, time);
         IF time >= 0 THEN
           Texts.OpenScanner(S, T, beg); Texts.Scan(S);
           IF S.class = Texts.Name THEN
             Texts.WriteString(W, S.s); NEW(T); Texts.Open(T, S.s);
-            IF T.len > 0 THEN ORS.Init(T, 0); Module END
+            IF T.len > 0 THEN RVOS.Init(T, 0); Module END
           END
         END
       END
     ELSE 
       WHILE S.class = Texts.Name DO
         NEW(T); Texts.Open(T, S.s);
-        IF T.len > 0 THEN Option(S); ORS.Init(T, 0); Module
+        IF T.len > 0 THEN Option(S); RVOS.Init(T, 0); Module
         ELSE Texts.WriteString(W, S.s); Texts.WriteString(W, " not found");
           Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
         END ;
-        IF (T.len # 0) & (ORS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
+        IF (T.len # 0) & (RVOS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
       END
     END ;
     Oberon.Collect(0)
@@ -1003,6 +1003,6 @@ END RoundUp;
 
 BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "RISC-V OR Compiler  2020-09-23");
   Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-  NEW(dummy); dummy.class := ORB.Var; dummy.type := ORB.intType;
+  NEW(dummy); dummy.class := RVOB.Var; dummy.type := RVOB.intType;
   expression := expression0; Type := Type0; FormalType := FormalType0
 END RVOP.

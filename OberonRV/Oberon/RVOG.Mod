@@ -1,5 +1,5 @@
 MODULE RVOG; (* NW  31.5.2015  code generator in Oberon-07 for RISC*)
-IMPORT SYSTEM, Files, Texts, Oberon, RVAssem,  ORS, ORB:=RVOB; (*RVDis;*)
+IMPORT SYSTEM, Files, Texts, Oberon, RVAssem, RVOS, RVOB; (*RVDis;*)
 
 (*
   Code generator for Oberon compiler for RISC-V processor.
@@ -8,10 +8,10 @@ IMPORT SYSTEM, Files, Texts, Oberon, RVAssem,  ORS, ORB:=RVOB; (*RVDis;*)
 *)
 
 CONST
-  BitsPerInteger = ORB.BitsPerInteger;
+  BitsPerInteger = RVOB.BitsPerInteger;
   IntegerSize = BitsPerInteger DIV 8;
 
-  BitsPerInsn = ORB.BitsPerInsn;
+  BitsPerInsn = RVOB.BitsPerInsn;
   InsnSize = BitsPerInsn DIV 8;
 
   StkOrg0 = 65536;    (* For ROM modules only *)
@@ -67,7 +67,7 @@ CONST
 TYPE
   Item* = RECORD
     mode*: INTEGER;
-    type*: ORB.Type;
+    type*: RVOB.Type;
     a*, b*, r, cl, cr: INTEGER;
     rdo*: BOOLEAN  (*read only*)
   END;
@@ -106,7 +106,7 @@ VAR
   frame: INTEGER;         (* frame offset changed in SaveRegs, RestoreRegs *)
   check: BOOLEAN;         (* emit run-time checks *)
   version: INTEGER;       (* ABI Version: 0 = boot ROM, 1 = Oberon System *)
-  modid: ORS.Ident;
+  modid: RVOS.Ident;
 
   sym2rel: ARRAY 6 OF INTEGER;
   sym2uRel: ARRAY 6 OF INTEGER;
@@ -133,20 +133,20 @@ END put;
 (* Allocate register RH, adjusting RH accordingly. *)
 PROCEDURE incR;
 BEGIN
-  IF RH < maxReg THEN INC(RH) ELSE ORS.Mark("register stack overflow") END
+  IF RH < maxReg THEN INC(RH) ELSE RVOS.Mark("register stack overflow") END
 END incR;
 
 (* Free register RH-1, adjusting RH accordingly. *)
 PROCEDURE decR;
 BEGIN
-  IF RH > firstReg THEN DEC(RH) ELSE ORS.Mark("register stack underflow") END
+  IF RH > firstReg THEN DEC(RH) ELSE RVOS.Mark("register stack underflow") END
 END decR;
 
 (* Compiler error if register stack is corrupt or if program is too big *)
 PROCEDURE CheckRegs*;
 BEGIN
-  IF RH # firstReg THEN ORS.Mark("Reg Stack"); RH := firstReg END ;
-  IF pc >= maxCode - 40 THEN ORS.Mark("Program too long") END
+  IF RH # firstReg THEN RVOS.Mark("Reg Stack"); RH := firstReg END ;
+  IF pc >= maxCode - 40 THEN RVOS.Mark("Program too long") END
 END CheckRegs;
 
 (* Used for immediate bitfield checks for ANDI/ORI/XORI insns *)
@@ -204,7 +204,7 @@ END SetCC0;
     Bxx     xL, xR, *+
     JALR    RA, 0(MT)
     JAL     x0, 8
-    WORD    LSL(trap, 24) + (ORS.Pos() MOD 16777216)
+    WORD    LSL(trap, 24) + (RVOS.Pos() MOD 16777216)
     (normal execution resumes here)
 
   In order for this to work, of course, the branch must test the inverse of
@@ -234,7 +234,7 @@ BEGIN
   put(RVAssem.jalr(RA, MT, 0));
   put(RVAssem.jal(0, 8));
   (* Deposit the trap number as well as where it happened. *)
-  put(LSL(num, 24) + (ORS.Pos() MOD 16777216))
+  put(LSL(num, 24) + (RVOS.Pos() MOD 16777216))
 END Trap;
 
 (*
@@ -268,7 +268,7 @@ BEGIN
   ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU, NEV, ALW});
 (*  ASSERT((firstReg <= l) & (l < maxReg)); *)
   IF ~(((firstReg <= r) & (r < maxReg)) OR (r = 0)) THEN
-    ORS.Mark("Invalid comparison register");
+    RVOS.Mark("Invalid comparison register");
   END;
   ASSERT((0 <= link) & (link < maxCode));
   RETURN
@@ -290,7 +290,10 @@ BEGIN
   ELSE
     (* TODO make this more userfriendly... *)
     IF ~FitsIn12Bits(displacement DIV 2) THEN
-      ORS.Mark("Conditional too large");
+      (*RVOS.Mark("Conditional too large");*)
+      Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteInt(W, at, 1); 
+      Texts.WriteLn(W); Texts.WriteString(W, "  displacement "); Texts.WriteInt(W, displacement, 1); Texts.Append(Oberon.Log, W.buf);
+      Texts.WriteLn(W); Texts.WriteString(W, "  rr "); Texts.WriteInt(W, rr, 1); Texts.Append(Oberon.Log, W.buf);
     END;
     code[at] := RVAssem.fmtSB(63H, cond, lr, rr, displacement)
   END
@@ -479,7 +482,7 @@ BEGIN
     to fake it with a call to Load32BitImm for now.  This should allow boot-
     strapping the 64-bit compiler.
   *)
-  ORS.Mark("Attempted load of 64-bit integer in 32-bit compiler.");
+  RVOS.Mark("Attempted load of 64-bit integer in 32-bit compiler.");
   Load32BitImm(n)
 END Load64BitImmIn;
 
@@ -508,7 +511,7 @@ END Fetch32BitDisplacement;
 
 PROCEDURE Fetch64BitDisplacement(base, n: INTEGER);
 BEGIN
-  ORS.Mark("Attempted fetch of 64-bit displacement in RV32 compiler. FIXME");
+  RVOS.Mark("Attempted fetch of 64-bit displacement in RV32 compiler. FIXME");
   LoadImm(n);
   put(RVAssem.add(RH, RH, base));
   put(RVAssem.ld(RH, RH, 0));
@@ -541,10 +544,11 @@ PROCEDURE load(VAR x: Item);
 BEGIN
   (* op = 3 if 64-bit *)
   IF x.type.size = 1 THEN op := 4 ELSE op := 2 END;
-  IF x.mode # Reg THEN
-    IF x.mode = ORB.Const THEN
-      IF x.type.form = ORB.Proc THEN
-        IF x.r > 0 THEN ORS.Mark("not allowed")
+  IF x.mode = Reg THEN
+  ELSE
+    IF x.mode = RVOB.Const THEN
+      IF x.type.form = RVOB.Proc THEN
+        IF x.r > 0 THEN RVOS.Mark("not allowed")
         ELSIF x.r = 0 THEN  (* Answer address of procedure in current module *)
           put(RVAssem.auipc(RH, 0));
           LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
@@ -555,7 +559,7 @@ BEGIN
       ELSE LoadImm(x.a)
       END;
       x.r := RH; incR
-    ELSIF x.mode = ORB.Var THEN
+    ELSIF x.mode = RVOB.Var THEN
       IF x.r > 0 THEN (*local*)
         IF FitsIn12Bits(x.a+frame) THEN
           put(RVAssem.fmtI(03H, op, RH, SP, x.a + frame));
@@ -574,7 +578,7 @@ BEGIN
         END
       END ;
       x.r := RH; incR
-    ELSIF x.mode = ORB.Par THEN
+    ELSIF x.mode = RVOB.Par THEN
       ASSERT(FitsIn12Bits(x.a + frame));
       ASSERT(FitsIn12Bits(x.b));
       put(RVAssem.lw(RH, SP, x.a + frame));
@@ -602,14 +606,14 @@ END load;
 
 PROCEDURE loadAdr(VAR x: Item);
 BEGIN
-  IF x.mode = ORB.Var THEN
+  IF x.mode = RVOB.Var THEN
     IF x.r > 0 THEN (*local*)
       AddImm(SP, x.a + frame)
     ELSE
       GetSB(x.r); AddImm(SB, x.a);
     END ;
     x.r := RH; incR
-  ELSIF x.mode = ORB.Par THEN
+  ELSIF x.mode = RVOB.Par THEN
     IF FitsIn12Bits(x.a + frame) THEN
       put(RVAssem.lw(RH, SP, x.a + frame));
       IF x.b # 0 THEN
@@ -639,15 +643,15 @@ BEGIN
         put(RVAssem.add(x.r, x.r, RH+1))
       END
     END
-  ELSE ORS.Mark("address error")
+  ELSE RVOS.Mark("address error")
   END ;
   x.mode := Reg
 END loadAdr;
 
 PROCEDURE loadCond(VAR x: Item);
 BEGIN
-  IF x.type.form = ORB.Bool THEN
-    IF x.mode = ORB.Const THEN
+  IF x.type.form = RVOB.Bool THEN
+    IF x.mode = RVOB.Const THEN
       IF x.a # 0 THEN x.r := ALW ELSE x.r := NEV END;
       x.cr := 0; x.cl := 0;
     ELSE
@@ -655,13 +659,13 @@ BEGIN
       x.r := NE; x.cl := RH-1; x.cr := 0; DEC(RH)
     END ;
     x.mode := Cond; x.a := 0; x.b := 0
-  ELSE ORS.Mark("not Boolean?")
+  ELSE RVOS.Mark("not Boolean?")
   END
 END loadCond;
 
-PROCEDURE loadTypTagAdr(T: ORB.Type);
+PROCEDURE loadTypTagAdr(T: RVOB.Type);
   VAR x: Item;
-BEGIN x.mode := ORB.Var; x.a := T.len; x.r := -T.mno; loadAdr(x)
+BEGIN x.mode := RVOB.Var; x.a := T.len; x.r := -T.mno; loadAdr(x)
 END loadTypTagAdr;
 
 PROCEDURE loadStringAdr(VAR x: Item);
@@ -674,51 +678,51 @@ END loadStringAdr;
 
 (* Items: Conversion from constants or from Objects on the Heap to Items on the Stack*)
 
-PROCEDURE MakeConstItem*(VAR x: Item; typ: ORB.Type; val: INTEGER);
+PROCEDURE MakeConstItem*(VAR x: Item; typ: RVOB.Type; val: INTEGER);
 BEGIN
-  x.mode := ORB.Const; x.type := typ; x.a := val;
-  IF x.type = ORB.boolType THEN x.cl := firstReg END
+  x.mode := RVOB.Const; x.type := typ; x.a := val;
+  IF x.type = RVOB.boolType THEN x.cl := firstReg END
 END MakeConstItem;
 
 PROCEDURE MakeRealItem*(VAR x: Item; val: REAL);
 BEGIN
-  x.mode := ORB.Const; x.type := ORB.realType; x.a := SYSTEM.VAL(INTEGER, val)
+  x.mode := RVOB.Const; x.type := RVOB.realType; x.a := SYSTEM.VAL(INTEGER, val)
 END MakeRealItem;
 
-PROCEDURE MakeStringItem*(VAR x: Item; len: INTEGER); (*copies string from ORS-buffer to RVOG-string array*)
+PROCEDURE MakeStringItem*(VAR x: Item; len: INTEGER); (*copies string from RVOS-buffer to RVOG-string array*)
 VAR i: INTEGER;
 BEGIN
-  x.mode := ORB.Const; x.type := ORB.strType; x.a := strx; x.b := len; i := 0;
+  x.mode := RVOB.Const; x.type := RVOB.strType; x.a := strx; x.b := len; i := 0;
   IF strx + len + IntegerSize < maxStrx THEN
-    WHILE len > 0 DO str[strx] := ORS.str[i]; INC(strx); INC(i); DEC(len) END;
+    WHILE len > 0 DO str[strx] := RVOS.str[i]; INC(strx); INC(i); DEC(len) END;
     WHILE strx MOD IntegerSize # 0 DO str[strx] := 0X; INC(strx) END
-  ELSE ORS.Mark("too many strings")
+  ELSE RVOS.Mark("too many strings")
   END
 END MakeStringItem;
 
-PROCEDURE MakeItem*(VAR x: Item; y: ORB.Object; curlev: INTEGER);
+PROCEDURE MakeItem*(VAR x: Item; y: RVOB.Object; curlev: INTEGER);
 BEGIN
   x.mode := y.class; x.type := y.type; x.a := y.val; x.rdo := y.rdo;
-  IF y.class = ORB.Par THEN x.b := 0
-  ELSIF y.class = ORB.Typ THEN x.a := y.type.len; x.r := -y.lev
-  ELSIF (y.class = ORB.Const) & (y.type.form = ORB.String) THEN x.b := y.lev  (*len*)
+  IF y.class = RVOB.Par THEN x.b := 0
+  ELSIF y.class = RVOB.Typ THEN x.a := y.type.len; x.r := -y.lev
+  ELSIF (y.class = RVOB.Const) & (y.type.form = RVOB.String) THEN x.b := y.lev  (*len*)
   ELSE x.r := y.lev
   END;
-  IF (y.lev > 0) & (y.lev # curlev) & (y.class # ORB.Const) THEN
-    ORS.Mark("level error, not accessible")
+  IF (y.lev > 0) & (y.lev # curlev) & (y.class # RVOB.Const) THEN
+    RVOS.Mark("level error, not accessible")
   END
 END MakeItem;
 
 (* Code generation for Selectors, Variables, Constants *)
 
-PROCEDURE Field*(VAR x: Item; y: ORB.Object);   (* x := x.y *)
+PROCEDURE Field*(VAR x: Item; y: RVOB.Object);   (* x := x.y *)
 BEGIN;
-  IF x.mode = ORB.Var THEN
+  IF x.mode = RVOB.Var THEN
     IF x.r >= 0 THEN x.a := x.a + y.val
     ELSE loadAdr(x); x.mode := RegI; x.a := y.val
     END
   ELSIF x.mode = RegI THEN x.a := x.a + y.val
-  ELSIF x.mode = ORB.Par THEN x.b := x.b + y.val
+  ELSIF x.mode = RVOB.Par THEN x.b := x.b + y.val
   END
 END Field;
 
@@ -734,10 +738,10 @@ BEGIN
   s := x.type.base.size;    (* Type size, in bytes *)
   lim := x.type.len;        (* Limit of the array dimension, in elements *)
 
-  IF (y.mode = ORB.Const) & (lim >= 0) THEN
-    IF (y.a < 0) OR (y.a >= lim) THEN ORS.Mark("bad index") END ;
-    IF x.mode IN {ORB.Var, RegI} THEN x.a := y.a * s + x.a
-    ELSIF x.mode = ORB.Par THEN x.b := y.a * s + x.b
+  IF (y.mode = RVOB.Const) & (lim >= 0) THEN
+    IF (y.a < 0) OR (y.a >= lim) THEN RVOS.Mark("bad index") END ;
+    IF x.mode IN {RVOB.Var, RegI} THEN x.a := y.a * s + x.a
+    ELSIF x.mode = RVOB.Par THEN x.b := y.a * s + x.b
     END
   ELSE
     load(y);
@@ -745,9 +749,9 @@ BEGIN
       IF lim >= 0 THEN (* closed array *)
         LoadImm(lim)
       ELSE (* open array *)
-        IF x.mode IN {ORB.Var, ORB.Par} THEN
+        IF x.mode IN {RVOB.Var, RVOB.Par} THEN
           Fetch(SP, x.a + frame + IntegerSize)
-        ELSE ORS.Mark("error in Index")
+        ELSE RVOS.Mark("error in Index")
         END
       END ;
       Trap(GE, TrapIndexBounds, y.r, RH);
@@ -760,7 +764,7 @@ BEGIN
       LoadImm(s);
       put(RVAssem.mul(y.r, y.r, RH))
     END;
-    IF x.mode = ORB.Var THEN
+    IF x.mode = RVOB.Var THEN
       IF x.r > 0 THEN
         put(RVAssem.add(y.r, SP, y.r));
         INC(x.a, frame)
@@ -773,7 +777,7 @@ BEGIN
         END
       END ;
       x.r := y.r; x.mode := RegI
-    ELSIF x.mode = ORB.Par THEN
+    ELSIF x.mode = RVOB.Par THEN
       Fetch(SP, x.a + frame);
       put(RVAssem.add(y.r, y.r, RH));
       x.mode := RegI;  x.r := y.r;  x.a := x.b
@@ -786,7 +790,7 @@ END Index;
 PROCEDURE DeRef*(VAR x: Item);
 BEGIN
   (*Texts.WriteLn(W); Texts.WriteString(W, "Deref"); Texts.Append(Oberon.Log, W.buf);*)
-  IF x.mode = ORB.Var THEN
+  IF x.mode = RVOB.Var THEN
     IF x.r > 0 THEN (*local*)
       Fetch(SP, x.a + frame)
     ELSE
@@ -794,7 +798,7 @@ BEGIN
     END;
     NilCheck;
     x.r := RH; incR;
-  ELSIF x.mode = ORB.Par THEN
+  ELSIF x.mode = RVOB.Par THEN
     IF FitsIn12Bits(x.b) THEN
       Fetch(SP, x.a + frame);  put(RVAssem.lw(RH, RH, x.b));
     ELSE
@@ -811,18 +815,18 @@ BEGIN
       LuiForAdd(x.a);
       put(RVAssem.lw(x.r, x.r, x.a))
     ELSE (* Fits in 64 bits *)
-      ORS.Mark("64-bit DeRef. FIXME");
+      RVOS.Mark("64-bit DeRef. FIXME");
       LoadImm(x.a);
       put(RVAssem.add(x.r, x.r, RH));
       put(RVAssem.ld(x.r, x.r, 0))
     END;
     IF check THEN Trap(EQ, 4, x.r, 0); END
-  ELSIF x.mode # Reg THEN ORS.Mark("bad mode in DeRef")
+  ELSIF x.mode # Reg THEN RVOS.Mark("bad mode in DeRef")
   END ;
   x.mode := RegI; x.a := 0; x.b := 0
 END DeRef;
 
-PROCEDURE Q(T: ORB.Type; VAR dcw: INTEGER);
+PROCEDURE Q(T: RVOB.Type; VAR dcw: INTEGER);
 BEGIN (*one entry of type descriptor extension table*)
   IF T.base # NIL THEN
     Q(T.base, dcw); data[dcw] := (T.mno*1000H + T.len) * 1000H + dcw - fixorgT;
@@ -830,20 +834,20 @@ BEGIN (*one entry of type descriptor extension table*)
   END
 END Q;
 
-PROCEDURE FindPtrFlds(typ: ORB.Type; off: INTEGER; VAR dcw: INTEGER);
-  VAR fld: ORB.Object; i, s: INTEGER;
+PROCEDURE FindPtrFlds(typ: RVOB.Type; off: INTEGER; VAR dcw: INTEGER);
+  VAR fld: RVOB.Object; i, s: INTEGER;
 BEGIN
-  IF (typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp) THEN data[dcw] := off; INC(dcw)
-  ELSIF typ.form = ORB.Record THEN
+  IF (typ.form = RVOB.Pointer) OR (typ.form = RVOB.NilTyp) THEN data[dcw] := off; INC(dcw)
+  ELSIF typ.form = RVOB.Record THEN
     fld := typ.dsc;
     WHILE fld # NIL DO FindPtrFlds(fld.type, fld.val + off, dcw); fld := fld.next END
-  ELSIF typ.form = ORB.Array THEN
+  ELSIF typ.form = RVOB.Array THEN
     s := typ.base.size;
     FOR i := 0 TO typ.len-1 DO FindPtrFlds(typ.base, i*s + off, dcw) END
   END
 END FindPtrFlds;
 
-PROCEDURE BuildTD*(T: ORB.Type; VAR dc: INTEGER);
+PROCEDURE BuildTD*(T: RVOB.Type; VAR dc: INTEGER);
   VAR dcw, k, s: INTEGER;  (*dcw = word address*)
 BEGIN
   dcw := dc DIV IntegerSize;
@@ -858,16 +862,16 @@ BEGIN
 
   T.len := dc;  data[dcw] := s;  INC(dcw);
   k := T.nofpar;   (*extension level!*)
-  IF k > 3 THEN ORS.Mark("ext level too large")
+  IF k > 3 THEN RVOS.Mark("ext level too large")
   ELSE Q(T, dcw);
     WHILE k < 3 DO data[dcw] := -1; INC(dcw); INC(k) END
   END ;
   FindPtrFlds(T, 0, dcw); data[dcw] := -1; INC(dcw);
   tdx := dcw;  dc := dcw * IntegerSize;
-  IF tdx >= maxTD THEN ORS.Mark("too many record types"); tdx := 0 END
+  IF tdx >= maxTD THEN RVOS.Mark("too many record types"); tdx := 0 END
 END BuildTD;
 
-PROCEDURE TypeTest*(VAR x: Item; T: ORB.Type; varpar, isguard: BOOLEAN);
+PROCEDURE TypeTest*(VAR x: Item; T: RVOB.Type; varpar, isguard: BOOLEAN);
   VAR pc0: INTEGER;
 BEGIN (*fetch tag into RH*)
   IF varpar THEN Fetch(SP, x.a + frame + IntegerSize)
@@ -939,18 +943,18 @@ END Or2;
 
 PROCEDURE Neg*(VAR x: Item);   (* x := -x *)
 BEGIN
-  IF x.type.form = ORB.Int THEN
-    IF x.mode = ORB.Const THEN x.a := -x.a
+  IF x.type.form = RVOB.Int THEN
+    IF x.mode = RVOB.Const THEN x.a := -x.a
     ELSE load(x); put(RVAssem.sub(x.r, 0, x.r))
     END
-  ELSIF x.type.form = ORB.Real THEN
+  ELSIF x.type.form = RVOB.Real THEN
   (*
-    IF x.mode = ORB.Const THEN x.a := x.a + 7FFFFFFFH + 1
+    IF x.mode = RVOB.Const THEN x.a := x.a + 7FFFFFFFH + 1
     ELSE load(x); Put1(Mov, RH, 0, 0); Put0(Fsb, x.r, RH, x.r)
     END
-  *) ORS.Mark("Not supported yet");
+  *) RVOS.Mark("Not supported yet");
   ELSE (*form = Set*)
-    IF x.mode = ORB.Const THEN x.a := -x.a-1 
+    IF x.mode = RVOB.Const THEN x.a := -x.a-1
     ELSE load(x); put(RVAssem.xori(x.r, x.r, -1))
     END
   END
@@ -958,9 +962,9 @@ END Neg;
 
 PROCEDURE AddOp*(op: INTEGER; VAR x, y: Item);   (* x := x +- y *)
 BEGIN
-  IF op = ORS.plus THEN
-    IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN x.a := x.a + y.a
-    ELSIF y.mode = ORB.Const THEN
+  IF op = RVOS.plus THEN
+    IF (x.mode = RVOB.Const) & (y.mode = RVOB.Const) THEN x.a := x.a + y.a
+    ELSIF y.mode = RVOB.Const THEN
       load(x);
       IF y.a # 0 THEN
         IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, y.a))
@@ -972,9 +976,9 @@ BEGIN
       put(RVAssem.add(RH-2, x.r, y.r));
       decR;  x.r := RH-1
     END
-  ELSE (*op = ORS.minus*)
-    IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN x.a := x.a - y.a
-    ELSIF y.mode = ORB.Const THEN
+  ELSE (*op = RVOS.minus*)
+    IF (x.mode = RVOB.Const) & (y.mode = RVOB.Const) THEN x.a := x.a - y.a
+    ELSIF y.mode = RVOB.Const THEN
       load(x);
       IF y.a # 0 THEN
         IF FitsIn12Bits(y.a) THEN put(RVAssem.addi(x.r, x.r, -y.a))
@@ -992,16 +996,16 @@ END AddOp;
 PROCEDURE MulOp*(VAR x, y: Item);   (* x := x * y *)
   VAR e: INTEGER;
 BEGIN
-  IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN x.a := x.a * y.a
-  ELSIF (y.mode = ORB.Const) & (y.a >= 2) & (log2(y.a, e) = 1) THEN
+  IF (x.mode = RVOB.Const) & (y.mode = RVOB.Const) THEN x.a := x.a * y.a
+  ELSIF (y.mode = RVOB.Const) & (y.a >= 2) & (log2(y.a, e) = 1) THEN
     load(x); put(RVAssem.slli(x.r, x.r, e))
-  ELSIF y.mode = ORB.Const THEN
+  ELSIF y.mode = RVOB.Const THEN
     load(x); LoadImm(y.a);
     put(RVAssem.mul(x.r, x.r, RH))
-  ELSIF (x.mode = ORB.Const) & (x.a >= 2) & (log2(x.a, e) = 1) THEN
+  ELSIF (x.mode = RVOB.Const) & (x.a >= 2) & (log2(x.a, e) = 1) THEN
     load(y); put(RVAssem.slli(y.r, y.r, e));
     x.mode := Reg; x.r := y.r
-  ELSIF x.mode = ORB.Const THEN
+  ELSIF x.mode = RVOB.Const THEN
     load(y); LoadImm(x.a);
     put(RVAssem.mul(y.r, y.r, x.a));
     x.mode := Reg; x.r := y.r
@@ -1015,15 +1019,15 @@ END MulOp;
 PROCEDURE DivOp*(op: INTEGER; VAR x, y: Item);   (* x := x op y *)
   VAR e: INTEGER;
 BEGIN
-  IF op = ORS.div THEN
-    IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN
-      IF y.a > 0 THEN x.a := x.a DIV y.a ELSE ORS.Mark("bad divisor") END
-    ELSIF (y.mode = ORB.Const) & (y.a >= 2) & (log2(y.a, e) = 1) THEN
+  IF op = RVOS.div THEN
+    IF (x.mode = RVOB.Const) & (y.mode = RVOB.Const) THEN
+      IF y.a > 0 THEN x.a := x.a DIV y.a ELSE RVOS.Mark("bad divisor") END
+    ELSIF (y.mode = RVOB.Const) & (y.a >= 2) & (log2(y.a, e) = 1) THEN
       load(x); put(RVAssem.srai(x.r, x.r, e));
-    ELSIF y.mode = ORB.Const THEN
+    ELSIF y.mode = RVOB.Const THEN
       IF y.a > 0 THEN
         load(x); LoadImm(y.a); put(RVAssem.div(x.r, x.r, RH))
-      ELSE ORS.Mark("bad divisor")
+      ELSE RVOS.Mark("bad divisor")
       END
     ELSE
       load(y);
@@ -1031,22 +1035,22 @@ BEGIN
       load(x);  put(RVAssem.div(RH-2, x.r, y.r)); decR;
       x.r := RH-1
     END
-  ELSE (*op = ORS.mod*)
-    IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN
-      IF y.a > 0 THEN x.a := x.a MOD y.a ELSE ORS.Mark("bad modulus") END
-    ELSIF (y.mode = ORB.Const) & (y.a >= 2) & (log2(y.a, e) = 1) THEN
+  ELSE (*op = RVOS.mod*)
+    IF (x.mode = RVOB.Const) & (y.mode = RVOB.Const) THEN
+      IF y.a > 0 THEN x.a := x.a MOD y.a ELSE RVOS.Mark("bad modulus") END
+    ELSIF (y.mode = RVOB.Const) & (y.a >= 2) & (log2(y.a, e) = 1) THEN
       load(x);
       IF e <= 11 THEN put(RVAssem.andi(x.r, x.r, y.a-1))
       ELSE
         put(RVAssem.slli(x.r, x.r, BitsPerInteger-e));
         put(RVAssem.srli(x.r, x.r, BitsPerInteger-e));
       END
-    ELSIF y.mode = ORB.Const THEN
+    ELSIF y.mode = RVOB.Const THEN
       IF y.a > 0 THEN
         load(x); LoadImm(y.a);
         put(RVAssem.rem(x.r, x.r, RH))
       ELSE
-        ORS.Mark("bad modulus")
+        RVOS.Mark("bad modulus")
       END
     ELSE
       load(y);
@@ -1064,20 +1068,20 @@ PROCEDURE RealOp*(op: INTEGER; VAR x, y: Item);   (* x := x op y *)
 BEGIN 
 (*
   load(x); load(y);
-  IF op = ORS.plus THEN Put0(Fad, RH-2, x.r, y.r)
-  ELSIF op = ORS.minus THEN Put0(Fsb, RH-2, x.r, y.r)
-  ELSIF op = ORS.times THEN Put0(Fml, RH-2, x.r, y.r)
-  ELSIF op = ORS.rdiv THEN Put0(Fdv, RH-2, x.r, y.r)
+  IF op = RVOS.plus THEN Put0(Fad, RH-2, x.r, y.r)
+  ELSIF op = RVOS.minus THEN Put0(Fsb, RH-2, x.r, y.r)
+  ELSIF op = RVOS.times THEN Put0(Fml, RH-2, x.r, y.r)
+  ELSIF op = RVOS.rdiv THEN Put0(Fdv, RH-2, x.r, y.r)
   END ;
   DEC(RH); x.r := RH-1
-*)  ORS.Mark("REALs not implemented")
+*)  RVOS.Mark("REALs not implemented")
 END RealOp;
 
 (* Code generation for set operators *)
 
 PROCEDURE Singleton*(VAR x: Item);  (* x := {x} *)
 BEGIN
-  IF x.mode = ORB.Const THEN x.a := LSL(1, x.a)
+  IF x.mode = RVOB.Const THEN x.a := LSL(1, x.a)
   ELSE
     load(x);
     put(RVAssem.addi(RH, 0, 1));  put(RVAssem.sll(x.r, RH, x.r))
@@ -1086,28 +1090,28 @@ END Singleton;
 
 PROCEDURE Set*(VAR x, y: Item);   (* x := {x .. y} *)
 BEGIN
-  IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN
+  IF (x.mode = RVOB.Const) & (y.mode = RVOB.Const) THEN
     IF x.a <= y.a THEN
       x.a := LSL(2, y.a) - LSL(1, x.a)
     ELSE
-      ORS.Mark("Set range x..y, check that x <= y");
+      RVOS.Mark("Set range x..y, check that x <= y");
       x.a := 0
     END
   ELSE
-    IF (x.mode = ORB.Const) & (x.a < 12) THEN
+    IF (x.mode = RVOB.Const) & (x.a < 12) THEN
       x.a := LSL(-1, x.a)
     ELSE
       load(x);
       put(RVAssem.ori(RH, 0, -1)); put(RVAssem.sll(x.r, RH, x.r))
     END ;
-    IF (y.mode = ORB.Const) & (y.a < 12) THEN
+    IF (y.mode = RVOB.Const) & (y.a < 12) THEN
       put(RVAssem.ori(RH, 0, LSL(-2, y.a)));
       y.mode := Reg;  y.r := RH;  incR
     ELSE
       load(y);
       put(RVAssem.ori(RH, 0, -2)); put(RVAssem.sll(y.r, RH, y.r))
     END ;
-    IF x.mode = ORB.Const THEN
+    IF x.mode = RVOB.Const THEN
       IF x.a # 0 THEN
         put(RVAssem.xori(y.r, y.r, -1)); put(RVAssem.andi(RH-1, y.r, x.a))
       END;
@@ -1122,7 +1126,7 @@ END Set;
 PROCEDURE In*(VAR x, y: Item);  (* x := x IN y *)
 BEGIN
   load(y);
-  IF x.mode = ORB.Const THEN
+  IF x.mode = RVOB.Const THEN
     put(RVAssem.slli(y.r, y.r, (BitsPerInteger-1)-x.a));
   ELSE
     load(x);  LoadImm(63);
@@ -1136,27 +1140,27 @@ END In;
 PROCEDURE SetOp*(op: INTEGER; VAR x, y: Item);   (* x := x op y *)
   VAR xset, yset: SET; (*x.type.form = Set*)
 BEGIN
-  IF (x.mode = ORB.Const) & (y.mode = ORB.Const) THEN
+  IF (x.mode = RVOB.Const) & (y.mode = RVOB.Const) THEN
     xset := SYSTEM.VAL(SET, x.a); yset := SYSTEM.VAL(SET, y.a);
-    IF op = ORS.plus THEN xset := xset + yset
-    ELSIF op = ORS.minus THEN xset := xset - yset
-    ELSIF op = ORS.times THEN xset := xset * yset
-    ELSIF op = ORS.rdiv THEN xset := xset / yset
+    IF op = RVOS.plus THEN xset := xset + yset
+    ELSIF op = RVOS.minus THEN xset := xset - yset
+    ELSIF op = RVOS.times THEN xset := xset * yset
+    ELSIF op = RVOS.rdiv THEN xset := xset / yset
     END ;
     x.a := SYSTEM.VAL(INTEGER, xset)
-  ELSIF (y.mode = ORB.Const) & FitsIn11Bits(y.a) THEN
+  ELSIF (y.mode = RVOB.Const) & FitsIn11Bits(y.a) THEN
     load(x);
-    IF op = ORS.plus THEN put(RVAssem.ori(x.r, x.r, y.a))
-    ELSIF op = ORS.minus THEN put(RVAssem.andi(x.r, x.r, -y.a-1))
-    ELSIF op = ORS.times THEN put(RVAssem.andi(x.r, x.r, y.a))
-    ELSIF op = ORS.rdiv THEN put(RVAssem.xori(x.r, x.r, y.a))
+    IF op = RVOS.plus THEN put(RVAssem.ori(x.r, x.r, y.a))
+    ELSIF op = RVOS.minus THEN put(RVAssem.andi(x.r, x.r, -y.a-1))
+    ELSIF op = RVOS.times THEN put(RVAssem.andi(x.r, x.r, y.a))
+    ELSIF op = RVOS.rdiv THEN put(RVAssem.xori(x.r, x.r, y.a))
     END ;
   ELSE load(x); load(y);
-    IF op = ORS.plus THEN put(RVAssem.or(RH-2, x.r, y.r))
-    ELSIF op = ORS.minus THEN
+    IF op = RVOS.plus THEN put(RVAssem.or(RH-2, x.r, y.r))
+    ELSIF op = RVOS.minus THEN
       put(RVAssem.xori(y.r, y.r, -1)); put(RVAssem.and(RH-2, x.r, y.r))
-    ELSIF op = ORS.times THEN put(RVAssem.and(RH-2, x.r, y.r))
-    ELSIF op = ORS.rdiv THEN put(RVAssem.xor(RH-2, x.r, y.r))
+    ELSIF op = RVOS.times THEN put(RVAssem.and(RH-2, x.r, y.r))
+    ELSIF op = RVOS.rdiv THEN put(RVAssem.xor(RH-2, x.r, y.r))
     END ;
     decR;  x.r := RH-1
   END 
@@ -1165,24 +1169,24 @@ END SetOp;
 (* Code generation for relations *)
 
 PROCEDURE relFromSym(s: INTEGER): INTEGER;
-BEGIN RETURN sym2rel[s-ORS.eql]
+BEGIN RETURN sym2rel[s-RVOS.eql]
 END relFromSym;
 
 PROCEDURE uRelFromSym(s: INTEGER): INTEGER;
-BEGIN RETURN sym2uRel[s-ORS.eql]
+BEGIN RETURN sym2uRel[s-RVOS.eql]
 END uRelFromSym;
 
 PROCEDURE IntRelation*(op: INTEGER; VAR x, y: Item);   (* x := x < y *)
 BEGIN
   load(x);  load(y);      (* Thanks to pdewacht for his help with this! *)
   x.mode := Cond;  x.a := 0;  x.b := 0;
-  IF op IN {ORS.eql, ORS.neq, ORS.lss, ORS.geq} THEN
+  IF op IN {RVOS.eql, RVOS.neq, RVOS.lss, RVOS.geq} THEN
     x.cl := x.r;  x.cr := y.r;
     x.r := relFromSym(op)
-  ELSIF op = ORS.leq THEN
+  ELSIF op = RVOS.leq THEN
     x.cl := y.r;  x.cr := x.r;  x.r := GE
   ELSE
-    ASSERT(op = ORS.gtr);
+    ASSERT(op = RVOS.gtr);
     x.cl := y.r;  x.cr := x.r;  x.r := LT
   END;
   decR; decR
@@ -1191,17 +1195,17 @@ END IntRelation;
 PROCEDURE SetRelation*(op: INTEGER; VAR x, y: Item);   (* x := x < y *)
 BEGIN
   load(x);
-  IF (op = ORS.eql) OR (op = ORS.neq) THEN
-    IF (y.mode = ORB.Const) & FitsIn11Bits(y.a) THEN
+  IF (op = RVOS.eql) OR (op = RVOS.neq) THEN
+    IF (y.mode = RVOB.Const) & FitsIn11Bits(y.a) THEN
       put(RVAssem.xori(x.r, x.r, y.a)); 
     ELSE
       load(y);
       put(RVAssem.xor(x.r, x.r, y.r));
       decR
     END;
-    IF op = ORS.eql THEN SetCC0(x, EQ) ELSE SetCC0(x, NE) END;
+    IF op = RVOS.eql THEN SetCC0(x, EQ) ELSE SetCC0(x, NE) END;
     decR;
-  ELSE ORS.Mark("illegal relation")
+  ELSE RVOS.Mark("illegal relation")
   END
 END SetRelation;
 
@@ -1209,18 +1213,18 @@ PROCEDURE RealRelation*(op: INTEGER; VAR x, y: Item);   (* x := x < y *)
 BEGIN
 (*
   load(x);
-  IF (y.mode = ORB.Const) & (y.a = 0) THEN DEC(RH)
+  IF (y.mode = RVOB.Const) & (y.a = 0) THEN DEC(RH)
   ELSE load(y); Put0(Fsb, x.r, x.r, y.r); DEC(RH, 2)
   END ;
-  SetCC(x, relmap[op - ORS.eql])
-*)  ORS.Mark("REALs not implemented")
+  SetCC(x, relmap[op - RVOS.eql])
+*)  RVOS.Mark("REALs not implemented")
 END RealRelation;
 
 PROCEDURE StringRelation*(op: INTEGER; VAR x, y: Item);   (* x := x < y *)
   (*x, y are char arrays or strings*)
 BEGIN
-  IF x.type.form = ORB.String THEN loadStringAdr(x) ELSE loadAdr(x) END ;
-  IF y.type.form = ORB.String THEN loadStringAdr(y) ELSE loadAdr(y) END ;
+  IF x.type.form = RVOB.String THEN loadStringAdr(x) ELSE loadAdr(x) END ;
+  IF y.type.form = RVOB.String THEN loadStringAdr(y) ELSE loadAdr(y) END ;
   put(RVAssem.lbu(RH, x.r, 0));
   put(RVAssem.addi(x.r, x.r, 1));
   put(RVAssem.lbu(RH+1, y.r, 0));
@@ -1229,14 +1233,14 @@ BEGIN
   put(RVAssem.bne(RH, 0, -20));
   SetCC(x, uRelFromSym(op));
   x.cl := RH;  x.cr := RH+1;
-  IF (op = ORS.gtr) OR (op = ORS.leq) THEN Swap(x.cl, x.cr) END;
+  IF (op = RVOS.gtr) OR (op = RVOS.leq) THEN Swap(x.cl, x.cr) END;
   decR; decR
 END StringRelation;
 
 (* Code generation of Assignments *)
 
 PROCEDURE StrToChar*(VAR x: Item);
-BEGIN x.type := ORB.charType; DEC(strx, 4); x.a := ORD(str[x.a])
+BEGIN x.type := RVOB.charType; DEC(strx, 4); x.a := ORD(str[x.a])
 END StrToChar;
 
 PROCEDURE Store*(VAR x, y: Item); (* x := y *)
@@ -1244,7 +1248,7 @@ VAR op: INTEGER;
 BEGIN  load(y);
    (* op := 3 if 64-bit *)
   IF x.type.size = 1 THEN op := 0 ELSE op := 2 END ;
-  IF x.mode = ORB.Var THEN
+  IF x.mode = RVOB.Var THEN
     IF x.r > 0 THEN (*local*) 
       ASSERT(FitsIn12Bits(x.a + frame));
       put(RVAssem.fmtS(23H, op, SP, y.r, x.a + frame))
@@ -1257,7 +1261,7 @@ BEGIN  load(y);
         put(RVAssem.fmtS(23H, op, RH, y.r, 0))
       END
     END
-  ELSIF x.mode = ORB.Par THEN
+  ELSIF x.mode = RVOB.Par THEN
     ASSERT(FitsIn12Bits(x.a + frame));
     ASSERT(FitsIn12Bits(x.b));
     put(RVAssem.lw(RH, SP, x.a + frame));
@@ -1269,7 +1273,7 @@ BEGIN  load(y);
       AddImm(x.r, x.a);
       put(RVAssem.fmtS(23H, op, RH, y.r, 0)); decR
     END
-  ELSE ORS.Mark("bad mode in Store")
+  ELSE RVOS.Mark("bad mode in Store")
   END ;
   decR
 END Store;
@@ -1277,11 +1281,11 @@ END Store;
 PROCEDURE StoreStruct*(VAR x, y: Item); (* x := y, frame = 0 *)
   VAR s, pc0: INTEGER;
 BEGIN loadAdr(x); loadAdr(y);
-  IF (x.type.form = ORB.Array) & (x.type.len > 0) THEN
+  IF (x.type.form = RVOB.Array) & (x.type.len > 0) THEN
     IF y.type.len >= 0 THEN 
       IF x.type.len >= y.type.len THEN
         put(RVAssem.addi(RH, 0, (y.type.size+(IntegerSize-1)) DIV IntegerSize))
-      ELSE ORS.Mark("source array too long")
+      ELSE RVOS.Mark("source array too long")
       END
     ELSE (*y is open array*)
       ASSERT(FitsIn12Bits(y.a+IntegerSize));
@@ -1298,8 +1302,8 @@ BEGIN loadAdr(x); loadAdr(y);
       END ;
       fix(pc0, pc + 5)    (* BUG?  This just looks ... wrong. *)
     END
-  ELSIF x.type.form = ORB.Record THEN LoadImm(x.type.size DIV IntegerSize)
-  ELSE ORS.Mark("inadmissible assignment")
+  ELSIF x.type.form = RVOB.Record THEN LoadImm(x.type.size DIV IntegerSize)
+  ELSE RVOS.Mark("inadmissible assignment")
   END ;
   put(RVAssem.lw(RH+1, y.r, 0));
   put(RVAssem.addi(y.r, y.r, IntegerSize));
@@ -1314,7 +1318,7 @@ PROCEDURE CopyString*(VAR x, y: Item);  (*from x to y*)
   VAR len: INTEGER;
 BEGIN loadAdr(y); len := y.type.len;
   IF len >= 0 THEN
-    IF x.b > len THEN ORS.Mark("string too long") END
+    IF x.b > len THEN RVOS.Mark("string too long") END
   ELSIF check THEN (*array length check*)
     put(RVAssem.lw(RH, y.r, IntegerSize));
     incR; LoadImm(x.b+1); decR;
@@ -1330,11 +1334,11 @@ END CopyString;
 
 (* Code generation for parameters *)
 
-PROCEDURE VarParam*(VAR x: Item; ftype: ORB.Type);
+PROCEDURE VarParam*(VAR x: Item; ftype: RVOB.Type);
   VAR xmd: INTEGER;
 BEGIN
   xmd := x.mode; loadAdr(x);
-  IF (ftype.form = ORB.Array) & (ftype.len < 0) THEN (*open array*)
+  IF (ftype.form = RVOB.Array) & (ftype.len < 0) THEN (*open array*)
     IF x.type.len >= 0 THEN
       LoadImm(x.type.len)
     ELSE
@@ -1342,8 +1346,8 @@ BEGIN
       put(RVAssem.lw(RH, SP, x.a + frame + IntegerSize))
     END;
     incR
-  ELSIF ftype.form = ORB.Record THEN
-    IF xmd = ORB.Par THEN
+  ELSIF ftype.form = RVOB.Record THEN
+    IF xmd = RVOB.Par THEN
       put(RVAssem.lw(RH, SP, x.a + frame + IntegerSize)); incR
     ELSE
       loadTypTagAdr(x.type)
@@ -1385,7 +1389,7 @@ BEGIN
   ELSIF w.a < 0 THEN
     put(MakeFwdBranch(LT, RH-2, RH-1, 0))
   ELSE
-    ORS.Mark("zero increment");
+    RVOS.Mark("zero increment");
     put(MakeFwdBranch(LTU, RH-1, 0, 0))
   END;
   L := pc-1; decR;
@@ -1457,8 +1461,8 @@ BEGIN
 END RestoreRegs;
 
 PROCEDURE PrepCall*(VAR x: Item; VAR r: INTEGER);
-BEGIN (*x.type.form = ORB.Proc*)
-  IF x.mode > ORB.Par THEN load(x) END ;
+BEGIN (*x.type.form = RVOB.Proc*)
+  IF x.mode > RVOB.Par THEN load(x) END ;
   r := RH;
   IF RH > firstReg THEN SaveRegs(RH); RH := firstReg END
 END PrepCall;
@@ -1480,8 +1484,9 @@ END PrepCall;
 *)
 PROCEDURE Call*(VAR x: Item; r: INTEGER);
   VAR i: INTEGER;
-BEGIN (*x.type.form = ORB.Proc*)
+BEGIN (*x.type.form = RVOB.Proc*)
   (* Store where we call the function from to a magic IO port - for debugging purposes *)
+  (*
   incR;
   i := 0;
   WHILE (modid[i] # 0X) & (i < 5) DO
@@ -1489,21 +1494,22 @@ BEGIN (*x.type.form = ORB.Proc*)
     put(RVAssem.sw(RH, 0, -32));
     INC(i);
   END;
-  LoadImm(LSL(0CCH, 24) + ORS.Pos() MOD C24);
+  LoadImm(LSL(0CCH, 24) + RVOS.Pos() MOD C24);
   put(RVAssem.sw(RH, 0, -32));
-  decR; 
-  IF x.mode = ORB.Const THEN
+  decR; *)
+
+  IF x.mode = RVOB.Const THEN
     IF x.r >= 0 THEN
       put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
     ELSE (*imported*)
       IF (fixorgP < 10000H) & (x.a < 100H) & (-x.r < 80H) THEN
         (* -x.r = moduleID?? *)
         put(x.a MOD 100H + LSL(-x.r, 8) + LSL(fixorgP MOD 10000H, 16)); fixorgP := pc-1
-      ELSE ORS.Mark("fixup impossible")
+      ELSE RVOS.Mark("fixup impossible")
       END
     END
   ELSE
-    IF x.mode <= ORB.Par THEN
+    IF x.mode <= RVOB.Par THEN
       load(x); decR
     ELSE
       put(RVAssem.lw(RH, SP, 0)); put(RVAssem.addi(SP, SP, IntegerSize));
@@ -1514,8 +1520,8 @@ BEGIN (*x.type.form = ORB.Proc*)
     put(RVAssem.jalr(RA, RH, 0))
   END ;
   (* Store that we return from that call context - debug *)
-  put(RVAssem.sw(0, 0, -32));
-  IF x.type.base.form = ORB.NoTyp THEN (*procedure*) RH := firstReg
+  (*put(RVAssem.sw(0, 0, -32));*)
+  IF x.type.base.form = RVOB.NoTyp THEN (*procedure*) RH := firstReg
   ELSE (*function*)
     IF r > firstReg THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
     x.mode := Reg; x.r := r; RH := r+1
@@ -1528,7 +1534,7 @@ PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
 BEGIN invalSB; frame := 0;
   IF ~int THEN (*procedure prolog*)
     a := IntegerSize; r := firstReg;
-    IF locblksize >= 10000H THEN ORS.Mark("too many locals") END ;
+    IF locblksize >= 10000H THEN RVOS.Mark("too many locals") END ;
     IF ~FitsIn12Bits(-locblksize) THEN
        (* RH does not point at an empty register here, because they're currently used for parameters. *)
        (* So we pick the one big enough to be unaffected by parameters. *)
@@ -1547,13 +1553,13 @@ BEGIN invalSB; frame := 0;
   (*
     Put1(Sub, SP, SP, 12); Put2(Str, 0, SP, 0); Put2(Str, 1, SP, 4); Put2(Str, SB, SP, 8)
     (*R0, R1, SB saved on stack*)
-  *)  ORS.Mark("Interrupt procedures not yet supported")
+  *)  RVOS.Mark("Interrupt procedures not yet supported")
   END
 END Enter;
 
 PROCEDURE Return*(form: INTEGER; VAR x: Item; size: INTEGER; int: BOOLEAN);
 BEGIN
-  IF form # ORB.NoTyp THEN load(x) END ;
+  IF form # RVOB.NoTyp THEN load(x) END ;
   IF ~int THEN (*procedure epilog*)
     put(RVAssem.lw(RA, SP, 0));
     IF ~FitsIn12Bits(size) THEN
@@ -1565,7 +1571,7 @@ BEGIN
   ELSE (*interrupt return, restore SB, R1, R0*)
   (*
     Put2(Ldr, SB, SP, 8); Put2(Ldr, 1, SP, 4); Put2(Ldr, 0, SP, 0); Put1(Add, SP, SP, 12); Put3(BR, 7, 10H)
-  *)  ORS.Mark("Interrupt procedures not yet supported")
+  *)  RVOS.Mark("Interrupt procedures not yet supported")
   END ;
   RH := firstReg
 END Return;
@@ -1576,13 +1582,13 @@ PROCEDURE Increment*(upordown: INTEGER; VAR x, y: Item);
   VAR sign, op, zr, v: INTEGER;
 BEGIN (*frame = 0*)
   (* v := 3 if 64-bit *)
-  IF x.type = ORB.byteType THEN v := 0 ELSE v := 2 END ;
-  IF y.type.form = ORB.NoTyp THEN y.mode := ORB.Const; y.a := 1 END ;
+  IF x.type = RVOB.byteType THEN v := 0 ELSE v := 2 END ;
+  IF y.type.form = RVOB.NoTyp THEN y.mode := RVOB.Const; y.a := 1 END ;
   IF upordown = 0 THEN sign := 1 ELSE sign := -1 END;
 
-  IF (x.mode = ORB.Var) & (x.r > 0) THEN
+  IF (x.mode = RVOB.Var) & (x.r > 0) THEN
     zr := RH; put(RVAssem.fmtI(03H, v, zr, SP, x.a)); incR;
-    IF (y.mode = ORB.Const) & FitsIn12Bits(y.a) THEN
+    IF (y.mode = RVOB.Const) & FitsIn12Bits(y.a) THEN
       put(RVAssem.addi(zr, zr, y.a * sign))
     ELSE
       load(y);
@@ -1594,7 +1600,7 @@ BEGIN (*frame = 0*)
     put(RVAssem.fmtS(23H, v, SP, zr, x.a)); decR
   ELSE
     loadAdr(x); zr := RH; put(RVAssem.fmtI(03H, v, RH, x.r, 0)); incR;
-    IF (y.mode = ORB.Const) & FitsIn12Bits(y.a) THEN
+    IF (y.mode = RVOB.Const) & FitsIn12Bits(y.a) THEN
       put(RVAssem.addi(zr, zr, y.a * sign))
     ELSE
       load(y);
@@ -1613,7 +1619,7 @@ PROCEDURE Include*(inorex: INTEGER; VAR x, y: Item);
   VAR zr: INTEGER;
 BEGIN
   loadAdr(x); zr := RH; put(RVAssem.lw(RH, x.r, 0)); incR;
-  IF y.mode = ORB.Const THEN
+  IF y.mode = RVOB.Const THEN
     IF inorex = 0 THEN
       ASSERT(FitsIn12Bits(LSL(1, y.a)));
       put(RVAssem.ori(zr, zr, LSL(1, y.a)))
@@ -1663,16 +1669,16 @@ BEGIN
 (*
   z := x; load(x); load(y);
   Put1(Lsl, y.r, y.r, 23); Put0(Add, x.r, x.r, y.r); DEC(RH); Store(z, x)
-*)  ORS.Mark("REALs not supported")
+*)  RVOS.Mark("REALs not supported")
 END Pack;
 
 PROCEDURE Unpk*(VAR x, y: Item);
   VAR z, e0: Item;
-BEGIN  z := x; load(x); e0.mode := Reg; e0.r := RH; e0.type := ORB.intType;
+BEGIN  z := x; load(x); e0.mode := Reg; e0.r := RH; e0.type := RVOB.intType;
 (*
   Put1(Asr, RH, x.r, 23); Put1(Sub, RH, RH, 127); Store(y, e0); incR;
   Put1(Lsl, RH, RH, 23); Put0(Sub, x.r, x.r, RH); Store(z, x)
-*)  ORS.Mark("REALs not supported")
+*)  RVOS.Mark("REALs not supported")
 END Unpk;
 
 PROCEDURE Led*(VAR x: Item);
@@ -1689,8 +1695,8 @@ END Put;
 
 PROCEDURE Copy*(VAR x, y, z: Item);
 BEGIN load(x); load(y);
-  IF z.mode = ORB.Const THEN
-    IF z.a > 0 THEN load(z) ELSE ORS.Mark("bad count") END
+  IF z.mode = RVOB.Const THEN
+    IF z.a > 0 THEN load(z) ELSE RVOS.Mark("bad count") END
   ELSE load(z);
     IF check THEN Trap(LT, TrapNegativeSize, z.r, 0) END ;
     put(RVAssem.beq(z.r, 0, 24))
@@ -1703,12 +1709,12 @@ BEGIN load(x); load(y);
 END Copy;
 
 PROCEDURE LDPSR*(VAR x: Item);
-BEGIN ORS.Mark("PSR not supported")
+BEGIN RVOS.Mark("PSR not supported")
 END LDPSR;
 
 PROCEDURE LDREG*(VAR x, y: Item);
 BEGIN
-  IF (y.mode = ORB.Const) & FitsIn12Bits(y.a) THEN
+  IF (y.mode = RVOB.Const) & FitsIn12Bits(y.a) THEN
     put(RVAssem.addi(x.a, 0, y.a))
   ELSE
     load(y); put(RVAssem.addi(x.a, y.r, 0)); decR
@@ -1719,13 +1725,13 @@ END LDREG;
 
 PROCEDURE Abs*(VAR x: Item);
 BEGIN
-  IF x.mode = ORB.Const THEN x.a := ABS(x.a)
+  IF x.mode = RVOB.Const THEN x.a := ABS(x.a)
   ELSE
     load(x);
-    IF x.type.form = ORB.Real THEN
+    IF x.type.form = RVOB.Real THEN
     (*
       Put1(Lsl, x.r, x.r, 1); Put1(Ror, x.r, x.r, 1)
-    *)  ORS.Mark("REALs not supported")
+    *)  RVOS.Mark("REALs not supported")
     ELSE
       put(RVAssem.bge(x.r, 0, 8));
       put(RVAssem.sub(x.r, 0, x.r));
@@ -1741,24 +1747,24 @@ PROCEDURE Floor*(VAR x: Item);
 BEGIN
 (*
   load(x); Put1(Mov+U, RH, 0, 4B00H); Put0(Fad+V, x.r, x.r, RH)
-*)  ORS.Mark("REALs not supported")
+*)  RVOS.Mark("REALs not supported")
 END Floor;
 
 PROCEDURE Float*(VAR x: Item);
 BEGIN
 (*
   load(x); Put1(Mov+U, RH, 0, 4B00H);  Put0(Fad+U, x.r, x.r, RH)
-*)  ORS.Mark("REALs not supported")
+*)  RVOS.Mark("REALs not supported")
 END Float;
 
 PROCEDURE Ord*(VAR x: Item);
 BEGIN
-  IF x.mode IN {ORB.Var, ORB.Par, RegI, Cond} THEN load(x) END
+  IF x.mode IN {RVOB.Var, RVOB.Par, RegI, Cond} THEN load(x) END
 END Ord;
 
 PROCEDURE Len*(VAR x: Item);
 BEGIN
-  IF x.type.len >= 0 THEN x.mode := ORB.Const; x.a := x.type.len
+  IF x.type.len >= 0 THEN x.mode := RVOB.Const; x.a := x.type.len
   ELSE (*open array*)
     put(RVAssem.lw(RH, SP, x.a + frame + IntegerSize));
     x.mode := Reg; x.r := RH; incR
@@ -1769,21 +1775,21 @@ PROCEDURE Shift*(fct: INTEGER; VAR x, y: Item);
   VAR op: INTEGER;
 BEGIN load(x);
   IF fct = 0 THEN (* LSL *)
-    IF y.mode = ORB.Const THEN
+    IF y.mode = RVOB.Const THEN
       put(RVAssem.slli(x.r, x.r, y.a MOD BitsPerInteger))
     ELSE
       load(y); put(RVAssem.sll(RH-2, x.r, y.r));
       decR; x.r := RH-1
     END
   ELSIF fct = 1 THEN (* ASR *)
-    IF y.mode = ORB.Const THEN
+    IF y.mode = RVOB.Const THEN
       put(RVAssem.srai(x.r, x.r, y.a MOD BitsPerInteger))
     ELSE
       load(y); put(RVAssem.sra(RH-2, x.r, y.r));
       decR; x.r := RH-1
     END
   ELSE (* ROR *)
-    IF y.mode = ORB.Const THEN
+    IF y.mode = RVOB.Const THEN
       put(RVAssem.srli(RH, x.r, y.a MOD BitsPerInteger));
       put(RVAssem.slli(x.r, x.r, BitsPerInteger - (y.a MOD BitsPerInteger)));
       put(RVAssem.or(x.r, x.r, RH))
@@ -1802,7 +1808,7 @@ END Shift;
 PROCEDURE Bit*(VAR x, y: Item);
 BEGIN
   load(x); put(RVAssem.lw(x.r, x.r, 0));
-  IF y.mode = ORB.Const THEN
+  IF y.mode = RVOB.Const THEN
     put(RVAssem.slli(x.r, x.r, (BitsPerInteger-1)-(y.a MOD BitsPerInteger)))
   ELSE
     load(y);
@@ -1823,20 +1829,20 @@ END Register;
 
 PROCEDURE Adr*(VAR x: Item);
 BEGIN 
-  IF x.mode IN {ORB.Var, ORB.Par, RegI} THEN loadAdr(x)
-  ELSIF (x.mode = ORB.Const) & (x.type.form = ORB.Proc) THEN load(x)
-  ELSIF (x.mode = ORB.Const) & (x.type.form = ORB.String) THEN loadStringAdr(x)
-  ELSE ORS.Mark("not addressable")
+  IF x.mode IN {RVOB.Var, RVOB.Par, RegI} THEN loadAdr(x)
+  ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.Proc) THEN load(x)
+  ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.String) THEN loadStringAdr(x)
+  ELSE RVOS.Mark("not addressable")
   END
 END Adr;
 
 PROCEDURE CSRop*(op: INTEGER; VAR x, y: Item);
 BEGIN
-  ASSERT(x.mode = ORB.Const);
+  ASSERT(x.mode = RVOB.Const);
   IF (x.a < 0) OR  (4096 <= x.a) THEN
-    ORS.Mark("CSR must lie between 0000H and 0FFFH inclusive.");
+    RVOS.Mark("CSR must lie between 0000H and 0FFFH inclusive.");
   ELSE
-    IF (y.mode = ORB.Const) & (0 <= y.a) & (y.a < 32) THEN
+    IF (y.mode = RVOB.Const) & (0 <= y.a) & (y.a < 32) THEN
       put(RVAssem.fmtI(73H, op+5, RH, y.a, x.a));
       x.mode := Reg;
       x.r := RH; incR
@@ -1849,7 +1855,7 @@ BEGIN
   END
 END CSRop;
 
-PROCEDURE Open*(v: INTEGER; id: ORS.Ident);
+PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
 BEGIN pc := 0; tdx := 0; strx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
   IF v = 0 THEN pc := 8 END;
   modid := id;
@@ -1873,61 +1879,61 @@ BEGIN entry := pc*InsnSize;
   END
 END Header;
 
-PROCEDURE NofPtrs(typ: ORB.Type): INTEGER;
-  VAR fld: ORB.Object; n: INTEGER;
+PROCEDURE NofPtrs(typ: RVOB.Type): INTEGER;
+  VAR fld: RVOB.Object; n: INTEGER;
 BEGIN
-  IF (typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp) THEN n := 1
-  ELSIF typ.form = ORB.Record THEN
+  IF (typ.form = RVOB.Pointer) OR (typ.form = RVOB.NilTyp) THEN n := 1
+  ELSIF typ.form = RVOB.Record THEN
     fld := typ.dsc; n := 0;
     WHILE fld # NIL DO n := NofPtrs(fld.type) + n; fld := fld.next END
-  ELSIF typ.form = ORB.Array THEN n := NofPtrs(typ.base) * typ.len
+  ELSIF typ.form = RVOB.Array THEN n := NofPtrs(typ.base) * typ.len
   ELSE n := 0
   END ;
   RETURN n
 END NofPtrs;
 
-PROCEDURE FindPtrs(VAR R: Files.Rider; typ: ORB.Type; adr: INTEGER);
-  VAR fld: ORB.Object; i, s: INTEGER;
+PROCEDURE FindPtrs(VAR R: Files.Rider; typ: RVOB.Type; adr: INTEGER);
+  VAR fld: RVOB.Object; i, s: INTEGER;
 BEGIN
-  IF (typ.form = ORB.Pointer) OR (typ.form = ORB.NilTyp) THEN Files.WriteInt(R, adr)
-  ELSIF typ.form = ORB.Record THEN
+  IF (typ.form = RVOB.Pointer) OR (typ.form = RVOB.NilTyp) THEN Files.WriteInt(R, adr)
+  ELSIF typ.form = RVOB.Record THEN
     fld := typ.dsc;
     WHILE fld # NIL DO FindPtrs(R, fld.type, fld.val + adr); fld := fld.next END
-  ELSIF typ.form = ORB.Array THEN
+  ELSIF typ.form = RVOB.Array THEN
     s := typ.base.size;
     FOR i := 0 TO typ.len-1 DO FindPtrs(R, typ.base, i*s + adr) END
   END
 END FindPtrs;
 
-PROCEDURE CloseModule(VAR modid: ORS.Ident; key, nofent: INTEGER);
-  VAR obj: ORB.Object;
+PROCEDURE CloseModule(VAR modid: RVOS.Ident; key, nofent: INTEGER);
+  VAR obj: RVOB.Object;
     i, comsize, nofimps, nofptrs, size: INTEGER;
-    name, namecode: ORS.Ident;
+    name, namecode: RVOS.Ident;
     F: Files.File; R: Files.Rider;
 BEGIN
-  obj := ORB.topScope.next; nofimps := 0;
+  obj := RVOB.topScope.next; nofimps := 0;
   comsize := 4; nofptrs := 0;
   WHILE obj # NIL DO
-    IF (obj.class = ORB.Mod) & (obj.dsc # ORB.system) THEN INC(nofimps) (*count imports*)
-    ELSIF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc)
-        & (obj.type.nofpar = 0) & (obj.type.base = ORB.noType) THEN i := 0; (*count commands*)
+    IF (obj.class = RVOB.Mod) & (obj.dsc # RVOB.system) THEN INC(nofimps) (*count imports*)
+    ELSIF (obj.exno # 0) & (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc)
+        & (obj.type.nofpar = 0) & (obj.type.base = RVOB.noType) THEN i := 0; (*count commands*)
       WHILE obj.name[i] # 0X DO INC(i) END ;
       i := (i+4) DIV 4 * 4;
       INC(comsize, i+4)
-    ELSIF obj.class = ORB.Var THEN INC(nofptrs, NofPtrs(obj.type))  (*count pointers*)
+    ELSIF obj.class = RVOB.Var THEN INC(nofptrs, NofPtrs(obj.type))  (*count pointers*)
     END ;
     obj := obj.next
   END ;
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
       (pc + nofimps + nofent + nofptrs + 1)*4;
 
-  ORB.MakeFileName(name, modid, ".rsc"); (*write code file*)
+  RVOB.MakeFileName(name, modid, ".rsc"); (*write code file*)
   F := Files.New(name); Files.Set(R, F, 0);
   Files.WriteString(R, modid); Files.WriteInt(R, key); Files.WriteByte(R, version);
   Files.WriteInt(R, size);
-  obj := ORB.topScope.next;
-  WHILE (obj # NIL) & (obj.class = ORB.Mod) DO  (*imports*)
-    IF obj.dsc # ORB.system THEN Files.WriteString(R, obj(ORB.Module).orgname); Files.WriteInt(R, obj.val) END ;
+  obj := RVOB.topScope.next;
+  WHILE (obj # NIL) & (obj.class = RVOB.Mod) DO  (*imports*)
+    IF obj.dsc # RVOB.system THEN Files.WriteString(R, obj(RVOB.Module).orgname); Files.WriteInt(R, obj.val) END ;
     obj := obj.next
   END ;
   Files.Write(R, 0X);
@@ -1939,33 +1945,33 @@ BEGIN
   FOR i := 0 TO strx-1 DO Files.Write(R, str[i]) END ;  (*strings*)
   Files.WriteInt(R, pc);  (*code len*)
   FOR i := 0 TO pc-1 DO Files.WriteInt(R, code[i]); END ;  (*program*)
-  obj := ORB.topScope.next;
+  obj := RVOB.topScope.next;
   WHILE obj # NIL DO  (*commands*)
-    IF (obj.exno # 0) & (obj.class = ORB.Const) & (obj.type.form = ORB.Proc) &
-        (obj.type.nofpar = 0) & (obj.type.base = ORB.noType) THEN
+    IF (obj.exno # 0) & (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc) &
+        (obj.type.nofpar = 0) & (obj.type.base = RVOB.noType) THEN
       Files.WriteString(R, obj.name); Files.WriteInt(R, obj.val)
     END ;
     obj := obj.next
   END ;
   Files.Write(R, 0X);
   Files.WriteInt(R, nofent); Files.WriteInt(R, entry);
-  obj := ORB.topScope.next;
+  obj := RVOB.topScope.next;
   WHILE obj # NIL DO  (*entries*)
     IF obj.exno # 0 THEN
-      IF (obj.class = ORB.Const) & (obj.type.form = ORB.Proc) OR (obj.class = ORB.Var) THEN
+      IF (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc) OR (obj.class = RVOB.Var) THEN
         Files.WriteInt(R, obj.val)
-      ELSIF obj.class = ORB.Typ THEN
-        IF obj.type.form = ORB.Record THEN Files.WriteInt(R,  obj.type.len MOD 10000H)
-        ELSIF (obj.type.form = ORB.Pointer) & ((obj.type.base.typobj = NIL) OR (obj.type.base.typobj.exno = 0)) THEN
+      ELSIF obj.class = RVOB.Typ THEN
+        IF obj.type.form = RVOB.Record THEN Files.WriteInt(R,  obj.type.len MOD 10000H)
+        ELSIF (obj.type.form = RVOB.Pointer) & ((obj.type.base.typobj = NIL) OR (obj.type.base.typobj.exno = 0)) THEN
           Files.WriteInt(R, obj.type.base.len MOD 10000H)
         END
       END
     END ;
     obj := obj.next
   END ;
-  obj := ORB.topScope.next;
+  obj := RVOB.topScope.next;
   WHILE obj # NIL DO  (*pointer variables*)
-    IF obj.class = ORB.Var THEN FindPtrs(R, obj.type, obj.val) END ;
+    IF obj.class = RVOB.Var THEN FindPtrs(R, obj.type, obj.val) END ;
     obj := obj.next
   END ;
   Files.WriteInt(R, -1);
@@ -1979,10 +1985,10 @@ BEGIN
   IF i < 0 THEN Files.WriteInt(R, -1) ELSE Files.WriteInt(R, 0) END
 END writeDword;
 
-PROCEDURE Close*(VAR modid: ORS.Ident; key, nofent: INTEGER);
-  VAR obj: ORB.Object;
+PROCEDURE Close*(VAR modid: RVOS.Ident; key, nofent: INTEGER);
+  VAR obj: RVOB.Object;
     i, comsize, nofimps, nofptrs, size: INTEGER;
-    name: ORS.Ident;
+    name: RVOS.Ident;
     F: Files.File; R: Files.Rider;
 BEGIN  (* module body epilog *)
   IF version = 0 THEN  (* ROM ABI *)
@@ -1999,19 +2005,19 @@ BEGIN  (* module body epilog *)
 END Close;
 
 BEGIN
-  sym2rel[ORS.eql-ORS.eql] := EQ;
-  sym2rel[ORS.neq-ORS.eql] := NE;
-  sym2rel[ORS.lss-ORS.eql] := LT;
-  sym2rel[ORS.leq-ORS.eql] := GE;   (* not a typo; swap args first! *)
-  sym2rel[ORS.gtr-ORS.eql] := LT;   (* not a typo; swap args first! *)
-  sym2rel[ORS.geq-ORS.eql] := GE;
+  sym2rel[RVOS.eql-RVOS.eql] := EQ;
+  sym2rel[RVOS.neq-RVOS.eql] := NE;
+  sym2rel[RVOS.lss-RVOS.eql] := LT;
+  sym2rel[RVOS.leq-RVOS.eql] := GE;   (* not a typo; swap args first! *)
+  sym2rel[RVOS.gtr-RVOS.eql] := LT;   (* not a typo; swap args first! *)
+  sym2rel[RVOS.geq-RVOS.eql] := GE;
 
-  sym2uRel[ORS.eql-ORS.eql] := EQ;
-  sym2uRel[ORS.neq-ORS.eql] := NE;
-  sym2uRel[ORS.lss-ORS.eql] := LTU;
-  sym2uRel[ORS.leq-ORS.eql] := GEU; (* not a typo; swap args first! *)
-  sym2uRel[ORS.gtr-ORS.eql] := LTU; (* not a typo; swap args first! *)
-  sym2uRel[ORS.geq-ORS.eql] := GEU;
+  sym2uRel[RVOS.eql-RVOS.eql] := EQ;
+  sym2uRel[RVOS.neq-RVOS.eql] := NE;
+  sym2uRel[RVOS.lss-RVOS.eql] := LTU;
+  sym2uRel[RVOS.leq-RVOS.eql] := GEU; (* not a typo; swap args first! *)
+  sym2uRel[RVOS.gtr-RVOS.eql] := LTU; (* not a typo; swap args first! *)
+  sym2uRel[RVOS.geq-RVOS.eql] := GEU;
 
   Texts.OpenWriter(W);
 END RVOG.

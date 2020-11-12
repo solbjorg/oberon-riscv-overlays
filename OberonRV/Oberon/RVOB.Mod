@@ -1,5 +1,5 @@
 MODULE RVOB;   (*NW 25.6.2014   in Oberon-07*)
-  IMPORT Files, ORS;
+  IMPORT Files, RVOS;
   (*Definition of data types Object and Type, which together form the data structure
     called "symbol table". Contains procedures for creation of Objects, and for search:
     NewObj, this, thisimport, thisfield (and OpenScope, CloseScope).
@@ -45,11 +45,11 @@ CONST
       expo*, rdo*: BOOLEAN;   (*exported / read-only*)
       next*, dsc*: Object;
       type*: Type;
-      name*: ORS.Ident;
+      name*: RVOS.Ident;
       val*: LONGINT
     END ;
 
-    ModDesc* = RECORD (ObjDesc) orgname*: ORS.Ident END ;
+    ModDesc* = RECORD (ObjDesc) orgname*: RVOS.Ident END ;
 
     TypeDesc* = RECORD
       form*, ref*, mno*: INTEGER;  (*ref is only used for import/export*)
@@ -86,14 +86,14 @@ CONST
     nofmod, Ref: INTEGER;
     typtab: ARRAY maxTypTab OF Type;
 
-  PROCEDURE NewObj*(VAR obj: Object; id: ORS.Ident; class: INTEGER);  (*insert new Object with name id*)
+  PROCEDURE NewObj*(VAR obj: Object; id: RVOS.Ident; class: INTEGER);  (*insert new Object with name id*)
     VAR new, x: Object;
   BEGIN x := topScope;
     WHILE (x.next # NIL) & (x.next.name # id) DO x := x.next END ;
     IF x.next = NIL THEN
       NEW(new); new.name := id; new.class := class; new.next := NIL; new.rdo := FALSE; new.dsc := NIL;
       x.next := new; obj := new
-    ELSE obj := x.next; ORS.Mark("mult def")
+    ELSE obj := x.next; RVOS.Mark("mult def")
     END 
   END NewObj;
 
@@ -101,7 +101,7 @@ CONST
     VAR s, x: Object;
   BEGIN s := topScope;
     REPEAT x := s.next;
-      WHILE (x # NIL) & (x.name # ORS.id) DO x := x.next END ;
+      WHILE (x # NIL) & (x.name # RVOS.id) DO x := x.next END ;
       s := s.dsc
     UNTIL (x # NIL) OR (s = NIL);
     RETURN x
@@ -113,7 +113,7 @@ CONST
     IF mod.rdo THEN
       IF mod.name[0] # 0X THEN
         obj := mod.dsc;
-        WHILE (obj # NIL) & (obj.name # ORS.id) DO obj := obj.next END
+        WHILE (obj # NIL) & (obj.name # RVOS.id) DO obj := obj.next END
       ELSE obj := NIL
       END
     ELSE obj := NIL
@@ -124,7 +124,7 @@ CONST
   PROCEDURE thisfield*(rec: Type): Object;
     VAR fld: Object;
   BEGIN fld := rec.dsc;
-    WHILE (fld # NIL) & (fld.name # ORS.id) DO fld := fld.next END ;
+    WHILE (fld # NIL) & (fld.name # RVOS.id) DO fld := fld.next END ;
     RETURN fld
   END thisfield;
 
@@ -139,15 +139,15 @@ CONST
 
   (*------------------------------- Import ---------------------------------*)
 
-  PROCEDURE MakeFileName*(VAR FName: ORS.Ident; name, ext: ARRAY OF CHAR);
+  PROCEDURE MakeFileName*(VAR FName: RVOS.Ident; name, ext: ARRAY OF CHAR);
     VAR i, j: INTEGER;
   BEGIN i := 0; j := 0;  (*assume name suffix less than 4 characters*)
-    WHILE (i < ORS.IdLen-5) & (name[i] > 0X) DO FName[i] := name[i]; INC(i) END ;
+    WHILE (i < RVOS.IdLen-5) & (name[i] > 0X) DO FName[i] := name[i]; INC(i) END ;
     REPEAT FName[i]:= ext[j]; INC(i); INC(j) UNTIL ext[j] = 0X;
     FName[i] := 0X
   END MakeFileName;
   
-  PROCEDURE ThisModule(name, orgname: ORS.Ident; non: BOOLEAN; key: LONGINT): Object;
+  PROCEDURE ThisModule(name, orgname: RVOS.Ident; non: BOOLEAN; key: LONGINT): Object;
     VAR mod: Module; obj, obj1: Object;
   BEGIN obj1 := topScope; obj := obj1.next;  (*search for module*)
     WHILE (obj # NIL) & (obj.name # name) DO obj1 := obj; obj := obj1.next END ;
@@ -157,7 +157,7 @@ CONST
       mod.lev := nofmod; INC(nofmod); mod.type := noType; mod.dsc := NIL; mod.next := NIL;
       obj1.next := mod; obj := mod
     ELSE (*module already present*)
-      IF non THEN ORS.Mark("invalid import order") END
+      IF non THEN RVOS.Mark("invalid import order") END
     END ;
     RETURN obj
   END ThisModule;
@@ -173,7 +173,7 @@ CONST
       ref, class, mno, form, np, readonly: INTEGER;
       new, fld, par, obj, mod, impmod: Object;
       t: Type;
-      name, modname: ORS.Ident;
+      name, modname: RVOS.Ident;
   BEGIN Read(R, ref);
     IF ref < 0 THEN T := typtab[-ref]  (*already read*)
     ELSE NEW(t); T := t; typtab[ref] := t; t.mno := thismod.lev;
@@ -219,11 +219,11 @@ CONST
     END
   END InType;
   
-  PROCEDURE Import*(VAR modid, modid1: ORS.Ident);
+  PROCEDURE Import*(VAR modid, modid1: RVOS.Ident);
     VAR key: LONGINT; class, k: INTEGER;
       obj: Object;  t: Type;
       thismod: Object;
-      modname, fname: ORS.Ident;
+      modname, fname: RVOS.Ident;
       F: Files.File; R: Files.Rider;
   BEGIN
     IF modid1 = "SYSTEM" THEN
@@ -234,7 +234,7 @@ CONST
         Files.Set(R, F, 0); Files.ReadInt(R, key); Files.ReadInt(R, key); Files.ReadString(R, modname);
         thismod := ThisModule(modid, modid1, TRUE, key); thismod.rdo := TRUE;
         Read(R, class); (*version key*)
-        IF class # versionkey THEN ORS.Mark("wrong version") END ;
+        IF class # versionkey THEN RVOS.Mark("wrong version") END ;
         Read(R, class);
         WHILE class # 0 DO
           NEW(obj); obj.class := class; Files.ReadString(R, obj.name);
@@ -250,7 +250,7 @@ CONST
           END ;
           obj.next := thismod.dsc; thismod.dsc := obj; Read(R, class)
         END ;
-      ELSE ORS.Mark("import not available")
+      ELSE RVOS.Mark("import not available")
       END
     END
   END Import;
@@ -312,17 +312,17 @@ CONST
         mod := topScope.next;
         WHILE (mod # NIL) & (mod.lev # t.mno) DO mod := mod.next END ;
         IF mod # NIL THEN Files.WriteString(R, mod.name); Files.WriteInt(R, mod.val); Files.WriteString(R, obj.name)
-        ELSE ORS.Mark("re-export not found"); Write(R, 0)
+        ELSE RVOS.Mark("re-export not found"); Write(R, 0)
         END
       ELSE Write(R, 0)
       END
     END
   END OutType;
 
-  PROCEDURE Export*(VAR modid: ORS.Ident; VAR newSF: BOOLEAN; VAR key: LONGINT);
+  PROCEDURE Export*(VAR modid: RVOS.Ident; VAR newSF: BOOLEAN; VAR key: LONGINT);
     VAR x, sum, oldkey: LONGINT;
       obj, obj0: Object;
-      filename: ORS.Ident;
+      filename: RVOS.Ident;
       F, F1: Files.File; R, R1: Files.Rider;
   BEGIN Ref := Record + 1; MakeFileName(filename, modid, ".smb");
     F := Files.New(filename); Files.Set(R, F, 0);
@@ -366,7 +366,7 @@ CONST
     IF sum # oldkey THEN
       IF newSF OR (F1 = NIL) THEN
         key := sum; newSF := TRUE; Files.Set(R, F, 4); Files.WriteInt(R, sum); Files.Register(F)  (*insert checksum*)
-      ELSE ORS.Mark("new symbol file inhibited")
+      ELSE RVOS.Mark("new symbol file inhibited")
       END
     ELSE newSF := FALSE; key := sum
     END

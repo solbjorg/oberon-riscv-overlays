@@ -1,4 +1,4 @@
-MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
+MODULE RVOS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
   IMPORT SYSTEM, Texts, Oberon;
 
 (* Oberon Scanner does lexical analysis. Input is Oberon-Text, output is
@@ -33,9 +33,9 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
   TYPE Ident* = ARRAY IdLen OF CHAR;
 
   VAR ival*, slen*: LONGINT;  (*results of Get*)
-    rval*: REAL;
     id*: Ident;  (*for identifiers*)
     str*: ARRAY stringBufSize OF CHAR;
+    KWX: ARRAY 10 OF INTEGER;
     errcnt*: INTEGER;
 
     ch: CHAR;  (*last character read*)
@@ -43,7 +43,6 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
     R: Texts.Reader;
     W: Texts.Writer;
     k: INTEGER;
-    KWX: ARRAY 10 OF INTEGER;
     keyTab: ARRAY NKW OF
         RECORD sym: INTEGER; id: ARRAY 12 OF CHAR END;
   
@@ -66,7 +65,7 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
   END Mark;
 
   PROCEDURE Identifier(VAR sym: INTEGER);
-    VAR i, k: INTEGER;
+    VAR i, j, k: INTEGER;
   BEGIN i := 0;
     REPEAT
       IF i < IdLen-1 THEN id[i] := ch; INC(i) END ;
@@ -114,6 +113,7 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
     Texts.Read(R, ch); slen := i  (*no 0X appended!*)
   END HexString;
 
+(*
   PROCEDURE Ten(e: LONGINT): REAL;
     VAR x, t: REAL;
   BEGIN x := 1.0; t := 10.0;
@@ -123,10 +123,11 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
     END ;
     RETURN x
   END Ten;
+*)
 
   PROCEDURE Number(VAR sym: INTEGER);
     CONST max = 2147483647 (*2^31 - 1*);
-    VAR i, k, e, n, s, h: LONGINT; x: REAL;
+    VAR i, k, e, n, s, h: LONGINT;
       d: ARRAY 16 OF INTEGER;
       negE: BOOLEAN;
   BEGIN ival := 0; i := 0; n := 0; k := 0;
@@ -141,7 +142,7 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
       UNTIL i = n;
       IF ch = "X" THEN sym := char;
         IF k < 100H THEN ival := k ELSE Mark("illegal value"); ival := 0 END
-      ELSIF ch = "R" THEN sym := real; rval := SYSTEM.VAL(REAL, k)
+      ELSIF ch = "R" THEN Mark("No REALs"); (*sym := real; rval := SYSTEM.VAL(REAL, k)*)
       ELSE sym := int; ival := k
       END ;
       Texts.Read(R, ch)
@@ -156,7 +157,9 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
           INC(i)
         UNTIL i = n;
         sym := int; ival := k
-      ELSE (*real number*) x := 0.0; e := 0;
+      ELSE (*real number*) Mark("REALs not implemented");
+      (*
+        x := 0.0; e := 0;
         REPEAT  (*integer part*) x := x * 10.0 + FLT(d[i]); INC(i) UNTIL i = n;
         WHILE (ch >= "0") & (ch <= "9") DO  (*fraction*)
           x := x * 10.0 + FLT(ORD(ch) - 30H); DEC(e); Texts.Read(R, ch)
@@ -180,6 +183,7 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
           IF e <= maxExp THEN x := Ten(e) * x ELSE x := 0.0; Mark("too large") END
         END ;
         sym := real; rval := x
+      *)
       END
     ELSE  (*decimal integer*)
       REPEAT
@@ -259,11 +263,11 @@ MODULE ORS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
         END ;
         Texts.Read(R, ch)
       END
-    UNTIL sym # null
+    UNTIL sym # null;
   END Get;
 
   PROCEDURE Init*(T: Texts.Text; pos: LONGINT);
-  BEGIN errpos := pos; errcnt := 0; Texts.OpenReader(R, T, pos); Texts.Read(R, ch)
+  BEGIN errpos := pos; errcnt := 0; Texts.OpenReader(R, T, pos); Texts.Read(R, ch);
   END Init;
 
   PROCEDURE EnterKW(sym: INTEGER; name: ARRAY OF CHAR);
@@ -310,5 +314,5 @@ BEGIN Texts.OpenWriter(W); k := 0; KWX[0] := 0; KWX[1] := 0;
   EnterKW(pointer, "POINTER");
   KWX[7] := k; KWX[8] := k;
   EnterKW(procedure, "PROCEDURE");
-  KWX[9] := k
-END ORS.
+  KWX[9] := k;
+END RVOS.
