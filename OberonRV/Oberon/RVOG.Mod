@@ -572,8 +572,7 @@ PROCEDURE load(VAR x: Item);
 BEGIN
   (* op = 3 if 64-bit *)
   IF x.type.size = 1 THEN op := 4 ELSE op := 2 END;
-  IF x.mode = Reg THEN
-  ELSE
+  IF x.mode # Reg THEN
     IF x.mode = RVOB.Const THEN
       IF x.type.form = RVOB.Proc THEN
         IF x.r > 0 THEN RVOS.Mark("not allowed")
@@ -1047,7 +1046,7 @@ BEGIN
     x.mode := Reg; x.r := y.r
   ELSIF x.mode = RVOB.Const THEN
     load(y); LoadImm(x.a);
-    put(RVAssem.mul(y.r, y.r, x.a));
+    put(RVAssem.mul(y.r, y.r, RH));
     x.mode := Reg; x.r := y.r
   ELSE
     load(x); load(y);
@@ -1169,12 +1168,13 @@ BEGIN
   IF x.mode = RVOB.Const THEN
     put(RVAssem.slli(y.r, y.r, (BitsPerInteger-1)-x.a));
   ELSE
-    load(x);  LoadImm(63);
+    load(x);
+    put(RVAssem.addi(RH, 0, BitsPerInteger-1));
     put(RVAssem.sub(x.r, RH, x.r));
     put(RVAssem.sll(y.r, y.r, x.r));
     decR;
   END ;
-  SetCC0(x, LT); x.cl := y.r; decR
+  SetCC0(x, LT); x.cl := y.r; decR;
 END In;
 
 PROCEDURE SetOp*(op: INTEGER; VAR x, y: Item);   (* x := x op y *)
@@ -1861,6 +1861,7 @@ BEGIN
     put(RVAssem.sll(x.r, x.r, y.r));
     decR
   END ;
+  Texts.WriteLn(W); Texts.WriteString(W, "x.r, RH-1: "); Texts.WriteHex(W, x.r); Texts.WriteHex(W, RH-1);  Texts.Append(Oberon.Log, W.buf);
   SetCC0(x, LT); decR
 END Bit;
 
@@ -1976,7 +1977,7 @@ BEGIN
       (pc + nofimps + nofent + nofptrs + 1)*4;
 
   IF (varsize > 2048) THEN
-    Texts.WriteLn(W); Texts.WriteString(W, "Warning, global variable size too large at "); Texts.WriteInt(W, varsize, 1);
+    Texts.WriteLn(W); Texts.WriteString(W, "Warning! Global variable size too large at "); Texts.WriteInt(W, varsize, 1);
     Texts.WriteString(W, " bytes. Maximum is 2048 bytes. Other modules will be unable to access exported variables; such access will cause undefined behaviour."); Texts.WriteInt(W, varsize, 1); Texts.Append(Oberon.Log, W.buf);
   END;
 
@@ -2017,8 +2018,6 @@ BEGIN
         IF obj.type.form = RVOB.Record THEN Files.WriteInt(R,  obj.type.len MOD 10000H);
         ELSIF (obj.type.form = RVOB.Pointer) & ((obj.type.base.typobj = NIL) OR (obj.type.base.typobj.exno = 0)) THEN
           Files.WriteInt(R, obj.type.base.len MOD 10000H);
-
-          Texts.WriteLn(W); Texts.WriteString(W, "entry obj type len:"); Texts.WriteHex(W, obj.type.base.len MOD 10000H); Texts.Append(Oberon.Log, W.buf);
         END
       END
     END ;
