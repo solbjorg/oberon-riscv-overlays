@@ -1,11 +1,11 @@
 (*ORP.Compile @  
 ORX.WriteFile BootLoad.rsc 512 "D:/Verilog/RISC5/prom.mem"~*)
 
-MODULE* RVBootLoad;  (*NW 20.10.2013 / PR 4.2.2014; boot from SDHC disk or line*)
+MODULE* BootLoad;  (*NW 20.10.2013 / PR 4.2.2014; boot from SDHC disk or line*)
   IMPORT SYSTEM;
   (* sw0: init SD; sw1: line|disk*)
   CONST MT = 4; SP = 2; RA = 1;
-    MTOrg = 20H; MemLim = 0E7EF0H; stackOrg = 80000H;
+    MTOrg = 20H; MemLim = 0E7EF0H; stackOrg = 080000H;
     (* swi points to memory location to read on the xilinx for whether switch is flipped or not *)
     (* see RISC-Arch.pdf *)
     swi = -60; led = -60; rsData = -56; rsCtrl = -52;
@@ -113,4 +113,4 @@ BEGIN SYSTEM.LDREG(SP, stackOrg); SYSTEM.LDREG(MT, MTOrg);
   ELSIF SYSTEM.BIT(swi, 0) THEN SYSTEM.PUT(led, 81H); LoadFromLine
   END ;
   SYSTEM.PUT(12, MemLim); SYSTEM.PUT(24, stackOrg); SYSTEM.PUT(led, 84H);
-END RVBootLoad.
+END BootLoad.
