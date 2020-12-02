@@ -28,8 +28,8 @@ CONST
   SB = GP;          (* We assign the role of SB to GP *)
   MT = TP;          (* We assign the role of MT to TP *)
 
-  maxCode = 65536;  (* Total # of instructions in a module *)
-  maxStrx = 65536;  (* 64KB for statically allocated strings *)
+  maxCode = 32768;  (* Total # of instructions in a module *)
+  maxStrx = 32768;  (* 64KB for statically allocated strings *)
   maxTD = 512;      (* 512 words of space for type descriptors *)
 
   Reg = 10; RegI = 11; Cond = 12;  (*internal item modes*)
@@ -72,6 +72,22 @@ TYPE
     rdo*: BOOLEAN  (*read only*)
   END;
 
+  Program* = POINTER TO ProgramDesc;
+  Strings* = POINTER TO StringsDesc;
+  TypeDescriptors* = POINTER TO TypeDescriptorsDesc;
+
+  ProgramDesc* = RECORD
+    code: ARRAY maxCode OF INTEGER;
+  END;
+
+  StringsDesc* = RECORD
+    s: ARRAY maxStrx OF CHAR;
+  END;
+
+  TypeDescriptorsDesc* = RECORD
+    t: ARRAY maxTD OF INTEGER;  (*type descriptors*)
+  END;
+
   (*
     Item forms and meaning of fields:
 
@@ -98,22 +114,23 @@ TYPE
 
 VAR
   W: Texts.Writer;
-  pc*, varsize: INTEGER;  (* program counter, data indices *)
+  pc, varsize: INTEGER;  (* program counter, data indices *)
   tdx, strx: INTEGER;     (* Type descriptor and string array indices *)
   entry: INTEGER;         (* module body entrypoint *)
   RH: INTEGER;            (* available registers R[firstReg] ... R[H-1]*)
   curSB: INTEGER;         (* current static base in SB (module table index) *)
   frame: INTEGER;         (* frame offset changed in SaveRegs, RestoreRegs *)
-  check: BOOLEAN;         (* emit run-time checks *)
+  check: BOOLEAN;          (* emit run-time checks *)
+  stacktrace: BOOLEAN;    (* add a stack trace *)
   version: INTEGER;       (* ABI Version: 0 = boot ROM, 1 = Oberon System *)
   modid: RVOS.Ident;
 
   sym2rel: ARRAY 6 OF INTEGER;
   sym2uRel: ARRAY 6 OF INTEGER;
     
-  code: ARRAY maxCode OF INTEGER;
-  data: ARRAY maxTD OF INTEGER;  (*type descriptors*)
-  str: ARRAY maxStrx OF CHAR;
+  program: Program;
+  data: TypeDescriptors;
+  str: Strings;
 
   (* Origins of lists of relocations to be fixed up by the loader *)
   fixorgP, fixorgD, fixorgT: INTEGER;
@@ -125,7 +142,7 @@ BEGIN
   Texts.WriteHex(W, w); Texts.WriteString(W, " : ");
   RVDis.WriteOpcode(W, w);  Texts.WriteLn(W);
   Texts.Append(Oberon.Log, W.buf); *)
-  code[pc] := w;  INC(pc)
+  program.code[pc] := w;  INC(pc)
 END put;
 
 (* Register Stack Maintenance *)
@@ -241,10 +258,10 @@ END Trap;
   SB register management.
 *)
 
-PROCEDURE invalSB;
-BEGIN curSB := 1  (* I don't understand why 1 is used here. *)
-(* I do! Module numbers start at 1, as MT[0] always points to the Trap procedure *)
+(* Module numbers start at 1, as MT[0] always points to the Trap procedure *)
    (* in the Oberon system. See Ch. 12.7.10 of the PO book (PO.Applications). *)
+PROCEDURE invalSB;
+BEGIN curSB := 1
 END invalSB;
 
 (*
@@ -266,7 +283,10 @@ END invalSB;
 PROCEDURE MakeFwdBranch(cond, l, r, link: INTEGER): INTEGER;
 BEGIN
   ASSERT(cond IN {EQ, NE, LT, GE, LTU, GEU, NEV, ALW});
-(*  ASSERT((firstReg <= l) & (l < maxReg)); *)
+  IF ~(((firstReg <= l) & (l < maxReg)) OR (l = 0)) THEN
+    RVOS.Mark("Invalid comparison register")
+  END;
+  (*ASSERT((firstReg <= l) & (l < maxReg));*)
   IF ~(((firstReg <= r) & (r < maxReg)) OR (r = 0)) THEN
     RVOS.Mark("Invalid comparison register");
   END;
@@ -281,21 +301,29 @@ PROCEDURE fix(at, with: INTEGER);
 VAR
   displacement, cond, lr, rr: INTEGER;
 BEGIN
-  cond := code[at] MOD 16;
-  lr := ASR(code[at], 9) MOD 32;
-  rr := ASR(code[at], 4) MOD 32;
+  cond := program.code[at] MOD 16;
+  lr := ASR(program.code[at], 9) MOD 32;
+  rr := ASR(program.code[at], 4) MOD 32;
   displacement := (with-at)*InsnSize;
-  IF cond = ALW THEN code[at] := RVAssem.jal(0, displacement)
-  ELSIF cond = NEV THEN code[at] := RVAssem.ori(0, 0, 0)
+  IF cond = ALW THEN program.code[at] := RVAssem.jal(0, displacement)
+  ELSIF cond = NEV THEN program.code[at] := RVAssem.ori(0, 0, 0)
   ELSE
-    (* TODO make this more userfriendly... *)
     IF ~FitsIn12Bits(displacement DIV 2) THEN
-      (*RVOS.Mark("Conditional too large");*)
-      Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteInt(W, at, 1); 
-      Texts.WriteLn(W); Texts.WriteString(W, "  displacement "); Texts.WriteInt(W, displacement, 1); Texts.Append(Oberon.Log, W.buf);
-      Texts.WriteLn(W); Texts.WriteString(W, "  rr "); Texts.WriteInt(W, rr, 1); Texts.Append(Oberon.Log, W.buf);
-    END;
-    code[at] := RVAssem.fmtSB(63H, cond, lr, rr, displacement)
+      (* Can't do this fixup if we aren't at the head of code *)
+      IF with # pc THEN
+        RVOS.Mark("Conditional body too large");
+      ELSE
+        (* Quick explainer: we replace the branch with a jump to /the end of the if body/, *)
+        (* and then construct the branch there. This allows us to create branches covering more *)
+        (* instructions than the offset of a B-type instruction allows, by leveraging JAL instead.*)
+        program.code[at] := RVAssem.jal(0, displacement+4); (* jumps to the SB instruction below *)
+        put(RVAssem.jal(0, 12)); (* jump over branch; only executed in execution of if body... *)
+        put(RVAssem.fmtSB(63H, cond, lr, rr, 8)); (* jump over JAL into start of if body *)
+        put(RVAssem.jal(0, -displacement-4)) (* jump into start of if body *)
+      END;
+    ELSE
+      program.code[at] := RVAssem.fmtSB(63H, cond, lr, rr, displacement)
+    END
   END
 END fix;
 
@@ -303,7 +331,7 @@ PROCEDURE FixLinkWith(L, dst: INTEGER);
   VAR next: INTEGER;
 BEGIN
   WHILE L # 0 DO
-    next := ASR(code[L], 16) MOD 10000H; fix(L, dst);
+    next := ASR(program.code[L], 16) MOD 10000H; fix(L, dst);
     L := next
   END
 END FixLinkWith;
@@ -329,8 +357,8 @@ PROCEDURE merged(L0, L1: INTEGER): INTEGER;
 BEGIN 
   IF L0 # 0 THEN
     L3 := L0;   (* Find the end of L0 and place in L2 *)
-    REPEAT L2 := L3; L3 := ASR(code[L2], 16) MOD 10000H UNTIL L3 = 0;
-    code[L2] := code[L2] + LSL(L1 MOD 10000H, 16); L1 := L0
+    REPEAT L2 := L3; L3 := ASR(program.code[L2], 16) MOD 10000H UNTIL L3 = 0;
+    program.code[L2] := program.code[L2] + LSL(L1 MOD 10000H, 16); L1 := L0
   END ;
   RETURN L1
 END merged;
@@ -387,15 +415,15 @@ BEGIN
     this fixup format, hopefully this assert will trigger before hard to
     diagnose bugs will occur.
   *)
-  ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
-  ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
   (*
   Texts.WriteString(W,"MLSB: "); Texts.WriteInt(W,-base,0);
   Texts.WriteString(W, " inst: "); Texts.WriteHex(W, 5 + LSL(-base, 4) + LSL(fixorgD MOD 10000H, 16));
   Texts.WriteString(W, " fixorgD: "); Texts.WriteHex(W, fixorgD);
   Texts.WriteLn(W);
   Texts.Append(Oberon.Log,W.buf);
-  *)
+  SYSTEM.PUT(-60, 0CBAH); *)
+  ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
+  ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
   RETURN 5 + LSL(-base, 4) + LSL(fixorgD MOD 10000H, 16)
 END MakeLoadSB;
 
@@ -567,12 +595,14 @@ BEGIN
           LoadImm(x.a + frame); put(RVAssem.add(RH, RH, SP));
           put(RVAssem.fmtI(03H, op, RH, RH, 0));
         END
-      ELSE (* relative to another module *)
+      ELSE (* relative to another module, or global variable *)
         GetSB(x.r);
         (* x.a must be less than 256 *)
+
         IF FitsIn12Bits(x.a) THEN
           put(RVAssem.fmtI(03H, op, RH, SB, x.a))
         ELSE
+          Texts.WriteLn(W); Texts.WriteHex(W, x.a); Texts.Append(Oberon.Log, W.buf);
           LoadImm(x.a); put(RVAssem.add(RH, RH, SB));
           put(RVAssem.fmtI(03H, op, RH, RH, 0))
         END
@@ -694,8 +724,8 @@ VAR i: INTEGER;
 BEGIN
   x.mode := RVOB.Const; x.type := RVOB.strType; x.a := strx; x.b := len; i := 0;
   IF strx + len + IntegerSize < maxStrx THEN
-    WHILE len > 0 DO str[strx] := RVOS.str[i]; INC(strx); INC(i); DEC(len) END;
-    WHILE strx MOD IntegerSize # 0 DO str[strx] := 0X; INC(strx) END
+    WHILE len > 0 DO str.s[strx] := RVOS.str[i]; INC(strx); INC(i); DEC(len) END;
+    WHILE strx MOD IntegerSize # 0 DO str.s[strx] := 0X; INC(strx) END
   ELSE RVOS.Mark("too many strings")
   END
 END MakeStringItem;
@@ -764,17 +794,26 @@ BEGIN
       LoadImm(s);
       put(RVAssem.mul(y.r, y.r, RH))
     END;
+
     IF x.mode = RVOB.Var THEN
       IF x.r > 0 THEN
         put(RVAssem.add(y.r, SP, y.r));
         INC(x.a, frame)
       ELSE
         GetSB(x.r);
-        IF x.r = 0 THEN put(RVAssem.add(y.r, SB, y.r))
+        (*
+        Texts.WriteLn(W); Texts.WriteString(W, "pos");
+        Texts.WriteInt(W, RVOS.Pos(), 1); Texts.Append(Oberon.Log, W.buf);
+        Texts.WriteLn(W); Texts.WriteString(W, "sb x.r"); Texts.WriteInt(W, x.r, 1); Texts.Append(Oberon.Log, W.buf); *)
+        AddImm(SB, x.a);  put(RVAssem.add(y.r, RH, y.r));
+        x.a := 0
+          (*
+        IF x.r = 0 THEN put(RVAssem.add(y.r, SB, y.r));
+          Texts.WriteLn(W); Texts.WriteString(W, "x.a loading index: "); Texts.WriteHex(W, x.a); Texts.Append(Oberon.Log, W.buf);
         ELSE
           AddImm(SB, x.a);  put(RVAssem.add(y.r, RH, y.r));
           x.a := 0
-        END
+        END *)
       END ;
       x.r := y.r; x.mode := RegI
     ELSIF x.mode = RVOB.Par THEN
@@ -829,7 +868,7 @@ END DeRef;
 PROCEDURE Q(T: RVOB.Type; VAR dcw: INTEGER);
 BEGIN (*one entry of type descriptor extension table*)
   IF T.base # NIL THEN
-    Q(T.base, dcw); data[dcw] := (T.mno*1000H + T.len) * 1000H + dcw - fixorgT;
+    Q(T.base, dcw); data.t[dcw] := (T.mno*1000H + T.len) * 1000H + dcw - fixorgT;
     fixorgT := dcw; INC(dcw)
   END
 END Q;
@@ -837,7 +876,7 @@ END Q;
 PROCEDURE FindPtrFlds(typ: RVOB.Type; off: INTEGER; VAR dcw: INTEGER);
   VAR fld: RVOB.Object; i, s: INTEGER;
 BEGIN
-  IF (typ.form = RVOB.Pointer) OR (typ.form = RVOB.NilTyp) THEN data[dcw] := off; INC(dcw)
+  IF (typ.form = RVOB.Pointer) OR (typ.form = RVOB.NilTyp) THEN data.t[dcw] := off; INC(dcw)
   ELSIF typ.form = RVOB.Record THEN
     fld := typ.dsc;
     WHILE fld # NIL DO FindPtrFlds(fld.type, fld.val + off, dcw); fld := fld.next END
@@ -860,13 +899,14 @@ BEGIN
   ELSE s := (s+263) DIV 256 * 256
   END ;
 
-  T.len := dc;  data[dcw] := s;  INC(dcw);
+  T.len := dc;  data.t[dcw] := s;  INC(dcw);
+  Texts.WriteLn(W); Texts.WriteString(W, "len: "); Texts.WriteHex(W, T.len); Texts.Append(Oberon.Log, W.buf);
   k := T.nofpar;   (*extension level!*)
   IF k > 3 THEN RVOS.Mark("ext level too large")
   ELSE Q(T, dcw);
-    WHILE k < 3 DO data[dcw] := -1; INC(dcw); INC(k) END
+    WHILE k < 3 DO data.t[dcw] := -1; INC(dcw); INC(k) END
   END ;
-  FindPtrFlds(T, 0, dcw); data[dcw] := -1; INC(dcw);
+  FindPtrFlds(T, 0, dcw); data.t[dcw] := -1; INC(dcw);
   tdx := dcw;  dc := dcw * IntegerSize;
   IF tdx >= maxTD THEN RVOS.Mark("too many record types"); tdx := 0 END
 END BuildTD;
@@ -1134,7 +1174,7 @@ BEGIN
     put(RVAssem.sll(y.r, y.r, x.r));
     decR;
   END ;
-  SetCC0(x, LT); decR
+  SetCC0(x, LT); x.cl := y.r; decR
 END In;
 
 PROCEDURE SetOp*(op: INTEGER; VAR x, y: Item);   (* x := x op y *)
@@ -1240,7 +1280,7 @@ END StringRelation;
 (* Code generation of Assignments *)
 
 PROCEDURE StrToChar*(VAR x: Item);
-BEGIN x.type := RVOB.charType; DEC(strx, 4); x.a := ORD(str[x.a])
+BEGIN x.type := RVOB.charType; DEC(strx, 4); x.a := ORD(str.s[x.a])
 END StrToChar;
 
 PROCEDURE Store*(VAR x, y: Item); (* x := y *)
@@ -1300,7 +1340,8 @@ BEGIN loadAdr(x); loadAdr(y);
         incR; LoadImm(x.type.size+(IntegerSize-1) DIV IntegerSize); decR;
         Trap(LT, TrapSourceTooBig, RH+1, RH)
       END ;
-      fix(pc0, pc + 5)    (* BUG?  This just looks ... wrong. *)
+      (* Sets forward branch to jump to the store struct loading loop below *)
+      fix(pc0, pc + 5)
     END
   ELSIF x.type.form = RVOB.Record THEN LoadImm(x.type.size DIV IntegerSize)
   ELSE RVOS.Mark("inadmissible assignment")
@@ -1486,17 +1527,18 @@ PROCEDURE Call*(VAR x: Item; r: INTEGER);
   VAR i: INTEGER;
 BEGIN (*x.type.form = RVOB.Proc*)
   (* Store where we call the function from to a magic IO port - for debugging purposes *)
-  (*
-  incR;
-  i := 0;
-  WHILE (modid[i] # 0X) & (i < 5) DO
-    LoadImm(LSL(0AAH, 24) + ORD(modid[i]) MOD C24);
+  IF (stacktrace) THEN
+    incR;
+    i := 0;
+    WHILE (modid[i] # 0X) & (i < 5) DO
+        LoadImm(LSL(0AAH, 24) + ORD(modid[i]) MOD C24);
+        put(RVAssem.sw(RH, 0, -32));
+        INC(i);
+    END;
+    LoadImm(LSL(0CCH, 24) + RVOS.Pos() MOD C24);
     put(RVAssem.sw(RH, 0, -32));
-    INC(i);
+    decR;
   END;
-  LoadImm(LSL(0CCH, 24) + RVOS.Pos() MOD C24);
-  put(RVAssem.sw(RH, 0, -32));
-  decR; *)
 
   IF x.mode = RVOB.Const THEN
     IF x.r >= 0 THEN
@@ -1520,7 +1562,9 @@ BEGIN (*x.type.form = RVOB.Proc*)
     put(RVAssem.jalr(RA, RH, 0))
   END ;
   (* Store that we return from that call context - debug *)
-  (*put(RVAssem.sw(0, 0, -32));*)
+  IF (stacktrace) THEN
+    put(RVAssem.sw(0, 0, -32));
+  END;
   IF x.type.base.form = RVOB.NoTyp THEN (*procedure*) RH := firstReg
   ELSE (*function*)
     IF r > firstReg THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
@@ -1644,16 +1688,16 @@ BEGIN
 END Include;
 
 PROCEDURE Assert*(VAR x: Item);
-  VAR cond: INTEGER;
+  VAR cond, l, r: INTEGER;
 BEGIN
   IF x.mode # Cond THEN loadCond(x) END ;
   IF x.a = 0 THEN
-    cond := opposite(x.r)
+    cond := opposite(x.r);
   ELSE
-    put(MakeFwdBranch(x.r, RH-1, 0, x.b)); FixLink(x.a);
-    x.b := pc-1; cond := ALW
+    put(MakeFwdBranch(x.r, x.cl, x.cr, x.b)); FixLink(x.a);
+    x.b := pc-1; cond := ALW;
   END ;
-  Trap(cond, TrapAssertFailure, RH, RH+1); FixLink(x.b)
+  Trap(cond, TrapAssertFailure, x.cl, x.cr); FixLink(x.b)
 END Assert; 
 
 PROCEDURE New*(VAR x: Item);
@@ -1857,6 +1901,10 @@ END CSRop;
 
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
 BEGIN pc := 0; tdx := 0; strx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
+  stacktrace := FALSE; NEW(program); NEW(str); NEW(data);
+  IF (program = NIL) OR (str = NIL) OR (data = NIL) THEN
+    Texts.WriteLn(W); Texts.WriteString(W, "Warning! Not enough heap space to allocate space for program; compilation will fail!"); Texts.Append(Oberon.Log, W.buf);
+  END;
   IF v = 0 THEN pc := 8 END;
   modid := id;
 END Open;
@@ -1868,7 +1916,7 @@ END SetDataSize;
 PROCEDURE Header*;
 BEGIN entry := pc*InsnSize;
   IF version = 0 THEN  (* ROM-resident ABI *)
-    code[0] := RVAssem.jal(0, pc*InsnSize);
+    program.code[0] := RVAssem.jal(0, pc*InsnSize);
     LoadImmTo(SB, VarOrg0);
     LoadImmTo(SP, StkOrg0);
   ELSE
@@ -1927,6 +1975,11 @@ BEGIN
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
       (pc + nofimps + nofent + nofptrs + 1)*4;
 
+  IF (varsize > 2048) THEN
+    Texts.WriteLn(W); Texts.WriteString(W, "Warning, global variable size too large at "); Texts.WriteInt(W, varsize, 1);
+    Texts.WriteString(W, " bytes. Maximum is 2048 bytes. Other modules will be unable to access exported variables; such access will cause undefined behaviour."); Texts.WriteInt(W, varsize, 1); Texts.Append(Oberon.Log, W.buf);
+  END;
+
   RVOB.MakeFileName(name, modid, ".rsc"); (*write code file*)
   F := Files.New(name); Files.Set(R, F, 0);
   Files.WriteString(R, modid); Files.WriteInt(R, key); Files.WriteByte(R, version);
@@ -1939,12 +1992,12 @@ BEGIN
   Files.Write(R, 0X);
   Files.WriteInt(R, tdx*4);
   i := 0;
-  WHILE i < tdx DO Files.WriteInt(R, data[i]); INC(i) END ; (*type descriptors*)
+  WHILE i < tdx DO Files.WriteInt(R, data.t[i]); INC(i) END ; (*type descriptors*)
   Files.WriteInt(R, varsize - tdx*4);  (*data*)
   Files.WriteInt(R, strx);
-  FOR i := 0 TO strx-1 DO Files.Write(R, str[i]) END ;  (*strings*)
+  FOR i := 0 TO strx-1 DO Files.Write(R, str.s[i]) END ;  (*strings*)
   Files.WriteInt(R, pc);  (*code len*)
-  FOR i := 0 TO pc-1 DO Files.WriteInt(R, code[i]); END ;  (*program*)
+  FOR i := 0 TO pc-1 DO Files.WriteInt(R, program.code[i]); END ;  (*program*)
   obj := RVOB.topScope.next;
   WHILE obj # NIL DO  (*commands*)
     IF (obj.exno # 0) & (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc) &
@@ -1961,9 +2014,11 @@ BEGIN
       IF (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc) OR (obj.class = RVOB.Var) THEN
         Files.WriteInt(R, obj.val)
       ELSIF obj.class = RVOB.Typ THEN
-        IF obj.type.form = RVOB.Record THEN Files.WriteInt(R,  obj.type.len MOD 10000H)
+        IF obj.type.form = RVOB.Record THEN Files.WriteInt(R,  obj.type.len MOD 10000H);
         ELSIF (obj.type.form = RVOB.Pointer) & ((obj.type.base.typobj = NIL) OR (obj.type.base.typobj.exno = 0)) THEN
-          Files.WriteInt(R, obj.type.base.len MOD 10000H)
+          Files.WriteInt(R, obj.type.base.len MOD 10000H);
+
+          Texts.WriteLn(W); Texts.WriteString(W, "entry obj type len:"); Texts.WriteHex(W, obj.type.base.len MOD 10000H); Texts.Append(Oberon.Log, W.buf);
         END
       END
     END ;

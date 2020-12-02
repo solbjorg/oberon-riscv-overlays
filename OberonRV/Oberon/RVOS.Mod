@@ -12,7 +12,7 @@ MODULE RVOS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
   
   CONST IdLen* = 32;
     NKW = 34;  (*nof keywords*)
-    maxExp = 38; stringBufSize = 2560;
+    maxExp = 38; stringBufSize = 1200;
   
     (*lexical symbols*)
     null = 0; times* = 1; rdiv* = 2; div* = 3; mod* = 4;
@@ -88,7 +88,7 @@ MODULE RVOS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
       END ;
       Texts.Read(R, ch)
     END ;
-    str[i] := 0X; INC(i); Texts.Read(R, ch); slen := i
+    str[i] := 0X; INC(i); Texts.Read(R, ch); slen := i;
   END String;
 
   PROCEDURE HexString;

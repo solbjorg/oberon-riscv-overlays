@@ -1,5 +1,5 @@
 MODULE RVOB;   (*NW 25.6.2014   in Oberon-07*)
-  IMPORT Files, RVOS;
+  IMPORT Files, Texts, Oberon, RVOS;
   (*Definition of data types Object and Type, which together form the data structure
     called "symbol table". Contains procedures for creation of Objects, and for search:
     NewObj, this, thisimport, thisfield (and OpenScope, CloseScope).
@@ -85,6 +85,7 @@ CONST
     intType*, realType*, setType*, nilType*, noType*, strType*: Type;
     nofmod, Ref: INTEGER;
     typtab: ARRAY maxTypTab OF Type;
+    W: Texts.Writer;
 
   PROCEDURE NewObj*(VAR obj: Object; id: RVOS.Ident; class: INTEGER);  (*insert new Object with name id*)
     VAR new, x: Object;
@@ -292,7 +293,9 @@ CONST
       IF obj # NIL THEN Write(R, Ref); t.ref := Ref; INC(Ref) ELSE (*anonymous*) Write(R, 0) END ;
       Write(R, t.form);
       IF t.form = Pointer THEN OutType(R, t.base)
-      ELSIF t.form = Array THEN OutType(R, t.base); Files.WriteNum(R, t.len); Files.WriteNum(R, t.size)
+      ELSIF t.form = Array THEN OutType(R, t.base); Files.WriteNum(R, t.len); Files.WriteNum(R, t.size);
+
+          Texts.WriteLn(W); Texts.WriteString(W, "symbol type len:"); Texts.WriteHex(W, t.len); Texts.Append(Oberon.Log, W.buf);
       ELSIF t.form = Record THEN
         IF t.base # NIL THEN OutType(R, t.base) ELSE OutType(R, noType) END ;
         IF obj # NIL THEN Files.WriteNum(R, obj.exno) ELSE Write(R, 0) END ;
@@ -449,4 +452,5 @@ BEGIN
   enter("COPY", SProc, noType, 123);
   enter("PUT", SProc, noType, 112);
   enter("GET", SProc, noType, 102);
+  Texts.OpenWriter(W);
 END RVOB.

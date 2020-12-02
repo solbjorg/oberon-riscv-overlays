@@ -1,5 +1,5 @@
 MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07*)
-  IMPORT Texts, Oberon, RVOS, RVOB, RVOG;
+  IMPORT SYSTEM, Texts, Oberon, RVOS, RVOB, RVOG;
   (*Author: Niklaus Wirth, 2014.
     Parser of Oberon-RISC compiler. Uses Scanner RVOS to obtain symbols (tokens),
     RVOB for definition of data structures and for handling import and export, and
@@ -40,11 +40,19 @@ END RoundUp;
   END Check;
 
   PROCEDURE qualident(VAR obj: RVOB.Object);
+    VAR obj2: RVOB.Object;
   BEGIN obj := RVOB.thisObj(); RVOS.Get(sym);
     IF obj = NIL THEN RVOS.Mark("undef"); obj := dummy END ;
     IF (sym = RVOS.period) & (obj.class = RVOB.Mod) THEN
       RVOS.Get(sym);
       IF sym = RVOS.ident THEN obj := RVOB.thisimport(obj); RVOS.Get(sym);
+        IF (obj.type # NIL) THEN
+          obj2 := obj.type.dsc;
+        IF (obj2 # NIL) THEN
+            Texts.WriteLn(W); Texts.WriteString(W, "obj len:"); Texts.WriteHex(W, obj2.type.len);
+            Texts.WriteString(W, "obj name:"); Texts.WriteString(W, obj.name); Texts.Append(Oberon.Log, W.buf);
+            obj2 := obj2.next
+          END; END;
         IF obj = NIL THEN RVOS.Mark("undef"); obj := dummy END
       ELSE RVOS.Mark("identifier expected"); obj := dummy
       END
@@ -226,10 +234,29 @@ END RoundUp;
           (x.type.base.form = par.type.base.form) & (par.type.len < 0) THEN
         RVOG.OpenArrayParam(x);
       ELSIF (x.type.form = RVOB.String) & varpar & par.rdo & (par.type.form = RVOB.Array) &
-          (par.type.base.form = RVOB.Char) & (par.type.len < 0) THEN RVOG.StringParam(x)
+          (par.type.base.form = RVOB.Char) & (par.type.len < 0) THEN
+        Texts.WriteLn(W);
+        Texts.WriteHex(W, x.type.form);
+        Texts.WriteHex(W, par.class);
+        (*Texts.WriteHex(W, par.rdo);*)
+        Texts.WriteHex(W, par.type.form);
+        Texts.WriteHex(W, par.type.base.form);
+        Texts.WriteHex(W, par.type.len);
+        Texts.Append(Oberon.Log, W.buf);
+        RVOG.StringParam(x)
       ELSIF (par.type.form = RVOB.Array) & (par.type.base.form = RVOB.Int) & (par.type.size = x.type.size) THEN
         RVOG.VarParam(x, par.type)
-      ELSE RVOS.Mark("incompatible parameters")
+      ELSE
+        Texts.WriteLn(W);
+        Texts.WriteHex(W, x.type.form);
+        Texts.WriteHex(W, par.class);
+        (*Texts.WriteHex(W, par.rdo);*)
+        Texts.WriteHex(W, par.type.form);
+        Texts.WriteHex(W, par.type.base.form);
+        Texts.WriteHex(W, par.type.len);
+        Texts.Append(Oberon.Log, W.buf);
+
+        RVOS.Mark("incompatible parameters");
       END
     END
   END Parameter;
@@ -238,6 +265,7 @@ END RoundUp;
     VAR n: INTEGER; par: RVOB.Object;
   BEGIN par := x.type.dsc; n := 0;
     IF sym # RVOS.rparen THEN
+
       Parameter(par); n := 1;
       WHILE sym <= RVOS.comma DO
         Check(sym, "comma?");
@@ -324,7 +352,7 @@ END RoundUp;
   END set; 
 
   PROCEDURE factor(VAR x: RVOG.Item);
-    VAR obj: RVOB.Object; rx: LONGINT;
+    VAR obj, obj2: RVOB.Object; rx: LONGINT;
   BEGIN (*sync*)
     IF (sym < RVOS.char) OR (sym > RVOS.ident) THEN RVOS.Mark("expression expected");
       REPEAT RVOS.Get(sym) UNTIL (sym >= RVOS.char) & (sym <= RVOS.ident)
@@ -332,11 +360,15 @@ END RoundUp;
     IF sym = RVOS.ident THEN
       qualident(obj);  
       IF obj.class = RVOB.SFunc THEN StandFunc(x, obj.val, obj.type)
-      ELSE RVOG.MakeItem(x, obj, level); selector(x);
+      ELSE RVOG.MakeItem(x, obj, level);
+        selector(x);
         IF sym = RVOS.lparen THEN
           RVOS.Get(sym);
           IF (x.type.form = RVOB.Proc) & (x.type.base.form # RVOB.NoTyp) THEN
-            RVOG.PrepCall(x, rx); ParamList(x); RVOG.Call(x, rx); x.type := x.type.base
+            RVOG.PrepCall(x, rx);
+
+
+            ParamList(x); RVOG.Call(x, rx); x.type := x.type.base
           ELSE RVOS.Mark("not a function"); ParamList(x)
           END
         END
@@ -475,7 +507,7 @@ END RoundUp;
   END StandProc;
 
   PROCEDURE StatSequence;
-    VAR obj: RVOB.Object;
+    VAR obj, obj2: RVOB.Object;
       orgtype: RVOB.Type; (*original type of case var*)
       x, y, z, w: RVOG.Item;
       L0, L1, rx: LONGINT;
@@ -524,7 +556,10 @@ END RoundUp;
           ELSIF sym = RVOS.lparen THEN (*procedure call*)
             RVOS.Get(sym);
             IF (x.type.form = RVOB.Proc) & (x.type.base.form = RVOB.NoTyp) THEN
-              RVOG.PrepCall(x, rx); ParamList(x); RVOG.Call(x, rx)
+              RVOG.PrepCall(x, rx);
+
+
+              ParamList(x); RVOG.Call(x, rx)
             ELSE RVOS.Mark("not a procedure"); ParamList(x)
             END
           ELSIF x.type.form = RVOB.Proc THEN (*procedure call without parameters*)
@@ -623,9 +658,9 @@ END RoundUp;
   PROCEDURE ArrayType(VAR type: RVOB.Type);
     VAR x: RVOG.Item; typ: RVOB.Type; len: LONGINT;
   BEGIN NEW(typ); typ.form := RVOB.NoTyp;
-    IF sym = RVOS.of THEN (*dynamic array*) len := -1
+    IF sym = RVOS.of THEN (*dynamic array*) len := -1;
     ELSE expression(x);
-      IF (x.mode = RVOB.Const) & (x.type.form = RVOB.Int) & (x.a >= 0) THEN len := x.a
+      IF (x.mode = RVOB.Const) & (x.type.form = RVOB.Int) & (x.a >= 0) THEN len := x.a;
       ELSE len := 0; RVOS.Mark("not a valid length")
       END
     END ;
@@ -735,6 +770,7 @@ END RoundUp;
       RVOS.Get(sym); Check(RVOS.of, "OF ?");
       IF dim >= 1 THEN RVOS.Mark("multi-dimensional open arrays not implemented") END ;
       NEW(typ); typ.form := RVOB.Array; typ.len := -1; typ.size := 2*RVOB.IntegerSize;
+
       FormalType(typ.base, dim+1)
     ELSIF sym = RVOS.procedure THEN
       RVOS.Get(sym); RVOB.OpenScope;
@@ -953,7 +989,7 @@ END RoundUp;
       IF RVOS.errcnt = 0 THEN
         RVOG.CheckRegs();
         RVOG.Close(modid, key, exno);
-        Texts.WriteInt(W, RVOG.pc, 6); Texts.WriteInt(W, dc, 6); Texts.WriteHex(W, key)
+        Texts.WriteInt(W, RVOG.Here(), 6); Texts.WriteInt(W, dc, 6); Texts.WriteHex(W, key)
       ELSE Texts.WriteLn(W); Texts.WriteString(W, "compilation FAILED")
       END ;
       Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);

@@ -9,7 +9,7 @@
 *)
 
 MODULE RVOTool;
-  IMPORT SYSTEM, Files, Texts, Oberon, ORB, RVDis;
+  IMPORT SYSTEM, Files, Texts, Oberon, RVOB, RVDis;
   VAR W: Texts.Writer;
     Form: INTEGER;  (*result of ReadType*)
 
@@ -27,12 +27,12 @@ MODULE RVOTool;
     IF ref < 0 THEN Texts.Write(W, "^"); Texts.WriteInt(W, -ref, 1)
     ELSE Texts.WriteInt(W, ref, 1);
       Read(R, form); Texts.WriteString(W, "  form = "); Texts.WriteInt(W, form, 1);
-      IF form = ORB.Pointer THEN ReadType(R)
-      ELSIF form = ORB.Array THEN
+      IF form = RVOB.Pointer THEN ReadType(R)
+      ELSIF form = RVOB.Array THEN
         ReadType(R); Files.ReadNum(R, len); Files.ReadNum(R, size);
         Texts.WriteString(W, "  len = "); Texts.WriteInt(W, len, 1);
         Texts.WriteString(W, "  size = "); Texts.WriteInt(W, size, 1)
-      ELSIF form = ORB.Record THEN
+      ELSIF form = RVOB.Record THEN
         ReadType(R);  (*base type*)
         Files.ReadNum(R, off); Texts.WriteString(W, "  exno = "); Texts.WriteInt(W, off, 1); 
         Files.ReadNum(R, off); Texts.WriteString(W, "  extlev = "); Texts.WriteInt(W, off, 1);
@@ -46,7 +46,7 @@ MODULE RVOTool;
           Files.ReadNum(R, off); Texts.WriteInt(W, off, 4); Read(R, class)
         END ;
         Texts.Write(W, "}")
-      ELSIF form = ORB.Proc THEN
+      ELSIF form = RVOB.Proc THEN
         ReadType(R); Texts.Write(W, "("); Read(R, class);
         WHILE class # 0 DO
           Texts.WriteString(W, " class = "); Texts.WriteInt(W, class, 1); Read(R, readonly);
@@ -79,18 +79,18 @@ MODULE RVOTool;
         Files.Set(R, F, 0); Files.ReadInt(R, k); Files.ReadInt(R, k);
         Files.ReadString(R, name); Texts.WriteString(W, name); Texts.WriteHex(W, k);
         Read(R, class); Texts.WriteInt(W, class, 3); (*sym file version*)
-        IF class = ORB.versionkey THEN
+        IF class = RVOB.versionkey THEN
           Texts.WriteLn(W); Read(R, class);
           WHILE class # 0 DO
             Texts.WriteInt(W, class, 4); Files.ReadString(R, name); Texts.Write(W, " "); Texts.WriteString(W, name);
             ReadType(R);
-            IF class = ORB.Typ THEN
+            IF class = RVOB.Typ THEN
               Texts.Write(W, "("); Read(R, class);
               WHILE class # 0 DO  (*pointer base fixup*)
                 Texts.WriteString(W, " ->"); Texts.WriteInt(W, class, 4); Read(R, class)
               END ;
               Texts.Write(W, ")")
-            ELSIF (class = ORB.Const) OR (class = ORB.Var) THEN
+            ELSIF (class = RVOB.Const) OR (class = RVOB.Var) THEN
               Files.ReadNum(R, k); Texts.WriteInt(W, k, 5);  (*Reals, Strings!*)
             END ;
             Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);

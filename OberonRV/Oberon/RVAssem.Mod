@@ -5,7 +5,7 @@
 *)
 
 MODULE RVAssem;
-  IMPORT ORS;
+  IMPORT RVOS;
 
 (*
   These two procedures are the lowest level assemblers in the module.
@@ -126,7 +126,7 @@ BEGIN RETURN fmtI(03H, 2, rd, rs1, imm)
 END lw;
 
 PROCEDURE ld*(rd, rs1, imm: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction sd."); RETURN fmtI(03H, 3, rd, rs1, imm)
+BEGIN RVOS.Mark("Unsupported RV64 instruction sd."); RETURN fmtI(03H, 3, rd, rs1, imm)
 END ld;
 
 PROCEDURE lbu*(rd, rs1, imm: INTEGER): INTEGER;
@@ -138,11 +138,11 @@ BEGIN RETURN fmtI(03H, 5, rd, rs1, imm)
 END lhu;
 
 PROCEDURE lwu*(rd, rs1, imm: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction sd."); RETURN fmtI(03H, 6, rd, rs1, imm)
+BEGIN RVOS.Mark("Unsupported RV64 instruction sd."); RETURN fmtI(03H, 6, rd, rs1, imm)
 END lwu;
 
 PROCEDURE ldu*(rd, rs1, imm: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction sd."); RETURN fmtI(03H, 7, rd, rs1, imm)
+BEGIN RVOS.Mark("Unsupported RV64 instruction sd."); RETURN fmtI(03H, 7, rd, rs1, imm)
 END ldu;
 
 (*
@@ -165,7 +165,7 @@ BEGIN RETURN fmtS(23H, 2, rs1, rs2, imm)
 END sw;
 
 PROCEDURE sd*(rs2, rs1, imm: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction sd."); RETURN fmtS(23H, 3, rs1, rs2, imm)
+BEGIN RVOS.Mark("Unsupported RV64 instruction sd."); RETURN fmtS(23H, 3, rs1, rs2, imm)
 END sd;
 
 PROCEDURE addi*(rd, rs1, imm: INTEGER): INTEGER;
@@ -265,39 +265,39 @@ BEGIN RETURN fmtI(73H, 0, 0, 0, 100H)
 END eret;
 
 PROCEDURE addiw*(rd, rs1, imm: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction addiw."); RETURN fmtI(1BH, 0, rd, rs1, imm)
+BEGIN RVOS.Mark("Unsupported RV64 instruction addiw."); RETURN fmtI(1BH, 0, rd, rs1, imm)
 END addiw;
 
 PROCEDURE slliw*(rd, rs1, imm: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction slliw."); RETURN fmtI(1BH, 1, rd, rs1, imm MOD 64)
+BEGIN RVOS.Mark("Unsupported RV64 instruction slliw."); RETURN fmtI(1BH, 1, rd, rs1, imm MOD 64)
 END slliw;
 
 PROCEDURE srliw*(rd, rs1, imm: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction srliw."); RETURN fmtI(1BH, 5, rd, rs1, imm MOD 64)
+BEGIN RVOS.Mark("Unsupported RV64 instruction srliw."); RETURN fmtI(1BH, 5, rd, rs1, imm MOD 64)
 END srliw;
 
 PROCEDURE sraiw*(rd, rs1, imm: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction sraiw.");RETURN fmtI(1BH, 5, rd, rs1, imm MOD 64 + 40000000H)
+BEGIN RVOS.Mark("Unsupported RV64 instruction sraiw.");RETURN fmtI(1BH, 5, rd, rs1, imm MOD 64 + 40000000H)
 END sraiw;
 
 PROCEDURE addw*(rd, rs1, rs2: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction addw."); RETURN fmtR(3BH, 0, 0, rd, rs1, rs2)
+BEGIN RVOS.Mark("Unsupported RV64 instruction addw."); RETURN fmtR(3BH, 0, 0, rd, rs1, rs2)
 END addw;
 
 PROCEDURE subw*(rd, rs1, rs2: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction subw."); RETURN fmtR(3BH, 0, 20H, rd, rs1, rs2)
+BEGIN RVOS.Mark("Unsupported RV64 instruction subw."); RETURN fmtR(3BH, 0, 20H, rd, rs1, rs2)
 END subw;
 
 PROCEDURE sllw*(rd, rs1, rs2: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction sllw."); RETURN fmtR(3BH, 1, 0, rd, rs1, rs2)
+BEGIN RVOS.Mark("Unsupported RV64 instruction sllw."); RETURN fmtR(3BH, 1, 0, rd, rs1, rs2)
 END sllw;
 
 PROCEDURE srlw*(rd, rs1, rs2: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction srlw."); RETURN fmtR(3BH, 5, 0, rd, rs1, rs2)
+BEGIN RVOS.Mark("Unsupported RV64 instruction srlw."); RETURN fmtR(3BH, 5, 0, rd, rs1, rs2)
 END srlw;
 
 PROCEDURE sraw*(rd, rs1, rs2: INTEGER): INTEGER;
-BEGIN ORS.Mark("Unsupported RV64 instruction sraw."); RETURN fmtR(3BH, 5, 20H, rd, rs1, rs2)
+BEGIN RVOS.Mark("Unsupported RV64 instruction sraw."); RETURN fmtR(3BH, 5, 20H, rd, rs1, rs2)
 END sraw;
 
 PROCEDURE csrrw*(rd, rs1, csr: INTEGER): INTEGER;
