@@ -7,7 +7,7 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
   CONST FnLength*    = 32;
         SecTabSize*   = 64;
         ExTabSize*   = 12;
-        SectorSize*   = 1024;
+        SectorSize*   = 1024; (* Note: many SD cards have sectors at 512 byte size; TODO this may need to be changed *)
         IndexSize*   = SectorSize DIV 4;
         HeaderSize*  = 352;
         DirRootAdr*  = 29;
@@ -58,7 +58,8 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
     VAR i, L, R: INTEGER; dadr: DiskAdr;
       a: DirPage;
   BEGIN dadr := DirRootAdr; A := 0;
-    REPEAT Kernel.GetSector(dadr, a); ASSERT(a.mark = DirMark);
+    REPEAT Kernel.GetSector(dadr, a);
+      ASSERT(a.mark = DirMark);
       L := 0; R := a.m; (*binary search*)
       WHILE L < R DO
         i := (L+R) DIV 2;
@@ -83,7 +84,8 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
       u: DirEntry;
       a: DirPage;
 
-  BEGIN (*~h*) Kernel.GetSector(dpg0, a); ASSERT(a.mark = DirMark);
+  BEGIN (*~h*) Kernel.GetSector(dpg0, a);
+    ASSERT(a.mark = DirMark);
     L := 0; R := a.m; (*binary search*)
     WHILE L < R DO
       i := (L+R) DIV 2;
@@ -112,11 +114,13 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
             v := a.e[N-1]; i := N-1;
             WHILE i > R DO DEC(i); a.e[i+1] := a.e[i] END ;
             a.e[R] := u; Kernel.PutSector(dpg0, a);
-            Kernel.AllocSector(dpg0, dpg0); i := 0;
+            Kernel.AllocSector(dpg0, dpg0);
+            i := 0;
             WHILE i < N DO a.e[i] := a.e[i+N]; INC(i) END
           ELSE (*insert in right half*)
             Kernel.PutSector(dpg0, a);
-            Kernel.AllocSector(dpg0, dpg0); DEC(R, N); i := 0;
+            Kernel.AllocSector(dpg0, dpg0); DEC(R, N);
+            i := 0;
             IF R = 0 THEN v := u
             ELSE v := a.e[N];
               WHILE i < R-1 DO a.e[i] := a.e[N+1+i]; INC(i) END ;
@@ -261,7 +265,9 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
                       VAR continue: BOOLEAN);
     VAR i, j: INTEGER; pfx, nmx: CHAR;
       dpg1: DiskAdr; a: DirPage;
-  BEGIN Kernel.GetSector(dpg, a); ASSERT(a.mark = DirMark); i := 0;
+  BEGIN
+    Kernel.GetSector(dpg, a);
+    ASSERT(a.mark = DirMark); i := 0;
     WHILE (i < a.m) & continue DO
       j := 0;
       REPEAT pfx := prefix[j]; nmx := a.e[i].name[j]; INC(j)
@@ -335,13 +341,15 @@ MODULE FileDir;   (*NW 12.1.86 / 23.8.90 / 15.8.2013*)
 
     PROCEDURE TraverseDir(VAR A: ARRAY OF DiskAdr; VAR k: INTEGER; dpg: DiskAdr);
       VAR i: INTEGER; a: DirPage;
-    BEGIN Kernel.GetSector(dpg, a); ASSERT(a.mark = DirMark); Kernel.MarkSector(dpg); i := 0;
+    BEGIN Kernel.GetSector(dpg, a); ASSERT(a.mark = DirMark); Kernel.MarkSector(dpg);
+      i := 0;
       WHILE i < a.m DO
         A[k] := a.e[i].adr; INC(k); INC(i);
         IF k = 2000 THEN MarkSectors(A, k); k := 0 END
       END ;
       IF a.p0 # 0 THEN
-        TraverseDir(A, k, a.p0); i := 0;
+        TraverseDir(A, k, a.p0);
+        i := 0;
         WHILE i < a.m DO
           TraverseDir(A, k, a.e[i].p); INC(i)
         END

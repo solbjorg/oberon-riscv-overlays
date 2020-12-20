@@ -151,7 +151,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     Texts.OpenReader(R, F.text, F.org); Texts.Read(R, nextCh);
     L := F.trailer; curY := F.Y + F.H - F.top - asr;
     WHILE ~L.eot & (curY >= botY) DO
-      NEW(l);
+      NEW(l); ASSERT(l # NIL);
       DisplayLine(F, l, R, F.X + F.left, curY, 0);
       L.next := l; L := l; curY := curY - lsp
     END;
@@ -179,7 +179,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     botY := F.Y + F.bot + dsr;
     Texts.OpenReader(R, F.text, org); Texts.Read(R, nextCh);
     WHILE ~L.eot & (curY >= botY) DO
-      NEW(l);
+      NEW(l); ASSERT(l # NIL);
       DisplayLine(F, l, R, F.X + F.left, curY, 0);
       L.next := l; L := l; curY := curY - lsp
     END;
@@ -230,7 +230,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
           org := org + L.len; curY := curY - lsp;
           Texts.OpenReader(R, F.text, org); Texts.Read(R, nextCh);
           WHILE ~L.eot & (curY >= botY) DO
-            NEW(L0); DisplayLine(F, L0, R, F.X + F.left, curY, 0);
+            NEW(L0); ASSERT(L0 # NIL); DisplayLine(F, L0, R, F.X + F.left, curY, 0);
             L.next := L0; L := L0; curY := curY - lsp
           END;
           L.next := F.trailer; UpdateMark(F)
@@ -498,7 +498,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
         org := org + L.len; curY := curY - lsp;
         Y0 := curY; L0 := L.next;
         WHILE (org <= end) & (curY >= botY) DO
-          NEW(l);
+          NEW(l); ASSERT(l # NIL);
           Display.ReplConst(F.col, F.X + F.left, curY - dsr, F.W - F.left, lsp, Display.replace);
           DisplayLine(F, l, R, F.X + F.left, curY, 0);
           L.next := l; L := l;
@@ -567,7 +567,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
           Display.ReplConst (F.col, F.X + F.left, F.Y, F.W - F.left, curY + lsp - (F.Y + dsr), Display.replace);
           Texts.OpenReader(R, F.text, org); Texts.Read(R, nextCh);
           WHILE ~L.eot & (curY >= botY) DO
-            NEW(l);
+            NEW(l); ASSERT(l # NIL);
             DisplayLine(F, l, R, F.X + F.left, curY, 0);
             L.next := l; L := l; curY := curY - lsp
           END;
@@ -579,7 +579,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END Delete;
 
   PROCEDURE Recall*(VAR B: Texts.Buffer);
-  BEGIN B := TBuf; NEW(TBuf); Texts.OpenBuf(TBuf)
+  BEGIN B := TBuf; NEW(TBuf); ASSERT(TBuf # NIL); Texts.OpenBuf(TBuf)
   END Recall;
 
   (*------------------message handling------------------------*)
@@ -623,14 +623,14 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
       END
     ELSIF ch = 3X THEN (* ctrl-c  copy*)
       IF F.hasSel THEN
-        NEW(TBuf); Texts.OpenBuf(TBuf); Texts.Save(F.text, F.selbeg.pos, F.selend.pos, TBuf)
+        NEW(TBuf); ASSERT(TBuf # NIL); Texts.OpenBuf(TBuf); Texts.Save(F.text, F.selbeg.pos, F.selend.pos, TBuf)
       END
     ELSIF ch = 16X THEN (*ctrl-v  paste*)
-      NEW(buf); Texts.OpenBuf(buf); Texts.Copy(TBuf, buf); Texts.Insert(F.text, F.carloc.pos, buf);
+      NEW(buf); ASSERT(buf # NIL); Texts.OpenBuf(buf); Texts.Copy(TBuf, buf); Texts.Insert(F.text, F.carloc.pos, buf);
       SetCaret(F, F.carloc.pos + TBuf.len)
     ELSIF ch = 18X THEN (*ctrl-x,  cut*)
       IF F.hasSel THEN
-        NEW(TBuf); Texts.OpenBuf(TBuf); Texts.Delete(F.text, F.selbeg.pos, F.selend.pos, TBuf)
+        NEW(TBuf); ASSERT(TBuf # NIL); Texts.OpenBuf(TBuf); Texts.Delete(F.text, F.selbeg.pos, F.selend.pos, TBuf)
       END
     ELSIF (20X <= ch) & (ch <= DEL) OR (ch = CR) OR (ch = TAB) THEN
       KW.fnt := fnt; KW.col := col; KW.voff := voff; Texts.Write(KW, ch);
@@ -663,7 +663,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   PROCEDURE Open* (F: Frame; H: Display.Handler; T: Texts.Text; org: LONGINT;
         col, left, right, top, bot, lsp: INTEGER);
     VAR L: Line;
-  BEGIN NEW(L);
+  BEGIN NEW(L); ASSERT(L # NIL);
     L.len := 0; L.wid := 0; L.eot := FALSE; L.next := L;
     F.handle := H; F.text := T; F.org := org; F.trailer := L;
     F.left := left; F.right := right; F.top := top; F.bot := bot;
@@ -671,7 +671,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   END Open;
 
   PROCEDURE Copy* (F: Frame; VAR F1: Frame);
-  BEGIN NEW(F1);
+  BEGIN NEW(F1); ASSERT(F1 # NIL);
     Open(F1, F.handle, F.text, F.org, F.col, F.left, F.right, F.top, F.bot, F.lsp)
   END Copy;
 
@@ -679,7 +679,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     VAR buf: Texts.Buffer;
   BEGIN
     IF F.hasCar THEN
-      NEW(buf); Texts.OpenBuf(buf);
+      NEW(buf); ASSERT(buf # NIL); Texts.OpenBuf(buf);
       Texts.Save(text, beg, end, buf); Texts.Insert(F.text, F.carloc.pos, buf);
       SetCaret(F, F.carloc.pos + (end - beg))
     END
@@ -771,12 +771,12 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
         IF keysum = {2, 1} THEN (*ML, MM: copy from selection to caret*)
           Oberon.GetSelection(text, beg, end, time);
            IF time >= 0 THEN
-            NEW(TBuf); Texts.OpenBuf(TBuf);
+            NEW(TBuf); ASSERT(TBuf # NIL); Texts.OpenBuf(TBuf);
             Texts.Save(text, beg, end, TBuf); Texts.Insert(F.text, F.carloc.pos, TBuf);
             SetSelection(F, F.carloc.pos, F.carloc.pos + (end  - beg));
             SetCaret(F, F.carloc.pos + (end - beg))
           ELSIF TBuf # NIL THEN
-            NEW(buf); Texts.OpenBuf(buf);
+            NEW(buf); ASSERT(buf # NIL); Texts.OpenBuf(buf);
             Texts.Copy(TBuf, buf); Texts.Insert(F.text, F.carloc.pos, buf);
             SetCaret(F, F.carloc.pos + buf.len)
           END
@@ -819,29 +819,29 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
 
   PROCEDURE Menu (name, commands: ARRAY OF CHAR): Texts.Text;
     VAR T: Texts.Text;
-  BEGIN NEW(T); T.notify := NotifyDisplay;  Texts.Open(T, "");
+  BEGIN NEW(T); ASSERT(T # NIL); T.notify := NotifyDisplay;  Texts.Open(T, "");
     Texts.WriteString(W, name); Texts.WriteString(W, " | ");  Texts.WriteString(W, commands);
     Texts.Append(T, W.buf); RETURN T
   END Menu;
 
   PROCEDURE Text* (name: ARRAY OF CHAR): Texts.Text;
     VAR T: Texts.Text;
-  BEGIN NEW(T); T.notify := NotifyDisplay; Texts.Open(T, name); RETURN T
+  BEGIN NEW(T); ASSERT(T # NIL); T.notify := NotifyDisplay; Texts.Open(T, name); RETURN T
   END Text;
 
   PROCEDURE NewMenu* (name, commands: ARRAY OF CHAR): Frame;
     VAR F: Frame; T: Texts.Text;
-  BEGIN NEW(F); T := Menu(name, commands);
+  BEGIN NEW(F); ASSERT(F # NIL); T := Menu(name, commands);
     Open(F, Handle, T, 0, Display.white, left DIV 4, 0, 0, 0, lsp); RETURN F
   END NewMenu;
 
   PROCEDURE NewText* (text: Texts.Text; pos: LONGINT): Frame;
     VAR F: Frame;
-  BEGIN NEW(F);
+  BEGIN NEW(F); ASSERT(F # NIL);
     Open(F, Handle, text, pos, Display.black, left, right, top, bot, lsp); RETURN F
   END NewText;
 
-BEGIN NEW(TBuf); NEW(DelBuf);
+BEGIN NEW(TBuf); ASSERT(TBuf # NIL); NEW(DelBuf); ASSERT(DelBuf # NIL);
   Texts.OpenBuf(TBuf); Texts.OpenBuf(DelBuf);
   lsp := Fonts.Default.height; menuH := lsp + 2; barW := menuH;
   left := barW + lsp DIV 2;

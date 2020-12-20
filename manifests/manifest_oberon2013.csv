@@ -35,6 +35,11 @@ text,BootLoad.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/B
 source,Checkers.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Checkers.Mod.txt
 source,EBNF.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/EBNF.Mod.txt
 source,Hilbert.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Hilbert.Mod.txt
+source,RVOS.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/ORS.Mod.txt
+source,RVAssem.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/ORP.Mod.txt
+source,RVOB.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/ORB.Mod.txt
+source,RVOG.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/ORG.Mod.txt
+source,RVOP.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/ORP.Mod.txt
 source,MacroTool.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/MacroTool.Mod.txt
 source,Math.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Math.Mod.txt
 text,OberonSyntax.Text,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/OberonSyntax.Text.txt
@@ -43,10 +48,11 @@ source,PCLink1.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/
 text,PIO.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/PIO.Mod.txt
 text,RISC.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/RISC.Mod.txt
 source,RS232.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/RS232.Mod.txt
-source,Sierpinski.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Sierpinski.Mod.txt
+source,PrimeNumbers.Mod,
 text,SmallPrograms.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/SmallPrograms.Mod.txt
+source,MagicSquares.Mod,
 source,Stars.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Stars.Mod.txt
 source,Tools.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Tools.Mod.txt
+source,TestFileCorruption.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Tools.Mod.txt
 archive,systools.zip,http://www.paddedcell.com/projectoberon/wirth/Sources/systools.zip
 archive,apptools.zip,http://www.paddedcell.com/projectoberon/wirth/Sources/apptools.zip
-source,Clipboard.Mod,https://raw.githubusercontent.com/pdewacht/oberon-risc-emu/master/Mods/Clipboard.Mod

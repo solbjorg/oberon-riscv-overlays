@@ -144,7 +144,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
     IF Filler.state = 0 THEN
       Filler.X := curW; Filler.W := W; Filler.Y := 0; Filler.H := H;
       Filler.state := 1; Filler.next := Filler;
-      NEW(T); T.X := curW; T.W := W; T.Y := 0; T.H := H; T.dsc := Filler; T.under := NIL;
+      NEW(T); ASSERT(T # NIL); T.X := curW; T.W := W; T.Y := 0; T.H := H; T.dsc := Filler; T.under := NIL;
       FillerViewer.X := curW + W; FillerViewer.W := inf - FillerViewer.X;
       FillerTrack.X := FillerViewer.X; FillerTrack.W := FillerViewer.W;
       S := FillerTrack;
@@ -167,7 +167,7 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
       UNTIL t = T;
       Filler.X := S.next.X; Filler.W := T.X + T.W - S.next.X; Filler.Y := 0; Filler.H := DH;
       Filler.state := 1; Filler.next := Filler;
-      NEW(newT); newT.X := Filler.X; newT.W := Filler.W; newT.Y := 0; newT.H := DH;
+      NEW(newT); ASSERT(newT # NIL); newT.X := Filler.X; newT.W := Filler.W; newT.Y := 0; newT.H := DH;
       newT.dsc := Filler; newT.under := S.next; S.next := newT;
       newT.next := T.next; T.next := NIL
     END
@@ -198,9 +198,9 @@ MODULE Viewers; (*JG 14.9.90 / NW 15.9.2013*)
   END Broadcast;
 
 BEGIN backup := NIL; curW := 0; minH := 1; DH := Display.Height;
-  NEW(FillerViewer); FillerViewer.X := 0; FillerViewer.W := inf; FillerViewer.Y := 0; FillerViewer.H := DH;
+  NEW(FillerViewer); ASSERT(FillerViewer # NIL); FillerViewer.X := 0; FillerViewer.W := inf; FillerViewer.Y := 0; FillerViewer.H := DH;
   FillerViewer.next := FillerViewer;
-  NEW(FillerTrack);
+  NEW(FillerTrack); ASSERT(FillerTrack # NIL);
   FillerTrack.X := 0; FillerTrack.W := inf; FillerTrack.Y := 0; FillerTrack.H := DH;
   FillerTrack.dsc := FillerViewer; FillerTrack.next := FillerTrack
 END Viewers.

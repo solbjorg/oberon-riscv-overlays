@@ -76,7 +76,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
 
   PROCEDURE Trailer(): Piece;
     VAR Q: Piece;
-  BEGIN NEW(Q);
+  BEGIN NEW(Q); ASSERT(Q # NIL);
     Q.f := TrailerFile; Q.off := -1; Q.len := 1; Q.fnt := NIL; Q.col := 0; Q.voff := 0; RETURN Q
   END Trailer;
 
@@ -94,7 +94,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
         Files.ReadString(R, FName);
         Dict[N] := Fonts.This(FName); INC(N)
       END;
-      NEW(q); q.fnt := Dict[fno];
+      NEW(q); ASSERT(q # NIL); q.fnt := Dict[fno];
       Files.ReadByte(R, bt); q.col := bt;
       Files.ReadByte(R, bt); q.voff := ASR(LSL(bt, -24), 24);
       Files.ReadInt(R, q.len);
@@ -115,7 +115,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
       IF tag = TextTag THEN Load(R, T)
       ELSE (*Ascii file*)
         len := Files.Length(f); Q := Trailer();
-        NEW(q); q.fnt := Fonts.Default; q.col := 1; q.voff := 0; q.f := f; q.off := 0; q.len := len;
+        NEW(q); ASSERT(q # NIL); q.fnt := Fonts.Default; q.col := 1; q.voff := 0; q.f := f; q.off := 0; q.len := len;
         Q.next := q; q.prev := Q; q.next := Q; Q.prev := q; T.trailer := Q; T.len := len
       END
     ELSE (*create new text*)
@@ -167,7 +167,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
   (* -------------------- Editing ----------------------- *)
 
   PROCEDURE OpenBuf* (B: Buffer);
-  BEGIN NEW(B.header); (*null piece*)
+  BEGIN NEW(B.header); ASSERT(B.header # NIL); (*null piece*)
     B.last := B.header; B.len := 0
   END OpenBuf;
 
@@ -186,7 +186,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
   PROCEDURE SplitPiece (p: Piece; off: LONGINT; VAR pr: Piece);
     VAR q: Piece;
   BEGIN
-    IF off > 0 THEN NEW(q);
+    IF off > 0 THEN NEW(q); ASSERT(q # NIL);
       q.fnt := p.fnt; q.col := p.col; q.voff := p.voff;
       q.len := p.len - off;
       q.f := p.f; q.off := p.off + off;
@@ -203,13 +203,13 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
   BEGIN
     IF end > T.len THEN end := T.len END;
     FindPiece(T, beg, org, p);
-    NEW(qb); qb^ := p^;
+    NEW(qb); ASSERT(qb # NIL); qb^ := p^;
     qb.len := qb.len - (beg - org);
     qb.off := qb.off + (beg - org);
     qe := qb;
     WHILE end > org + p.len DO 
       org := org + p.len; p := p.next;
-      NEW(q); q^ := p^; qe.next := q; q.prev := qe; qe := q
+      NEW(q); ASSERT(q # NIL); q^ := p^; qe.next := q; q.prev := qe; qe := q
     END;
     qe.next := NIL; qe.len := qe.len - (org + p.len - end);
     B.last.next := qb; qb.prev := B.last; B.last := qe;
@@ -220,7 +220,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
     VAR Q, q, p: Piece;
   BEGIN p := SB.header; Q := DB.last;
     WHILE p # SB.last DO p := p.next;
-      NEW(q); q^ := p^; Q.next := q; q.prev := Q; Q := q
+      NEW(q); ASSERT(q # NIL); q^ := p^; Q.next := q; q.prev := Q; Q := q
     END;
     DB.last := Q; DB.len := DB.len + SB.len
   END Copy;
@@ -243,7 +243,6 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
     T.changed := TRUE;
     (* Broadcast comes from here; calls TextFrames.NotifyDisplay: *)
     IF T.notify # NIL THEN
-      SYSTEM.PUT(-60, 0A0A0H);
       T.notify(T, insert, pos, end) END
   END Insert;
 
@@ -369,6 +368,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
         END ;
         IF ch = "H" THEN (*hex integer*) Read(S, ch); S.i := h; S.class := Int  (*neg?*)
         ELSIF ch = "." THEN (*real number*)
+          ASSERT(FALSE);
           (* Currently no support for real numbers! *)
 
           (* Read(S, ch); x := 0.0; e := 0; j := 0;                    *)
@@ -410,7 +410,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
   (* --------------- Access: Writers (NW) ------------------ *)
 
   PROCEDURE OpenWriter* (VAR W: Writer);
-  BEGIN NEW(W.buf);
+  BEGIN NEW(W.buf); ASSERT(W.buf # NIL);
     OpenBuf(W.buf); W.fnt := Fonts.Default; W.col := 15; W.voff := 0;
     Files.Set(W.rider, Files.New(""), 0)
   END OpenWriter;
@@ -431,7 +431,7 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
     VAR p: Piece;
   BEGIN
     IF (W.buf.last.fnt # W.fnt) OR (W.buf.last.col # W.col) OR (W.buf.last.voff # W.voff) THEN
-      NEW(p); p.f := Files.Base(W.rider); p.off := Files.Pos(W.rider); p.len := 0;
+      NEW(p); ASSERT(p # NIL); p.f := Files.Base(W.rider); p.off := Files.Pos(W.rider); p.len := 0;
       p.fnt := W.fnt; p.col := W.col; p.voff:= W.voff;
       p.next := NIL;
       W.buf.last.next := p;
@@ -448,7 +448,6 @@ MODULE Texts; (*JG 21.11.90 / NW 11.7.90 / 24.12.95 / 22.11.10 / 18.11.2014 / 10
   PROCEDURE WriteString* (VAR W: Writer; s: ARRAY OF CHAR);
     VAR i: INTEGER;
   BEGIN i := 0;
-    SYSTEM.PUT(-60, 05716H);
     WHILE s[i] >= " " DO Write(W, s[i]); INC(i) END
   END WriteString;
 

@@ -18,8 +18,8 @@
 #define PathEnv "NOREBO_PATH"
 #define InnerCore "InnerCore"
 
-#define MemBytes (8 * 1024 * 1024)
-#define StackOrg 0x80000
+#define MemBytes (16 * 1024 * 1024)
+#define StackOrg 0xA0000
 #define MaxFiles 500
 #define NameLength 32
 

@@ -96,10 +96,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   BEGIN
     mod := root; error(0, name); nofimps := 0;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
-    IF mod # NIL THEN (* Hacky workaround. The if statement is so large that the number of *)
-                      (* instructions to jump over does not fit in a branch statement... *)
-                      (* But ELSE uses JAL -- so we have much more room to work with there. *)
-    ELSE
+    IF mod = NIL THEN
       Check(name);
       IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END ;
       IF F # NIL THEN
@@ -109,10 +106,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           Files.ReadString(R, impname);   (*imports*)
           WHILE (impname[0] # 0X) & (res = 0) DO
             Files.ReadInt(R, impkey);
-            SYSTEM.PUT(-60, 0EBH);
-            SYSTEM.PUT(-60, impkey);
             Load(impname, impmod); import[nofimps] := impmod; importing := name1;
-            SYSTEM.PUT(-60, impmod.key);
             IF res = 0 THEN
               IF impmod.key = impkey THEN INC(impmod.refcnt); INC(nofimps)
               ELSE error(3, name1); imported := impname
@@ -125,7 +119,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       ELSE error(1, name)
       END ;
       IF res = 0 THEN (*search for a hole in the list allocate and link*)
-        SYSTEM.PUT(-60, 0FBAC1000H);
         INC(size, DescSize); mod := root;
         WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END ;
         IF mod = NIL THEN (*no large enough hole was found*)
@@ -139,7 +132,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         END
       END ;
       IF res = 0 THEN (*read file*)
-        SYSTEM.PUT(-60, 0FBAC2000H);
         INC(p, DescSize); (*allocate descriptor*)
         mod.name := name; mod.key := key; mod.refcnt := 0;
         mod.data := p;  (*data*)
@@ -178,7 +170,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         IF ch # "O" THEN (*corrupted file*)  mod := NIL; error(4, name) END
       END ;
       IF res = 0 THEN (*fixup of BL*)
-        SYSTEM.PUT(-60, 0FBAC3000H);
         adr := mod.code + fixorgP*4;
         WHILE adr # mod.code DO
           SYSTEM.GET(adr, inst);
@@ -191,12 +182,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           SYSTEM.PUT(adr, Jal(offset MOD 200000H));
           adr := mod.code + disp*4
         END ;
-        SYSTEM.PUT(-60, 0FBAC3000H);
         (*fixup of LDR/STR/ADD*)
         adr := mod.code + fixorgD*4;
         WHILE adr # mod.code DO
           SYSTEM.GET(adr, inst);
-          IF (inst MOD 8H # 5) THEN SYSTEM.PUT(-60, 0FFFFFH); END;
+          (*IF (inst MOD 8H # 5) THEN SYSTEM.PUT(-60, 0FFFFFH); END;*)
           mno := inst DIV 10H MOD 128;
           disp := inst DIV 10000H;
           IF mno = 0 THEN (*global*)
@@ -223,7 +213,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           END ;
           adr := mod.code + disp*4
         END ;
-        SYSTEM.PUT(-60, 0FBAC3100H);
         (*fixup of type descriptors*)
         adr := mod.data + fixorgT*4;
         WHILE adr # mod.data DO
@@ -231,22 +220,19 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           mno := inst DIV 1000000H MOD 10H;
           vno := inst DIV 1000H MOD 1000H;
           disp := inst MOD 1000H;
-          IF mno = 0 THEN (*global*) inst := mod.data + vno
-          ELSE (*import*)
+          IF mno = 0 THEN (*global*) inst := mod.data + vno ELSE (*import*)
             SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
             SYSTEM.GET(impmod.ent + vno*4, offset);
             inst := impmod.data + offset
           END ;
           SYSTEM.PUT(adr, inst); adr := adr - disp*4
         END ;
-        SYSTEM.PUT(-60, 0FECC0000H);
         body   (*initialize module*)
       ELSIF res >= 3 THEN importing := name;
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END
       END
     END ;
     newmod := mod;
-    SYSTEM.PUT(-60, 0FC000DH);
   END Load;
 
   PROCEDURE ThisCommand*(mod: Module; name: ARRAY OF CHAR): Command;
@@ -281,9 +267,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   PROCEDURE Init*;
   BEGIN Files.Init; MTOrg := SYSTEM.REG(MT);
-    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H)
+    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H);
   END Init;
 
-BEGIN SYSTEM.PUT(-60, 77H); Init; Load("Oberon", M);
-    SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE  (*only if load fails*)
+BEGIN Init; Load("Oberon", M); SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE  (*only if load fails*)
 END Modules.

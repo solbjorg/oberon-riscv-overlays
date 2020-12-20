@@ -71,7 +71,7 @@ BEGIN F := root;
           NofBytes := NofBytes + 5 + (box[j].w + 7) DIV 8 * box[j].h;
           INC(j)
         END;
-        IF NofBytes < 2300 THEN NEW(F) ELSE NEW(LF); F := LF END ;
+        IF NofBytes < 2300 THEN NEW(F); ASSERT(F # NIL); ELSE NEW(LF); ASSERT(LF # NIL); F := LF END ;
         F.name := name;
         F.height := height; F.minX := minX; F.maxX := maxX; F.maxY := maxY;
         IF minY >= 80H THEN F.minY := minY - 100H ELSE F.minY := minY END ;
@@ -105,5 +105,5 @@ PROCEDURE Free*;  (*remove all but first two from font list*)
 BEGIN IF root.next # NIL THEN root.next.next := NIL END
 END Free;
 
-BEGIN root := NIL; SYSTEM.PUT(-60, 0BFF4H); Default := This("Oberon10.Scn.Fnt");
+BEGIN root := NIL; Default := This("Oberon10.Scn.Fnt");
 END Fonts.

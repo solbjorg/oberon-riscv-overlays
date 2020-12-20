@@ -90,7 +90,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     VAR T: Texts.Text; F: Display.Frame; buf: Texts.Buffer;
   BEGIN F := Oberon.Par.frame;
     IF (F # NIL) & (F.next IS TextFrames.Frame) & (F = Oberon.Par.vwr.dsc) THEN
-      NEW(buf); Texts.OpenBuf(buf); T := F.next(TextFrames.Frame).text; Texts.Delete(T, 0, T.len, buf)
+      NEW(buf); ASSERT(buf # NIL); Texts.OpenBuf(buf); T := F.next(TextFrames.Frame).text; Texts.Delete(T, 0, T.len, buf)
     END
   END Clear;
 
@@ -397,7 +397,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     VAR u, v, w: INTEGER; mod: Modules.Module;
   BEGIN u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
     IF w = 0 THEN Kernel.New(a, b)
-    ELSE (*trap*) Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteHex(W, v MOD 1000000H);
+    ELSE (*trap*)
+      SYSTEM.PUT(-32, 0BB000000H); (* emu debug; prints stack trace *)
+      Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteHex(W, v MOD 1000000H);
       Texts.WriteString(W, "  TRAP"); Texts.WriteInt(W, w, 4); mod := Modules.root;
       WHILE (mod # NIL) & ((u < mod.code) OR (u >= mod.imp)) DO mod := mod.next END ;
       IF mod # NIL THEN Texts.WriteString(W, " in "); Texts.WriteString(W, mod.name) END ;
@@ -412,7 +414,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf); Oberon.Reset
   END Abort;
   
-BEGIN Texts.OpenWriter(W);
+BEGIN
+  Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
   Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);
 END System.

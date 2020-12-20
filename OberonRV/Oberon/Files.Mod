@@ -61,7 +61,8 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   PROCEDURE Check(s: ARRAY OF CHAR;
         VAR name: FileDir.FileName; VAR res: INTEGER);
     VAR i: INTEGER; ch: CHAR;
-  BEGIN ch := s[0]; i := 0;
+  BEGIN
+    ch := s[0]; i := 0;
     IF (ch >= "A") & (ch <= "Z") OR (ch >= "a") & (ch <= "z") THEN
       REPEAT name[i] := ch; INC(i); ch := s[i]
       UNTIL ~((ch >= "0") & (ch <= "9") OR (ch >= "A") & (ch <= "Z")
@@ -109,16 +110,16 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         f := SYSTEM.VAL(File, root);
         WHILE (f # NIL) & (f.sec[0] # header) DO f := SYSTEM.VAL(File, f.next) END ;
         IF f = NIL THEN (*file not yet present*)
-          NEW(buf); buf.apos := 0; buf.next := buf; buf.mod := FALSE;
+          NEW(buf); ASSERT(buf # NIL); buf.apos := 0; buf.next := buf; buf.mod := FALSE;
           F := SYSTEM.VAL(FileDir.FileHd, SYSTEM.ADR(buf.data));
           Kernel.GetSector(header, buf.data); ASSERT(F.mark = FileDir.HeaderMark);
-          NEW(f); f.aleng := F.aleng; f.bleng := F.bleng; f.date := F.date;
+          NEW(f); ASSERT(f # NIL); f.aleng := F.aleng; f.bleng := F.bleng; f.date := F.date;
           IF f.aleng = 0 THEN buf.lim := f.bleng ELSE buf.lim := SS END ;
           f.firstbuf := buf; f.nofbufs := 1; f.name := namebuf; f.registered := TRUE;
           f.sec := F.sec;
           k := (f.aleng + (XS-STS)) DIV XS; i := 0;
           WHILE i < k DO
-            NEW(inxpg); inxpg.adr := F.ext[i]; inxpg.mod := FALSE;
+            NEW(inxpg); ASSERT(inxpg # NIL); inxpg.adr := F.ext[i]; inxpg.mod := FALSE;
             Kernel.GetSector(inxpg.adr, inxpg.sec); f.ext[i] := inxpg; INC(i)
           END ;
           WHILE i < FileDir.ExTabSize DO f.ext[i] := NIL; INC(i) END ;
@@ -137,12 +138,12 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       namebuf: FileDir.FileName;
   BEGIN f := NIL; Check(name, namebuf, res);
     IF res <= 0 THEN
-      NEW(buf); buf.apos := 0; buf.mod := TRUE; buf.lim := HS; buf.next := buf;
+      NEW(buf); ASSERT(buf # NIL); buf.apos := 0; buf.mod := TRUE; buf.lim := HS; buf.next := buf;
       F := SYSTEM.VAL(FileDir.FileHd, SYSTEM.ADR(buf.data));
       F.mark := FileDir.HeaderMark;
       F.aleng := 0; F.bleng := HS; F.name := namebuf;
       F.date := Kernel.Clock();
-      NEW(f); f.aleng := 0; f.bleng := HS; f.modH := TRUE;
+      NEW(f); ASSERT(f # NIL); f.aleng := 0; f.bleng := HS; f.modH := TRUE;
       f.registered := FALSE; f.date := F.date;
       f.firstbuf := buf; f.nofbufs := 1; f.name := namebuf; f.sechint := 0;
       i := 0;
@@ -174,19 +175,20 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   PROCEDURE WriteBuf(f: File; buf: Buffer);
     VAR i, k: INTEGER;
       secadr: DiskAdr; inx: Index;
-  BEGIN 
+      header: FileDir.FileHd;
+  BEGIN
     IF buf.apos < STS THEN
       secadr := f.sec[buf.apos];
       IF secadr = 0 THEN
         Kernel.AllocSector(f.sechint, secadr);
-        f.modH := TRUE; f.sec[buf.apos] := secadr; f.sechint := secadr
+        f.modH := TRUE; f.sec[buf.apos] := secadr; f.sechint := secadr;
       END ;
       IF buf.apos = 0 THEN
         UpdateHeader(f, SYSTEM.VAL(FileDir.FileHeader, buf.data)); f.modH := FALSE
       END
     ELSE i := (buf.apos - STS) DIV XS; inx := f.ext[i];
       IF inx = NIL THEN
-        NEW(inx); inx.adr := 0; inx.sec[0] := 0; f.ext[i] := inx; f.modH := TRUE
+        NEW(inx); ASSERT(inx # NIL); inx.adr := 0; inx.sec[0] := 0; f.ext[i] := inx; f.modH := TRUE
       END ;
       k := (buf.apos - STS) MOD XS; secadr := inx.sec[k];
       IF secadr = 0 THEN
@@ -213,7 +215,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     WHILE (buf.apos # pos) & (buf.next # f.firstbuf) DO buf := buf.next END ;
     IF buf.apos # pos THEN 
       IF f.nofbufs < MaxBufs THEN  (*allocate new buffer*)
-        NEW(buf); buf.next := f.firstbuf.next; f.firstbuf.next := buf; INC(f.nofbufs)
+        NEW(buf); ASSERT(buf # NIL); buf.next := f.firstbuf.next; f.firstbuf.next := buf; INC(f.nofbufs)
       ELSE (*reuse a buffer*) f.firstbuf := buf;
         IF buf.mod THEN WriteBuf(f, buf) END
       END ;
@@ -322,10 +324,11 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     VAR a, b: INTEGER;
   BEGIN  r.eof := FALSE; r.res := 0;
     IF f # NIL THEN
-      IF pos < 0 THEN a := 0; b := HS
+      IF pos < 0 THEN
+        a := 0; b := HS
       ELSIF pos < f.aleng * SS + f.bleng - HS THEN
         a := (pos + HS) DIV SS; b := (pos + HS) MOD SS;
-      ELSE a := f.aleng; b := f.bleng
+      ELSE a := f.aleng; b := f.bleng;
       END ;
       r.file := f; r.apos := a; r.bpos := b; r.buf := f.firstbuf;
     ELSE r.file := NIL
@@ -413,7 +416,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   PROCEDURE NewExt(f: File);
     VAR i, k: INTEGER; ext: Index;
   BEGIN k := (f.aleng - STS) DIV XS;
-    NEW(ext); ext.adr := 0; ext.mod := TRUE; f.ext[k] := ext; i := XS;
+    NEW(ext); ASSERT(ext # NIL); ext.adr := 0; ext.mod := TRUE; f.ext[k] := ext; i := XS;
     REPEAT DEC(i); ext.sec[i] := 0 UNTIL i = 0
   END NewExt;
 
@@ -449,8 +452,10 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   BEGIN (*same as WriteByte*)
     IF r.apos # r.buf.apos THEN r.buf := GetBuf(r.file, r.apos); END ;
     IF r.bpos >= r.buf.lim THEN
+      (* check if bpos (position within sector) is smaller than a sector*)
       IF r.bpos < SS THEN
         INC(r.buf.lim); INC(r.file.bleng); r.file.modH := TRUE
+      (* if the buffer is larger than a sector, write it *)
       ELSE f := r.file; WriteBuf(f, r.buf); INC(r.apos); buf := Buf(r.file, r.apos);
         IF buf = NIL THEN
           IF r.apos <= f.aleng THEN ReadBuf(f, r.buf, r.apos)
@@ -491,7 +496,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   (*---------------------------System use---------------------------*)
 
   PROCEDURE Init*;
-  BEGIN root := 0; Kernel.Init; FileDir.Init; SYSTEM.PUT(-60, 0F0FCDH)
+  BEGIN root := 0; Kernel.Init; FileDir.Init;
   END Init;
 
   PROCEDURE RestoreList*; (*after mark phase of garbage collection*)

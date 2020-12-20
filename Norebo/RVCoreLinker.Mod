@@ -162,8 +162,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         Files.ReadInt(R, n);
         WHILE n > 0 DO buffer[p] := 0; INC(p); DEC(n, 4) END ;  (*variable space*)
         Files.ReadInt(R, n);
-        Texts.WriteLn(W); Texts.WriteString(W, "String is ");
-        WHILE n > 0 DO Files.ReadInt(R, w);Texts.WriteHex(W, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
+        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
         mod.desc.code := p * 4;  (*program*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n) END ;  (*program code*)
@@ -189,9 +188,6 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         WHILE w >= 0 DO buffer[p] := mod.desc.data + w; INC(p); Files.ReadInt(R, w) END ;
         buffer[p] := 0; INC(p);
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT);
-        Texts.WriteLn(W); Texts.WriteString(W, "fixorgP: "); Texts.WriteHex(W, fixorgP);
-        Texts.WriteLn(W); Texts.WriteString(W, "fixorgD: "); Texts.WriteHex(W, fixorgD);
-        Texts.WriteLn(W); Texts.WriteString(W, "fixorgT: "); Texts.WriteHex(W, fixorgT);
         Texts.Append(Oberon.Log, W.buf);
         Files.ReadInt(R, w); body := mod.desc.code + w;
         Files.Read(R, ch);
@@ -205,11 +201,9 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
           procedureID + LSL(moduleID MOD 128, 8) + LSL(fixupLink MOD 10000H, 16)
         More detail on this can be found in RVOG.Mod.
       *)
-      Texts.WriteLn(W); Texts.WriteString(W, "res "); Texts.WriteHex(W, res); Texts.Append(Oberon.Log, W.buf);
       IF res = 0 THEN (*fixup of BL*)
         adr := mod.desc.code + fixorgP*4;
         (* Keep going until the address points to the start of mod.desc.code *)
-        Texts.WriteLn(W); Texts.WriteString(W, "Call fixups. mod.desc.code: "); Texts.WriteHex(W, mod.desc.code); Texts.Append(Oberon.Log, W.buf);
         WHILE adr # mod.desc.code DO
           inst := buffer[adr DIV 4];
 
@@ -220,10 +214,6 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
           dest := buffer[impmod.desc.ent DIV 4 + pno] + impmod.desc.code;
           offset := (dest - adr);
           buffer[adr DIV 4] := Jal(offset MOD 200000H);
-          Texts.WriteLn(W); Texts.WriteString(W, "mno:  "); Texts.WriteHex(W, mno); Texts.WriteString(W, " pno:  "); Texts.WriteHex(W, pno);
-          Texts.WriteString(W, " disp: "); Texts.WriteHex(W, disp);
-          Texts.WriteString(W, " dest: "); Texts.WriteHex(W, dest); Texts.WriteString(W, " adr: "); Texts.WriteHex(W, adr);
-          Texts.WriteString(W, " impname: "); Texts.WriteString(W, impmod.desc.name); Texts.WriteString(W, " offset: "); Texts.WriteHex(W, offset);
           Texts.Append(Oberon.Log, W.buf);
           adr := mod.desc.code + disp*4;
         END ;
@@ -233,13 +223,11 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
             5H + LSL(moduleID MOD 128, 4) + LSL(link MOD 10000H, 16)
         *)
         adr := mod.desc.code + fixorgD*4;
-        Texts.WriteLn(W); Texts.WriteString(W, "SB fixups. mod.desc.code: "); Texts.WriteHex(W, mod.desc.code); Texts.Append(Oberon.Log, W.buf);
         WHILE adr # mod.desc.code DO
           inst := buffer[adr DIV 4];
           IF (inst MOD 8H # 5) THEN Texts.WriteLn(W); Texts.WriteString(W, "Bad magic!"); Texts.Append(Oberon.Log, W.buf) END;
           mno := inst DIV 10H MOD 128;
           disp := inst DIV 10000H;
-          Texts.WriteLn(W); Texts.WriteString(W, "mno: "); Texts.WriteHex(W, mno); Texts.WriteString(W, " disp: "); Texts.WriteHex(W, disp); Texts.Append(Oberon.Log, W.buf);
           IF mno = 0 THEN (*global*)
             buffer[adr DIV 4] := Lw(mod.desc.num * 4);
           ELSE (*import*)
@@ -252,17 +240,14 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
             op := inst MOD 80H;
             IF (op = addi) OR (op = load) THEN
               imm := GetIImm(inst);
-              Texts.WriteLn(W); Texts.WriteString(W, "Fixing up an IType with imm "); Texts.WriteHex(W, imm); Texts.Append(Oberon.Log, W.buf);
             ELSIF op = store THEN
               imm := GetSImm(inst);
-              Texts.WriteLn(W); Texts.WriteString(W, "Fixing up an SType with imm "); Texts.WriteHex(W, imm); Texts.Append(Oberon.Log, W.buf);
             ELSE error(5, name);
             END;
             vno := imm MOD 100H; (* variable number; see p. 23 Pattern 12 *)
             offset := buffer[impmod.desc.ent DIV 4 + vno]; (* crashes here :(  *)
             (* checks if we're looking for a procedure, as then we add 100H. *)
             IF ODD(imm DIV 100H) THEN offset := offset + impmod.desc.code - impmod.desc.data END ;
-            Texts.WriteLn(W); Texts.WriteString(W, "offset: "); Texts.WriteHex(W, offset); Texts.Append(Oberon.Log, W.buf);
             (* replace stored imm with calculated offset*)
             IF (op = store) THEN
               buffer[adr DIV 4 + 1] := (inst - LSL(imm MOD 20H, 7) - LSL(imm DIV 20H, 25)) + LSL(offset MOD 20H, 7) + LSL(offset DIV 20H, 25)
@@ -273,7 +258,6 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
           adr := mod.desc.code + disp*4;
         END ;
         (*fixup of type descriptors*)
-        Texts.WriteLn(W); Texts.WriteString(W, "Type fixups. mod.desc.code: "); Texts.WriteHex(W, mod.desc.code); Texts.Append(Oberon.Log, W.buf);
         adr := mod.desc.data + fixorgT*4;
         WHILE adr # mod.desc.data DO
           inst := buffer[adr DIV 4];
@@ -286,14 +270,13 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
             offset := buffer[impmod.desc.ent DIV 4 + vno];
             inst := impmod.desc.data + offset
           END ;
-          buffer[adr DIV 4] := inst; adr := adr - disp*4
+          buffer[adr DIV 4] := inst; adr := adr - disp*4;
         END ;
         buffer[0] := Jal(body MOD 200000H); (*initialize module*)
       ELSIF res = 3 THEN importing := name;
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].desc.refcnt) END
       END
     END ;
-    Texts.WriteLn(W); Texts.WriteString(W, "Done loading "); Texts.WriteString(W, name); Texts.Append(Oberon.Log, W.buf);
     newmod := mod
   END Load;
 
@@ -315,11 +298,8 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
     Load(name, buffer, mod);
     Texts.WriteLn(W); Texts.WriteString(W, "Result of link (0 is good): "); Texts.WriteHex(W, res); Texts.Append(Oberon.Log, W.buf);
     IF res = 0 THEN
-      Texts.WriteLn(W); Texts.WriteString(W, "Root address: "); Texts.WriteHex(W, mod.addr); Texts.Append(Oberon.Log, W.buf);
-      Texts.WriteLn(W); Texts.WriteString(W, "Alloc ptr: "); Texts.WriteHex(W, AllocPtr); Texts.Append(Oberon.Log, W.buf);
       buffer[4] := AllocPtr;
       buffer[5] := mod.addr; (* crashes here :(  *)
-      buffer[6] := 40000H;  (*module limit*)
       (*store module descriptors*)
       WHILE root # NIL DO
         Copy(SYSTEM.ADR(root.desc), SYSTEM.ADR(buffer) + root.addr, DescSize DIV 4);

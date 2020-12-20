@@ -191,9 +191,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   BEGIN
      Input.SetMouseLimits(Viewers.curW + UW + SW, H);
      Display.ReplConst(Display.black, Viewers.curW, 0, UW + SW, H, Display.replace);
-     NEW(Filler); Filler.handle := HandleFiller;
+     NEW(Filler); ASSERT(Filler # NIL); Filler.handle := HandleFiller;
      Viewers.InitTrack(UW, H, Filler); (*init user track*)
-     NEW(Filler); Filler.handle := HandleFiller;
+     NEW(Filler); ASSERT(Filler # NIL); Filler.handle := HandleFiller;
      Viewers.InitTrack(SW, H, Filler) (*init system track*)
   END OpenDisplay;
 
@@ -208,7 +208,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE OpenTrack* (X, W: INTEGER);
     VAR Filler: Viewers.Viewer;
   BEGIN
-    NEW(Filler); Filler.handle := HandleFiller;
+    NEW(Filler); ASSERT(Filler # NIL); Filler.handle := HandleFiller;
     Viewers.OpenTrack(X, W, Filler)
   END OpenTrack;
 
@@ -314,16 +314,15 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
         IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
         mod := mod.next
       END ;
-      SYSTEM.PUT(-60, 23H);
-      Files.RestoreList; SYSTEM.PUT(-60, 27H);
-      Kernel.Scan; SYSTEM.PUT(-60, 20H);
+      Files.RestoreList;
+      Kernel.Scan;
       ActCnt := BasicCycle
     END
   END GC;
 
   PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
     VAR t: Task;
-  BEGIN NEW(t); t.state := off; t.next := t; t.handle := h; t.period := period; RETURN t
+  BEGIN NEW(t); ASSERT(t # NIL); t.state := off; t.next := t; t.handle := h; t.period := period; RETURN t
   END NewTask;
   
   PROCEDURE Install* (T: Task);
@@ -373,7 +372,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
           FocusViewer.handle(FocusViewer, M); DEC(ActCnt)
         END
       ELSIF keys # {} THEN
-        SYSTEM.PUT(-60, 0EEH);
         M.id := track; M.X := X; M.Y := Y; M.keys := keys;
         REPEAT V := Viewers.This(M.X, M.Y); V.handle(V, M); Input.Mouse(M.keys, M.X, M.Y)
         UNTIL M.keys = {};
@@ -398,7 +396,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 
-BEGIN User[0] := 0X;
+BEGIN
+  User[0] := 0X;
   Arrow.Fade := FlipArrow; Arrow.Draw := FlipArrow;
   Star.Fade := FlipStar; Star.Draw := FlipStar;
   OpenCursor(Mouse); OpenCursor(Pointer);
@@ -409,5 +408,6 @@ BEGIN User[0] := 0X;
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
-  Modules.Load("System", Mod); Mod := NIL; Loop
+  Modules.Load("System", Mod);
+  Mod := NIL; Loop
 END Oberon.

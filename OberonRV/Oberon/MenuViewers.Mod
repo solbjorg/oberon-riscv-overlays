@@ -17,7 +17,7 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
   PROCEDURE Copy (V: Viewer; VAR V1: Viewer);
     VAR Menu, Main: Display.Frame; M: Oberon.CopyMsg;
   BEGIN Menu := V.dsc; Main := V.dsc.next;
-    NEW(V1); V1^ := V^; V1.state := 0;
+    NEW(V1); ASSERT(V1 # NIL); V1^ := V^; V1.state := 0;
     M.F := NIL; Menu.handle(Menu, M); V1.dsc := M.F;
     M.F := NIL; Main.handle(Main, M); V1.dsc.next := M.F
   END Copy;
@@ -201,7 +201,7 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
 
   PROCEDURE New* (Menu, Main: Display.Frame; menuH, X, Y: INTEGER): Viewer; 
     VAR V: Viewer;
-  BEGIN NEW(V);
+  BEGIN NEW(V); ASSERT(V # NIL);
     V.handle := Handle; V.dsc := Menu; V.dsc.next := Main; V.menuH := menuH;
     Viewers.Open(V, X, Y); Restore(V); RETURN V
   END New;

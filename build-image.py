@@ -83,7 +83,7 @@ def build_norebo(target_dir):
 def rv_build_image(sources_dir):
     global top
     if top == "":
-        top = "RVModules"
+        top = "Modules"
     sources_dir  = os.path.realpath(sources_dir)
 
     target_dir = os.path.join(NOREBO_ROOT, 'imagebuild')
@@ -96,7 +96,7 @@ def rv_build_image(sources_dir):
     rv_build_norebo(norebo_dir)
 
     logging.info('Building a cross-compiler')
-    compile(['RVAssem.Mod', 'ORS.Mod', 'RVOB.Mod', 'RVOG.Mod', 'RVOP.Mod'],
+    compile(['RVOS.Mod', 'RVAssem.Mod', 'RVOB.Mod', 'RVOG.Mod', 'RVOP.Mod'],
             working_directory=compiler_dir,
             search_path=[sources_dir, compiler_dir, norebo_dir])
 
@@ -125,13 +125,13 @@ def rv_build_image(sources_dir):
 
     for fi in FILE_LIST:
         mod = fi['filename']
-        if not mod.endswith('.Mod'):
-            install_args.append(copy(mod, mod))
+        #if mod.endswith('.Mod'):
+        install_args.append(copy(mod, mod))
         if fi['mode'] == 'source':
             smb = mod.replace('.Mod', '.smb')
             rsx = mod.replace('.Mod', '.rsx')
             rsc = mod.replace('.Mod', '.rsc')
-            #install_args.append(copy(smb, smb))
+            install_args.append(copy(smb, smb))
             install_args.append(copy(rsx, rsc))
 
     norebo(['VDiskUtil.InstallFiles'] + install_args,
@@ -147,6 +147,8 @@ def rv_build_image(sources_dir):
             rsc = mod.replace('.Mod', '.rsc')
             check_args.append(smb)
             check_args.append(rsc)
+        else:
+            check_args.append(mod)
 
     logging.info('Checking files were installed correctly')
     norebo(['VDiskUtil.CheckFiles'] + check_args,
@@ -258,8 +260,8 @@ def main():
     # also only works with RV atm, mostly because I don't really need this with R5.
     if (args.testfile):
         global FILE_LIST, top
-        FILE_LIST.append({"mode":"source","filename":args.testfile});
-        top = FILE_LIST[-1]["filename"].replace('.Mod', '')
+        FILE_LIST = [{"mode":"source","filename":args.testfile}]
+        top = args.testfile.replace('.Mod', '')
         print(top)
 
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)

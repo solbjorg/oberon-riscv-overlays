@@ -8,6 +8,11 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     RA = 1; (* register that holds return address *)
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
+    SectorMap* = POINTER TO SectorMapDesc;
+
+    SectorMapDesc = RECORD
+        map: ARRAY mapsize DIV 32 OF SET;
+    END;
 
   VAR allocated*, NofSectors*: INTEGER;
     heapOrg*, heapLim*: INTEGER; 
@@ -15,7 +20,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     clock: INTEGER;
     list0, list1, list2, list3: INTEGER;  (*lists of free blocks of size n*256, 128, 64, 32 bytes*)
     data: INTEGER; (*SPI data in*)
-    sectorMap: ARRAY mapsize DIV 32 OF SET;
+    sectorMap: SectorMap;
     
 (* ---------- New: heap allocation ----------*)
 
@@ -197,19 +202,19 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE InitSecMap*;
     VAR i: INTEGER;
-  BEGIN NofSectors := 0; sectorMap[0] := {0 .. 31}; sectorMap[1] := {0 .. 31};
-    FOR i := 2 TO mapsize DIV 32 - 1 DO sectorMap[i] := {} END
+  BEGIN NofSectors := 0; NEW(sectorMap); sectorMap.map[0] := {0 .. 31}; sectorMap.map[1] := {0 .. 31};
+    FOR i := 2 TO mapsize DIV 32 - 1 DO sectorMap.map[i] := {} END
   END InitSecMap;
 
   (* Sector numbers are always a multiple of 29 for the purpose of redundancy checks. (p. 110) *)
   PROCEDURE MarkSector*(sec: INTEGER);
   BEGIN ASSERT(sec MOD 29 = 0); sec := sec DIV 29;
-    INCL(sectorMap[sec DIV 32], sec MOD 32); INC(NofSectors)
+    INCL(sectorMap.map[sec DIV 32], sec MOD 32); INC(NofSectors);
   END MarkSector;
 
   PROCEDURE FreeSector*(sec: INTEGER);
   BEGIN ASSERT(sec MOD 29 = 0); sec := sec DIV 29;
-    EXCL(sectorMap[sec DIV 32], sec MOD 32); DEC(NofSectors)
+    EXCL(sectorMap.map[sec DIV 32], sec MOD 32); DEC(NofSectors)
   END FreeSector;
 
   PROCEDURE AllocSector*(hint: INTEGER; VAR sec: INTEGER);
@@ -218,12 +223,12 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ASSERT(hint MOD 29 = 0); hint := hint DIV 29; s := hint;
     REPEAT INC(s);
       IF s = mapsize THEN s := 1 END ;
-    UNTIL ~(s MOD 32 IN sectorMap[s DIV 32]);
-    INCL(sectorMap[s DIV 32], s MOD 32); INC(NofSectors); sec := s * 29
+    UNTIL ~(s MOD 32 IN sectorMap.map[s DIV 32]);
+    INCL(sectorMap.map[s DIV 32], s MOD 32); INC(NofSectors); sec := s * 29
   END AllocSector;
 
   PROCEDURE GetSector*(src: INTEGER; VAR dst: Sector);
-  BEGIN SYSTEM.PUT(-60, 0DEAD0000H + src);
+  BEGIN
     ASSERT(src MOD 29 = 0); src := src DIV 29;
     src := src * 2 + FSoffset;
     ReadSD(src, SYSTEM.ADR(dst)); ReadSD(src+1, SYSTEM.ADR(dst)+512) 
@@ -272,30 +277,33 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
     VAR u, v, w: INTEGER;
+  BEGIN
     (* In RISC5, bits were conveniently unused in the reg jump instruction, which Oberon *)
     (* then used to encode trap numbers. We don't have that luxury, so we deposit the trap *)
     (* number _after_ the instruction instead. It can't be executed, so it will cause *)
     (* errors if jumped to (and confuse any disassembler!). *)
-  BEGIN u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
+    u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
     IF w = 0 THEN New(a, b)
     (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
+    (* Note on the note: I currently put the whole trap in the LEDs, for easier debugging *)
+    (* with my emulator that supports 32-bit LED output. *)
     ELSE (*stop*) SYSTEM.PUT(led, v); REPEAT UNTIL FALSE
     END;
     (* Ok, more explanation of some of the low-level hacks in use here. *)
     (* We had to deposit the trap number _after_ the instruction, which means if we *)
     (* return to that location, we're in trouble, as it will execute gobbledygook. *)
-    (* Ideal solution: we just add 4 to RA, and we'll jump to after the trap number. *)
+    (* Ideal solution: we just add 4 to RA, as then we'll jump to after the trap number. *)
     (* That doesn't work, as the function epilogue overwrites RA... *)
-    (* So currently there is a jump instruction to skip over the trapnum as we return... *)
-    (* It is ugly. *)
-    (* Note that this will never execute if trapnum > 0; but we had to do *)
-    (* this for NEW() to work as it's supposed to. *)
-    (* There may be a better scheme for RISC-V! TODO. *)
+    (* So currently there is a jump instruction to skip over the trapnum as we return. *)
+    (* It is perhaps less than ideal. *)
+    (* Note that this will never execute if trapnum > 0; but we had to do this for NEW() to *)
+    (* work as it's supposed to. *)
+    (* A cleaner scheme for RISC-V would be to use mtvec, but this would require multiple *)
+    (* privilege modes. *)
   END Trap;
 
   PROCEDURE Init*;
   BEGIN
-    SYSTEM.PUT(-60, 7AH);
     Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap; replaced later by System.Mod*)
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H; heapLim := MemLim;
