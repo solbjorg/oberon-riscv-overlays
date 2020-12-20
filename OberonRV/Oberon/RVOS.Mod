@@ -57,7 +57,7 @@ MODULE RVOS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
   PROCEDURE Mark*(msg: ARRAY OF CHAR);
     VAR p: LONGINT;
   BEGIN p := Pos();
-    IF ( TRUE ) OR (p > errpos) & (errcnt < 25) THEN
+    IF (p > errpos) & (errcnt < 25) THEN
       Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteInt(W, p, 1); Texts.Write(W, " ");
       Texts.WriteString(W, msg); Texts.Append(Oberon.Log, W.buf)
     END ;

@@ -28,8 +28,9 @@ CONST
   SB = GP;          (* We assign the role of SB to GP *)
   MT = TP;          (* We assign the role of MT to TP *)
 
-  maxCode = 12000;  (* Total # of instructions in a module *)
-  maxStrx = 4000;  (* 64KB for statically allocated strings *)
+  (* Note: all of these can be safely made larger, so long as you have the heap space! *)
+  maxCode = 16384;  (* Total # of instructions in a module *)
+  maxStrx = 3000;  (* statically allocated strings *)
   maxTD = 512;      (* 512 words of space for type descriptors *)
 
   Reg = 10; RegI = 11; Cond = 12;  (*internal item modes*)
@@ -121,7 +122,7 @@ TYPE
 
 VAR
   W: Texts.Writer;
-  pc, varsize: INTEGER;  (* program counter, data indices *)
+  pc*, varsize: INTEGER;  (* program counter, data indices *)
   tdx, strx: INTEGER;     (* Type descriptor and string array indices *)
   entry: INTEGER;         (* module body entrypoint *)
   RH: INTEGER;            (* available registers R[firstReg] ... R[H-1]*)
@@ -326,7 +327,7 @@ BEGIN
         (* instructions than the offset of a B-type instruction allows, by leveraging JAL instead.*)
         program.code.c[at] := RVAssem.jal(0, displacement+4); (* jumps to the SB instruction below *)
         put(RVAssem.jal(0, 12)); (* jump over branch; only executed in execution of if body... *)
-        put(RVAssem.fmtSB(63H, cond, lr, rr, 8)); (* jump over JAL into start of if body *)
+        put(RVAssem.fmtSB(63H, cond, lr, rr, 8)); (* jump over below JAL into start of if body *)
         put(RVAssem.jal(0, -displacement-4)) (* jump into start of if body *)
       END;
     ELSE
@@ -423,13 +424,6 @@ BEGIN
     this fixup format, hopefully this assert will trigger before hard to
     diagnose bugs will occur.
   *)
-  (*
-  Texts.WriteString(W,"MLSB: "); Texts.WriteInt(W,-base,0);
-  Texts.WriteString(W, " inst: "); Texts.WriteHex(W, 5 + LSL(-base, 4) + LSL(fixorgD MOD 10000H, 16));
-  Texts.WriteString(W, " fixorgD: "); Texts.WriteHex(W, fixorgD);
-  Texts.WriteLn(W);
-  Texts.Append(Oberon.Log,W.buf);
-  SYSTEM.PUT(-60, 0CBAH); *)
   ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
   ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
   RETURN 5 + LSL(-base, 4) + LSL(fixorgD MOD 10000H, 16)
@@ -1296,11 +1290,16 @@ BEGIN  load(y);
   IF x.type.size = 1 THEN op := 0 ELSE op := 2 END ;
   IF x.mode = RVOB.Var THEN
     IF x.r > 0 THEN (*local*) 
-      ASSERT(FitsIn12Bits(x.a + frame));
-      put(RVAssem.fmtS(23H, op, SP, y.r, x.a + frame))
+      (*ASSERT(FitsIn12Bits(x.a + frame));*)
+      IF FitsIn12Bits(x.a + frame) THEN
+        put(RVAssem.fmtS(23H, op, SP, y.r, x.a + frame))
+      ELSE
+        LoadImm(x.a + frame); put(RVAssem.add(RH, RH, SP));
+        put(RVAssem.fmtS(23H, op, RH, y.r, 0))
+      END;
     ELSE
       GetSB(x.r);
-      IF FitsIn12Bits(x.a + frame) THEN
+      IF FitsIn12Bits(x.a) THEN
         put(RVAssem.fmtS(23H, op, SB, y.r, x.a))
       ELSE
         LoadImm(x.a); put(RVAssem.add(RH, RH, SB));
@@ -1905,15 +1904,23 @@ BEGIN
   END
 END CSRop;
 
+PROCEDURE Init*(VAR success: BOOLEAN);
+  VAR p : Program; c : Code; s : Strings; d : TypeDescriptors;
+BEGIN
+  NEW(p); NEW(c); NEW(s); NEW(d);
+  IF (p = NIL) OR (c = NIL) OR (s = NIL) OR (d = NIL) THEN
+    Texts.WriteLn(W); Texts.WriteString(W, "Warning! Not enough heap space to allocate space for program; compilation will fail!"); Texts.Append(Oberon.Log, W.buf);
+    success := FALSE;
+  ELSE
+    program := p; program.code := c; program.strings := s; program.data := d;
+    success := TRUE;
+  END;
+END Init;
+
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
+  VAR success: BOOLEAN;
 BEGIN pc := 0; tdx := 0; strx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
   stacktrace := FALSE;
-  IF (program = NIL) OR (program.code = NIL) OR (program.strings = NIL) OR (program.data = NIL) THEN
-    NEW(program); NEW(program.code); NEW(program.strings); NEW(program.data);
-    IF (program = NIL) OR (program.code = NIL) OR (program.strings = NIL) OR (program.data = NIL) THEN
-      Texts.WriteLn(W); Texts.WriteString(W, "Warning! Not enough heap space to allocate space for program; compilation will fail!"); Texts.Append(Oberon.Log, W.buf);
-    END;
-  END;
   IF v = 0 THEN pc := 8 END;
   modid := id;
 END Open;
@@ -2039,6 +2046,8 @@ BEGIN
   Files.WriteInt(R, -1);
   Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, entry);
   Files.Write(R, "O"); Files.Register(F);
+  program.code := NIL; program.strings := NIL; program.data := NIL;
+  program := NIL;
 END CloseModule;
 
 PROCEDURE writeDword(VAR R: Files.Rider; i: INTEGER);

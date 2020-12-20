@@ -46,6 +46,7 @@ END RoundUp;
     IF (sym = RVOS.period) & (obj.class = RVOB.Mod) THEN
       RVOS.Get(sym);
       IF sym = RVOS.ident THEN obj := RVOB.thisimport(obj); RVOS.Get(sym);
+        (*
         IF (obj.type # NIL) THEN
           obj2 := obj.type.dsc;
         IF (obj2 # NIL) THEN
@@ -53,6 +54,7 @@ END RoundUp;
             Texts.WriteString(W, "obj name:"); Texts.WriteString(W, obj.name); Texts.Append(Oberon.Log, W.buf);
             obj2 := obj2.next
           END; END;
+        *)
         IF obj = NIL THEN RVOS.Mark("undef"); obj := dummy END
       ELSE RVOS.Mark("identifier expected"); obj := dummy
       END
@@ -234,28 +236,11 @@ END RoundUp;
           (x.type.base.form = par.type.base.form) & (par.type.len < 0) THEN
         RVOG.OpenArrayParam(x);
       ELSIF (x.type.form = RVOB.String) & varpar & par.rdo & (par.type.form = RVOB.Array) &
-          (par.type.base.form = RVOB.Char) & (par.type.len < 0) THEN
-        Texts.WriteLn(W);
-        Texts.WriteHex(W, x.type.form);
-        Texts.WriteHex(W, par.class);
-        (*Texts.WriteHex(W, par.rdo);*)
-        Texts.WriteHex(W, par.type.form);
-        Texts.WriteHex(W, par.type.base.form);
-        Texts.WriteHex(W, par.type.len);
-        Texts.Append(Oberon.Log, W.buf);
+          (par.type.base.form = RVOB.Char) & ((par.type.len < 0) OR (par.type.len = 07FH)) THEN
         RVOG.StringParam(x)
       ELSIF (par.type.form = RVOB.Array) & (par.type.base.form = RVOB.Int) & (par.type.size = x.type.size) THEN
         RVOG.VarParam(x, par.type)
       ELSE
-        Texts.WriteLn(W);
-        Texts.WriteHex(W, x.type.form);
-        Texts.WriteHex(W, par.class);
-        (*Texts.WriteHex(W, par.rdo);*)
-        Texts.WriteHex(W, par.type.form);
-        Texts.WriteHex(W, par.type.base.form);
-        Texts.WriteHex(W, par.type.len);
-        Texts.Append(Oberon.Log, W.buf);
-
         RVOS.Mark("incompatible parameters");
       END
     END
@@ -940,61 +925,66 @@ END RoundUp;
     VAR key: LONGINT;
       obj: RVOB.Object;
       impid, impid1: RVOS.Ident;
-  BEGIN Texts.WriteString(W, "  compiling "); RVOS.Get(sym);
-    IF sym # RVOS.module THEN RVOS.Mark("must start with MODULE")
-    ELSE
-      RVOS.Get(sym);
-      IF sym = RVOS.times THEN version := 0; Texts.Write(W, "*"); RVOS.Get(sym) ELSE version := 1 END ;
-      RVOB.Init; RVOB.OpenScope;
-      IF sym = RVOS.ident THEN
-        RVOS.CopyId(modid); RVOS.Get(sym);
-        Texts.WriteString(W, modid); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
-      ELSE RVOS.Mark("identifier expected")
-      END ;
-      Check(RVOS.semicolon, "no ;"); level := 0; dc := 0; exno := 1; key := 0;
-      IF sym = RVOS.import THEN
+      success: BOOLEAN;
+  BEGIN
+    RVOG.Init(success);
+    IF success THEN
+      Texts.WriteString(W, "  compiling "); RVOS.Get(sym);
+      IF sym # RVOS.module THEN RVOS.Mark("must start with MODULE")
+      ELSE
         RVOS.Get(sym);
-        WHILE sym = RVOS.ident DO
-          RVOS.CopyId(impid); RVOS.Get(sym);
-          IF sym = RVOS.becomes THEN
-            RVOS.Get(sym);
-            IF sym = RVOS.ident THEN RVOS.CopyId(impid1); RVOS.Get(sym)
-            ELSE RVOS.Mark("id expected")
-            END
-          ELSE impid1 := impid
-          END ;
-          RVOB.Import(impid, impid1);
-          IF sym = RVOS.comma THEN RVOS.Get(sym)
-          ELSIF sym = RVOS.ident THEN RVOS.Mark("comma missing")
-          END
+        IF sym = RVOS.times THEN version := 0; Texts.Write(W, "*"); RVOS.Get(sym) ELSE version := 1 END ;
+        RVOB.Init; RVOB.OpenScope;
+        IF sym = RVOS.ident THEN
+          RVOS.CopyId(modid); RVOS.Get(sym);
+          Texts.WriteString(W, modid); Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
+        ELSE RVOS.Mark("identifier expected")
         END ;
-        Check(RVOS.semicolon, "no ;")
-      END ;
-      obj := RVOB.topScope.next;
-      RVOG.Open(version, modid); Declarations(dc); RVOG.SetDataSize(RoundUp(dc));
-      WHILE sym = RVOS.procedure DO ProcedureDecl; Check(RVOS.semicolon, "no ;") END ;
-      RVOG.Header;
-      IF sym = RVOS.begin THEN RVOS.Get(sym); StatSequence END ;
-      Check(RVOS.end, "no END");
-      IF sym = RVOS.ident THEN
-        IF RVOS.id # modid THEN RVOS.Mark("no match") END ;
-        RVOS.Get(sym)
-      ELSE RVOS.Mark("identifier missing")
-      END ;
-      IF sym # RVOS.period THEN RVOS.Mark("period missing") END ;
-      IF (RVOS.errcnt = 0) & (version # 0) THEN
-        RVOB.Export(modid, newSF, key);
-        IF newSF THEN Texts.WriteString(W, " new symbol file") END
-      END ;
-      IF RVOS.errcnt = 0 THEN
-        RVOG.CheckRegs();
-        RVOG.Close(modid, key, exno);
-        Texts.WriteInt(W, RVOG.Here(), 6); Texts.WriteInt(W, dc, 6); Texts.WriteHex(W, key)
-      ELSE Texts.WriteLn(W); Texts.WriteString(W, "compilation FAILED")
-      END ;
-      Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-      RVOB.CloseScope; pbsList := NIL
-    END
+        Check(RVOS.semicolon, "no ;"); level := 0; dc := 0; exno := 1; key := 0;
+        IF sym = RVOS.import THEN
+          RVOS.Get(sym);
+          WHILE sym = RVOS.ident DO
+            RVOS.CopyId(impid); RVOS.Get(sym);
+            IF sym = RVOS.becomes THEN
+              RVOS.Get(sym);
+              IF sym = RVOS.ident THEN RVOS.CopyId(impid1); RVOS.Get(sym)
+              ELSE RVOS.Mark("id expected")
+              END
+            ELSE impid1 := impid
+            END ;
+            RVOB.Import(impid, impid1);
+            IF sym = RVOS.comma THEN RVOS.Get(sym)
+            ELSIF sym = RVOS.ident THEN RVOS.Mark("comma missing")
+            END
+          END ;
+          Check(RVOS.semicolon, "no ;")
+        END ;
+        obj := RVOB.topScope.next;
+        RVOG.Open(version, modid); Declarations(dc); RVOG.SetDataSize(RoundUp(dc));
+        WHILE sym = RVOS.procedure DO ProcedureDecl; Check(RVOS.semicolon, "no ;") END ;
+        RVOG.Header;
+        IF sym = RVOS.begin THEN RVOS.Get(sym); StatSequence END ;
+        Check(RVOS.end, "no END");
+        IF sym = RVOS.ident THEN
+          IF RVOS.id # modid THEN RVOS.Mark("no match") END ;
+          RVOS.Get(sym)
+        ELSE RVOS.Mark("identifier missing")
+        END ;
+        IF sym # RVOS.period THEN RVOS.Mark("period missing") END ;
+        IF (RVOS.errcnt = 0) & (version # 0) THEN
+          RVOB.Export(modid, newSF, key);
+          IF newSF THEN Texts.WriteString(W, " new symbol file") END
+        END ;
+        IF RVOS.errcnt = 0 THEN
+          RVOG.CheckRegs();
+          RVOG.Close(modid, key, exno);
+          Texts.WriteInt(W, RVOG.pc, 6); Texts.WriteInt(W, dc, 6); Texts.WriteHex(W, key)
+        ELSE Texts.WriteLn(W); Texts.WriteString(W, "compilation FAILED")
+        END ;
+        Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+        RVOB.CloseScope; pbsList := NIL
+      END
+    END;
   END Module;
 
   PROCEDURE Option(VAR S: Texts.Scanner);
@@ -1009,35 +999,38 @@ END RoundUp;
     VAR beg, end, time: LONGINT;
       T: Texts.Text;
       S: Texts.Scanner;
+      success : BOOLEAN;
   BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
-    IF S.class = Texts.Char THEN
-      IF S.c = "@" THEN
-        Option(S); Oberon.GetSelection(T, beg, end, time);
-        IF time >= 0 THEN RVOS.Init(T, beg); Module END
-      ELSIF S.c = "^" THEN
-        Option(S); Oberon.GetSelection(T, beg, end, time);
-        IF time >= 0 THEN
-          Texts.OpenScanner(S, T, beg); Texts.Scan(S);
-          IF S.class = Texts.Name THEN
-            Texts.WriteString(W, S.s); NEW(T); Texts.Open(T, S.s);
-            IF T.len > 0 THEN RVOS.Init(T, 0); Module END
+    IF TRUE THEN
+      IF S.class = Texts.Char THEN
+        IF S.c = "@" THEN
+          Option(S); Oberon.GetSelection(T, beg, end, time);
+          IF time >= 0 THEN RVOS.Init(T, beg); Module END
+        ELSIF S.c = "^" THEN
+          Option(S); Oberon.GetSelection(T, beg, end, time);
+          IF time >= 0 THEN
+            Texts.OpenScanner(S, T, beg); Texts.Scan(S);
+            IF S.class = Texts.Name THEN
+              Texts.WriteString(W, S.s); NEW(T); Texts.Open(T, S.s);
+              IF T.len > 0 THEN RVOS.Init(T, 0); Module END
+            END
           END
         END
+      ELSE
+        WHILE S.class = Texts.Name DO
+          NEW(T); Texts.Open(T, S.s);
+          IF T.len > 0 THEN Option(S); RVOS.Init(T, 0); Module
+          ELSE Texts.WriteString(W, S.s); Texts.WriteString(W, " not found");
+            Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
+          END ;
+          IF (T.len # 0) & (RVOS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
+        END
       END
-    ELSE 
-      WHILE S.class = Texts.Name DO
-        NEW(T); Texts.Open(T, S.s);
-        IF T.len > 0 THEN Option(S); RVOS.Init(T, 0); Module
-        ELSE Texts.WriteString(W, S.s); Texts.WriteString(W, " not found");
-          Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
-        END ;
-        IF (T.len # 0) & (RVOS.errcnt = 0) THEN Texts.Scan(S) ELSE S.class := 0 END
-      END
-    END ;
+    END;
     Oberon.Collect(0)
   END Compile;
 
-BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "RISC-V OR Compiler  2020-09-23");
+BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "RISC-V Compiler  2020-12-07");
   Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
   NEW(dummy); dummy.class := RVOB.Var; dummy.type := RVOB.intType;
   expression := expression0; Type := Type0; FormalType := FormalType0

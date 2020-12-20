@@ -238,7 +238,11 @@ CONST
         IF class # versionkey THEN RVOS.Mark("wrong version") END ;
         Read(R, class);
         WHILE class # 0 DO
-          NEW(obj); obj.class := class; Files.ReadString(R, obj.name);
+          NEW(obj);
+          IF (obj = NIL) THEN
+            RVOS.Mark("Ran out of heap memory")
+          END;
+          obj.class := class; Files.ReadString(R, obj.name);
           InType(R, thismod, obj.type); obj.lev := -thismod.lev;
           IF class = Typ THEN
             t := obj.type; t.typobj := obj; Read(R, k);  (*fixup bases of previously declared pointer types*)
@@ -294,8 +298,6 @@ CONST
       Write(R, t.form);
       IF t.form = Pointer THEN OutType(R, t.base)
       ELSIF t.form = Array THEN OutType(R, t.base); Files.WriteNum(R, t.len); Files.WriteNum(R, t.size);
-
-          Texts.WriteLn(W); Texts.WriteString(W, "symbol type len:"); Texts.WriteHex(W, t.len); Texts.Append(Oberon.Log, W.buf);
       ELSIF t.form = Record THEN
         IF t.base # NIL THEN OutType(R, t.base) ELSE OutType(R, noType) END ;
         IF obj # NIL THEN Files.WriteNum(R, obj.exno) ELSE Write(R, 0) END ;
