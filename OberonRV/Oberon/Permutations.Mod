@@ -1,33 +1,1 @@
-MODULE Permutations;  (*NW 22.1.2013*)
-  IMPORT Texts, Oberon;
-  VAR n: INTEGER;
-    a: ARRAY 10 OF INTEGER;
-    S: Texts.Scanner;
-    W: Texts.Writer;
-
-  PROCEDURE perm(k: INTEGER);
-    VAR i, x: INTEGER;
-  BEGIN
-    (*Texts.WriteLn(W); Texts.WriteString(W, "Entering perm..."); Texts.Append(Oberon.Log, W.buf);*)
-    IF k = 0 THEN i := 0;
-      WHILE i < n DO Texts.WriteInt(W, a[i], 5); i := i+1 END ;
-      Texts.WriteLn(W)
-    ELSE perm(k-1); i := 0;
-      WHILE i < k-1 DO
-        x := a[i]; a[i] := a[k-1]; a[k-1] := x;
-        perm(k-1);
-        x := a[i]; a[i] := a[k-1]; a[k-1] := x;
-        i := i+1
-      END
-    END
-  END perm;
-
-  PROCEDURE Generate*;
-  BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S); n := 0;
-    WHILE S.class = Texts.Int DO a[n] := S.i; INC(n); Texts.Scan(S) END ;
-    perm(n);
-    Texts.Append(Oberon.Log, W.buf)
-  END Generate;
-
-BEGIN Texts.OpenWriter(W)
-END Permutations.
+MODULE Permutations;	(*NW 22.1.2013*)	IMPORT Texts, Oberon;	VAR n: INTEGER;		a: ARRAY 10 OF INTEGER;		S: Texts.Scanner;		W: Texts.Writer;	PROCEDURE perm(k: INTEGER);		VAR i, x: INTEGER;	BEGIN		(*Texts.WriteLn(W); Texts.WriteString(W, "Entering perm..."); Texts.Append(Oberon.Log, W.buf);*)		IF k = 0 THEN i := 0;			WHILE i < n DO Texts.WriteInt(W, a[i], 5); i := i+1 END ;			Texts.WriteLn(W)		ELSE perm(k-1); i := 0;			WHILE i < k-1 DO				x := a[i]; a[i] := a[k-1]; a[k-1] := x;				perm(k-1);				x := a[i]; a[i] := a[k-1]; a[k-1] := x;				i := i+1			END		END	END perm;	PROCEDURE Generate*;	BEGIN Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S); n := 0;		WHILE S.class = Texts.Int DO a[n] := S.i; INC(n); Texts.Scan(S) END ;		perm(n);		Texts.Append(Oberon.Log, W.buf)	END Generate;BEGIN Texts.OpenWriter(W)END Permutations.
