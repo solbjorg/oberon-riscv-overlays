@@ -40,10 +40,15 @@ The bootloader is embedded in the emulator. Thus, changing it is a separate proc
 - 64-bit support. This is rather easy, as to my knowledge it only requires minor changes.
 - Bootstrap Norebo using a RISC-V emulator rather than RISC-5
 
+### Known Bugs
+A couple in the compiler.
+- MagicSquares produces incorrect output. This one should be relatively easy to track down and fix.
+- For some reason, the compiler incorrectly reads symbol tables within Project Oberon. It reads parameter lengths of 0FFFFFFFFH as 07FH; probably due to reading only a byte instead of the full word. Currently, there is a workaround in the parser that allows parameter lengths of 07FH to be treated the same as 0FFFFFFFFH.
+
 ## Credits
 Several open-source projects were used to create this port.
 - Of course, [Project Oberon](https://people.inf.ethz.ch/wirth/ProjectOberon/) itself.
-- sam-falvo's [Oberon-RV compiler](https://github.com/sam-falvo/project-norebo), of which this repository is a fork. I've patched most of its bugs such that it is now self-compiling.
+- sam-falvo's [Oberon-RV compiler](https://github.com/sam-falvo/project-norebo), of which this repository is a fork. It could compile many programs, but had bugs that prevented it from being able to compile the full Oberon system. I've patched most of these, such that it is now self-compiling. Some modules, such as RVAssem, RVDis, and RVOTool, remain either entirely or mostly unchanged.
 - pdewacht's [Project Norebo](https://github.com/pdewacht/project-norebo), used to create the RISC-V image, of which this repository is also a fork.
 - pdewacht's [Oberon emulator](https://github.com/pdewacht/oberon-risc-emu), used to emulate the created images. My port of the emulator to RISC-V can be found [here](https://github.com/solbjorg/oberon-riscv-emu).
 - andreaspirklbauer's [Oberon-building-tools](https://github.com/andreaspirklbauer/Oberon-building-tools), which is included as a submodule of this repository. The documentation on Oberon's boot process is very useful, as is the tooling.
