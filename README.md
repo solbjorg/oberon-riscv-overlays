@@ -11,7 +11,7 @@ This respository contains everything necessary to create a working RISC-V image 
 * `build.sh` Script to rebuild Norebo. See Norebo in action.
 
 ## How to run Oberon on RISC-V
-If you don't want to figure out how to build an image, and you just want to try this out, go pull [the repository for the RISC-V Oberon emulator](https://github.com/solbjorg/oberon-risc-emu) instead, as it includes an example RISC-V image.
+If you don't want to figure out how to build an image, and you just want to try this out, go pull [the repository for the RISC-V Oberon emulator](https://github.com/solbjorg/oberon-riscv-emu) instead, as it includes an example RISC-V image.
 
 ## How to build an image
 To build a RISC-V image, simply run:
@@ -42,9 +42,9 @@ The bootloader is embedded in the emulator. Thus, changing it is a separate proc
 - Bootstrap Norebo using a RISC-V emulator rather than RISC-5
 
 ## Credits
-Several open-source projects were used to finish this port.
+Several open-source projects were used to create this port.
 - Of course, [Project Oberon](https://people.inf.ethz.ch/wirth/ProjectOberon/) itself.
-- sam-folvo's [Oberon-RV compiler](https://github.com/sam-falvo/project-norebo), of which this repository is a fork.
+- sam-folvo's [Oberon-RV compiler](https://github.com/sam-falvo/project-norebo), of which this repository is a fork. I've patched most of its bugs such that it is now self-compiling.
 - pdewacht's [Project Norebo](https://github.com/pdewacht/project-norebo), used to create the RISC-V image, of which this repository is also a fork.
-- pdewacht's [Oberon emulator](https://github.com/pdewacht/oberon-risc-emu), used to emulate the created images. My port of the emulator to RISC-V can be found [here](https://github.com/solbjorg/oberon-risc-emu).
-- andreaspirklbauer's [Oberon-building-tools](https://github.com/andreaspirklbauer/Oberon-building-tools), which is included as a submodule of this repository. The documentation on Oberon's boot process is useful, along with some of the tooling to create the bootloader.
+- pdewacht's [Oberon emulator](https://github.com/pdewacht/oberon-risc-emu), used to emulate the created images. My port of the emulator to RISC-V can be found [here](https://github.com/solbjorg/oberon-riscv-emu).
+- andreaspirklbauer's [Oberon-building-tools](https://github.com/andreaspirklbauer/Oberon-building-tools), which is included as a submodule of this repository. The documentation on Oberon's boot process is very useful, as is the tooling.
