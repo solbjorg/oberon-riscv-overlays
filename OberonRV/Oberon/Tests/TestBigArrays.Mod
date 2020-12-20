@@ -49,5 +49,5 @@ MODULE TestBigArrays;
     MarkSectors(A);
   END Init;
 
-BEGIN SYSTEM.PUT(-60, 0FAB50000H); Init;
+BEGIN SYSTEM.PUT(-60, 0FAFAFAH); Init;
 END TestBigArrays.
