@@ -2,7 +2,7 @@
 import sys, os, os.path, argparse, logging, csv, subprocess
 
 NOREBO_ROOT = os.path.dirname(os.path.realpath(__file__))
-FILE_LIST = list(csv.DictReader(open(os.path.join(NOREBO_ROOT, 'manifest.csv'))))
+FILE_LIST = list(csv.DictReader(open(os.path.join(NOREBO_ROOT, 'manifests/manifest.csv'))))
 top = ""
 
 def read_file_list(manifest):
@@ -50,7 +50,7 @@ def rv_build_norebo(target_dir):
     compile(['Norebo.Mod', 'Kernel.Mod', 'FileDir.Mod', 'Files.Mod',
              'Modules.Mod', 'Fonts.Mod', 'Texts.Mod', 'RS232.Mod', 'Oberon.Mod',
              'ORS.Mod', 'ORB.Mod', 'ORG.Mod', 'ORP.Mod', 'RVCoreLinker.Mod',
-             'VDisk.Mod', 'VFileDir.Mod', 'VFiles.Mod', 'VDiskUtil.Mod', 'CoreLinker.Mod'],
+             'VDisk.Mod', 'VFileDir.Mod', 'VFiles.Mod', 'VDiskUtil.Mod'],
             working_directory=target_dir,
             search_path=[os.path.join(NOREBO_ROOT, 'Norebo'),
                          os.path.join(NOREBO_ROOT, 'Oberon'),
@@ -84,7 +84,7 @@ def rv_build_image(sources_dir):
     global top
     if top == "":
         top = "Modules"
-    sources_dir  = os.path.realpath(sources_dir)
+    sources_dir  = [os.path.realpath(sources_dir), os.path.realpath(sources_dir)+'/Tests']
 
     target_dir = os.path.join(NOREBO_ROOT, 'imagebuild')
     os.mkdir(target_dir)
@@ -94,11 +94,13 @@ def rv_build_image(sources_dir):
 
     logging.info('Building norebo')
     rv_build_norebo(norebo_dir)
+    search_path=[compiler_dir, norebo_dir] + sources_dir
+    print(search_path)
 
     logging.info('Building a cross-compiler')
     compile(['RVOS.Mod', 'RVAssem.Mod', 'RVOB.Mod', 'RVOG.Mod', 'RVOP.Mod'],
             working_directory=compiler_dir,
-            search_path=[sources_dir, compiler_dir, norebo_dir])
+            search_path=search_path)
 
     # Delete all symbol files, so that we don't accidentally link against Norebo.
     bulk_delete(norebo_dir, 'smb')
@@ -107,7 +109,7 @@ def rv_build_image(sources_dir):
     logging.info('Compiling the complete Project Oberon 2013')
     rv_compile([fi['filename'] for fi in FILE_LIST if fi['mode'] == 'source'],
             working_directory=oberon_dir,
-            search_path=[sources_dir, compiler_dir, norebo_dir])
+            search_path=search_path)
 
     logging.info('Linking the Inner Core')
     # Hide the rsc files, Norebo can't use them (CoreLinker knows to expect this extension)
@@ -134,9 +136,10 @@ def rv_build_image(sources_dir):
             install_args.append(copy(smb, smb))
             install_args.append(copy(rsx, rsc))
 
+    search_path=[oberon_dir, norebo_dir] + sources_dir
     norebo(['VDiskUtil.InstallFiles'] + install_args,
            working_directory=target_dir,
-           search_path=[oberon_dir, sources_dir, norebo_dir])
+           search_path=search_path)
 
     check_args = ['Oberon.dsk']
     for fi in FILE_LIST:
@@ -153,7 +156,7 @@ def rv_build_image(sources_dir):
     logging.info('Checking files were installed correctly')
     norebo(['VDiskUtil.CheckFiles'] + check_args,
            working_directory=target_dir,
-           search_path=[oberon_dir, sources_dir, norebo_dir])
+           search_path=search_path)
 
     logging.info('All done! Finished disk image is %s', os.path.join(target_dir, 'Oberon.dsk'))
 
