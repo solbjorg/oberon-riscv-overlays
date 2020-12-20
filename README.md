@@ -44,7 +44,7 @@ The bootloader is embedded in the emulator. Thus, changing it is a separate proc
 ## Credits
 Several open-source projects were used to create this port.
 - Of course, [Project Oberon](https://people.inf.ethz.ch/wirth/ProjectOberon/) itself.
-- sam-folvo's [Oberon-RV compiler](https://github.com/sam-falvo/project-norebo), of which this repository is a fork. I've patched most of its bugs such that it is now self-compiling.
+- sam-falvo's [Oberon-RV compiler](https://github.com/sam-falvo/project-norebo), of which this repository is a fork. I've patched most of its bugs such that it is now self-compiling.
 - pdewacht's [Project Norebo](https://github.com/pdewacht/project-norebo), used to create the RISC-V image, of which this repository is also a fork.
 - pdewacht's [Oberon emulator](https://github.com/pdewacht/oberon-risc-emu), used to emulate the created images. My port of the emulator to RISC-V can be found [here](https://github.com/solbjorg/oberon-riscv-emu).
 - andreaspirklbauer's [Oberon-building-tools](https://github.com/andreaspirklbauer/Oberon-building-tools), which is included as a submodule of this repository. The documentation on Oberon's boot process is very useful, as is the tooling.
