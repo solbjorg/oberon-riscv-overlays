@@ -7,6 +7,10 @@ imagerv: norebo
 	make clean; make
 	./build-image.py -r OberonRV/Oberon
 
+imager5: norebo
+	make clean; make
+	./build-image.py upstream -m manifests/manifest_oberon2013.csv
+
 clean:
 	rm -f norebo
 	rm -rf build imagebuild
