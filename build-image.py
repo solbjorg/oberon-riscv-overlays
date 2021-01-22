@@ -4,6 +4,7 @@ import sys, os, os.path, argparse, logging, csv, subprocess
 NOREBO_ROOT = os.path.dirname(os.path.realpath(__file__))
 FILE_LIST = list(csv.DictReader(open(os.path.join(NOREBO_ROOT, 'manifests/manifest.csv'))))
 top = ""
+exclude_source = False
 
 def read_file_list(manifest):
     global FILE_LIST
@@ -127,13 +128,14 @@ def rv_build_image(sources_dir):
 
     for fi in FILE_LIST:
         mod = fi['filename']
-        #if mod.endswith('.Mod'):
-        install_args.append(copy(mod, mod))
+        if ~exclude_source:
+            install_args.append(copy(mod, mod))
         if fi['mode'] == 'source':
-            smb = mod.replace('.Mod', '.smb')
-            rsx = mod.replace('.Mod', '.rsx')
-            rsc = mod.replace('.Mod', '.rsc')
-            install_args.append(copy(smb, smb))
+            if ~exclude_source:
+                smb = fi['filename'].replace('.Mod', '.smb')
+                install_args.append(copy(smb, smb))
+            rsx = fi['filename'].replace('.Mod', '.rsx')
+            rsc = fi['filename'].replace('.Mod', '.rsc')
             install_args.append(copy(rsx, rsc))
 
     search_path=[oberon_dir, norebo_dir] + sources_dir
@@ -212,12 +214,14 @@ def build_image(sources_dir):
     # This only copies over files found in the manifest. This is deliberate, and way less of a headache!
     for fi in FILE_LIST:
         mod = fi['filename']
-        install_args.append(copy(mod, mod))
+        if ~exclude_source:
+            install_args.append(copy(mod, mod))
         if fi['mode'] == 'source':
-            smb = fi['filename'].replace('.Mod', '.smb')
+            if ~exclude_source:
+                smb = fi['filename'].replace('.Mod', '.smb')
+                install_args.append(copy(smb, smb))
             rsx = fi['filename'].replace('.Mod', '.rsx')
             rsc = fi['filename'].replace('.Mod', '.rsc')
-            install_args.append(copy(smb, smb))
             install_args.append(copy(rsx, rsc))
 
     norebo(['VDiskUtil.InstallFiles'] + install_args,
@@ -251,10 +255,15 @@ def main():
     parser.add_argument(
         '-t', '--test', dest='testfile', type=str, default=None, help='pass in a file to test'
     )
+    parser.add_argument(
+        '-s', '--without-source', dest='remove_src', action='store_true', help='Only include executables in the image'
+    )
     parser.add_argument('SOURCES')
     args = parser.parse_args()
     log_level = logging.DEBUG if args.debug else logging.INFO
     use_riscv = args.riscv
+    global exclude_source
+    exclude_source = args.remove_src
     if (args.manifest and args.manifest != 'manifest.csv'):
         read_file_list(args.manifest)
 
