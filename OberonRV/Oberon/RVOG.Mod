@@ -29,9 +29,10 @@ CONST
   MT = TP;          (* We assign the role of MT to TP *)
 
   (* Note: all of these can be safely made larger, so long as you have the heap space! *)
-  maxCode = 16384;  (* Total # of instructions in a module *)
-  maxStrx = 3000;  (* statically allocated strings *)
+  maxCode = 32768;  (* Total # of instructions in a module *)
+  maxStrx = 3000;   (* statically allocated strings *)
   maxTD = 512;      (* 512 words of space for type descriptors *)
+  maxProcs = 512;   (* 512 words of space for procedure listing *)
 
   Reg = 10; RegI = 11; Cond = 12;  (*internal item modes*)
 
@@ -49,14 +50,16 @@ CONST
 
   (* Trap numbers *)
 
-  TrapNew = 0;          (* NEW *)
-  TrapIndexBounds = 1;  (* Array index bounds check failed *)
-  TrapTypeMismatch = 2; (* Type check failed at runtime *)
-  TrapSourceTooBig = 3; (* Source record, array, or string is too big for := *)
-  TrapNilProcedure = 4; (* Attempt to call NIL procedure *)
-  TrapDivByZero = 6;    (* Attempt to divide by zero *)
-  TrapAssertFailure = 7;
-  TrapNegativeSize = 8;
+  TrapNew           = 0; (* NEW *)
+  TrapOverlay       = 1; (* Call overlay manager *)
+  TrapIndexBounds   = 2; (* Array index bounds check failed *)
+  TrapTypeMismatch  = 3; (* Type check failed at runtime *)
+  TrapSourceTooBig  = 4; (* Source record, array, or string is too big for := *)
+  TrapNilProcedure  = 5; (* Attempt to call NIL procedure *)
+  TrapDivByZero     = 7; (* Attempt to divide by zero *)
+  TrapAssertFailure = 8;
+  TrapNegativeSize  = 9;
+  TrapHandler       = 20H; (* Address to which the trap handler is installed *)
 
   (* Useful constants for bit manip *)
   C24 = 1000000H;
@@ -64,6 +67,7 @@ CONST
   C16 = 10000H;
   C12 = 1000H;
   C8  = 100H;
+  C4  = 10H;
 
 TYPE
   Item* = RECORD
@@ -71,17 +75,6 @@ TYPE
     type*: RVOB.Type;
     a*, b*, r, cl, cr: INTEGER;
     rdo*: BOOLEAN  (*read only*)
-  END;
-
-  Program* = POINTER TO ProgramDesc;
-  Code* = POINTER TO CodeDesc;
-  Strings* = POINTER TO StringsDesc;
-  TypeDescriptors* = POINTER TO TypeDescriptorsDesc;
-
-  ProgramDesc* = RECORD
-    code: Code;
-    strings: Strings;
-    data: TypeDescriptors;
   END;
 
   CodeDesc* = RECORD
@@ -92,8 +85,25 @@ TYPE
     s: ARRAY maxStrx OF CHAR;
   END;
 
+  ProceduresDesc* = RECORD
+    p: ARRAY maxProcs OF INTEGER;
+  END;
+
   TypeDescriptorsDesc* = RECORD
     t: ARRAY maxTD OF INTEGER;  (*type descriptors*)
+  END;
+
+  Program* = POINTER TO ProgramDesc;
+  Code* = POINTER TO CodeDesc;
+  Strings* = POINTER TO StringsDesc;
+  TypeDescriptors* = POINTER TO TypeDescriptorsDesc;
+  Procs* = POINTER TO ProceduresDesc;
+
+  ProgramDesc* = RECORD
+    code: Code;
+    strings: Strings;
+    data: TypeDescriptors;
+    procs: Procs;
   END;
 
   (*
@@ -123,12 +133,12 @@ TYPE
 VAR
   W: Texts.Writer;
   pc*, varsize: INTEGER;  (* program counter, data indices *)
-  tdx, strx: INTEGER;     (* Type descriptor and string array indices *)
+  tdx, strx, procx: INTEGER;     (* Type descriptor, string array, proc list indices *)
   entry: INTEGER;         (* module body entrypoint *)
   RH: INTEGER;            (* available registers R[firstReg] ... R[H-1]*)
   curSB: INTEGER;         (* current static base in SB (module table index) *)
   frame: INTEGER;         (* frame offset changed in SaveRegs, RestoreRegs *)
-  check: BOOLEAN;          (* emit run-time checks *)
+  check: BOOLEAN;         (* emit run-time checks *)
   stacktrace: BOOLEAN;    (* add a stack trace *)
   version: INTEGER;       (* ABI Version: 0 = boot ROM, 1 = Oberon System *)
   modid: RVOS.Ident;
@@ -137,9 +147,6 @@ VAR
   sym2uRel: ARRAY 6 OF INTEGER;
     
   program: Program;
-  code: Program;
-  data: TypeDescriptors;
-  str: Strings;
 
   (* Origins of lists of relocations to be fixed up by the loader *)
   fixorgP, fixorgD, fixorgT: INTEGER;
@@ -253,14 +260,22 @@ BEGIN
   RETURN SYSTEM.VAL(INTEGER, SYSTEM.VAL(SET, cond) / {0})
 END opposite;
 
+(*
+ TODO to make this cleaner, but explanation: Specifically for calling to the overlay manager,
+ regL is the procedure number, and regR is the module number.
+*)
 PROCEDURE Trap(cond, num, regL, regR: INTEGER);
 BEGIN
   (* Emits a branch that skips past the trap if requirement is met. *)
-  IF num > 0 THEN put(RVAssem.fmtSB(63H, opposite(cond), regL, regR, 16)) END;
-  put(RVAssem.jalr(RA, MT, 0));
+  IF num > 1 THEN put(RVAssem.fmtSB(63H, opposite(cond), regL, regR, 16)) END;
+  put(RVAssem.jalr(RA, 0, TrapHandler));
   put(RVAssem.jal(0, 8));
   (* Deposit the trap number as well as where it happened. *)
-  put(LSL(num, 24) + (RVOS.Pos() MOD 16777216))
+  IF num > 1 THEN
+    put(LSL(num, 24) + (RVOS.Pos() MOD C24))
+  ELSE
+    put(LSL(num, 24) + regL + regR);
+  END;
 END Trap;
 
 (*
@@ -583,7 +598,7 @@ BEGIN
           LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
           put(RVAssem.sub(RH, RH, RH+1));
         ELSE  (* Answer address of procedure in a different module *)
-          GetSB(x.r); AddImm(SB, x.a+100H);
+          GetSB(x.r); AddImm(SB, x.a+C8);
         END
       ELSE LoadImm(x.a)
       END;
@@ -833,7 +848,9 @@ BEGIN
     IF x.r > 0 THEN (*local*)
       Fetch(SP, x.a + frame)
     ELSE
-      GetSB(x.r);  Fetch(SB, x.a)
+      GetSB(x.r);
+
+      Fetch(SB, x.a)
     END;
     NilCheck;
     x.r := RH; incR;
@@ -1506,6 +1523,12 @@ BEGIN
   DEC(frame, (r-firstReg)*IntegerSize)
 END RestoreRegs;
 
+PROCEDURE Overlay(VAR x: Item);
+BEGIN
+  Trap(0, 1, x.a, -x.r);
+  RH := firstReg; invalSB
+END Overlay;
+
 PROCEDURE PrepCall*(VAR x: Item; VAR r: INTEGER);
 BEGIN (*x.type.form = RVOB.Proc*)
   IF x.mode > RVOB.Par THEN load(x) END ;
@@ -1550,7 +1573,8 @@ BEGIN (*x.type.form = RVOB.Proc*)
       put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
     ELSE (*imported*)
       IF (fixorgP < 10000H) & (x.a < 100H) & (-x.r < 80H) THEN
-        (* -x.r = moduleID?? *)
+        (* x.a = procedureID, -x.r = moduleID *)
+        (*Overlay(x);*)
         put(x.a MOD 100H + LSL(-x.r, 8) + LSL(fixorgP MOD 10000H, 16)); fixorgP := pc-1
       ELSE RVOS.Mark("fixup impossible")
       END
@@ -1566,6 +1590,7 @@ BEGIN (*x.type.form = RVOB.Proc*)
     IF check THEN Trap(EQ, TrapNilProcedure, RH, 0) END ;
     put(RVAssem.jalr(RA, RH, 0))
   END ;
+
   (* Store that we return from that call context - debug *)
   IF (stacktrace) THEN
     put(RVAssem.sw(0, 0, -32));
@@ -1581,6 +1606,8 @@ END Call;
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
   VAR a, r, freereg: INTEGER;
 BEGIN invalSB; frame := 0;
+  program.procs.p[procx] := pc;
+  INC(procx);
   IF ~int THEN (*procedure prolog*)
     a := IntegerSize; r := firstReg;
     IF locblksize >= 10000H THEN RVOS.Mark("too many locals") END ;
@@ -1905,22 +1932,22 @@ BEGIN
 END CSRop;
 
 PROCEDURE Init*(VAR success: BOOLEAN);
-  VAR p : Program; c : Code; s : Strings; d : TypeDescriptors;
+  VAR p : Program; c : Code; s : Strings; d : TypeDescriptors; procs : Procs;
 BEGIN
-  NEW(p); NEW(c); NEW(s); NEW(d);
-  IF (p = NIL) OR (c = NIL) OR (s = NIL) OR (d = NIL) THEN
+  NEW(p); NEW(c); NEW(s); NEW(d); NEW(procs);
+  IF (p = NIL) OR (c = NIL) OR (s = NIL) OR (d = NIL) OR (procs = NIL) THEN
     Texts.WriteLn(W); Texts.WriteString(W, "Warning! Not enough heap space to allocate space for program; compilation will fail!"); Texts.Append(Oberon.Log, W.buf);
     success := FALSE;
   ELSE
-    program := p; program.code := c; program.strings := s; program.data := d;
+    program := p; program.code := c; program.strings := s; program.data := d; program.procs := procs;
     success := TRUE;
   END;
 END Init;
 
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
   VAR success: BOOLEAN;
-BEGIN pc := 0; tdx := 0; strx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
-  stacktrace := FALSE;
+BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
+  stacktrace := TRUE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
 END Open;
@@ -2010,6 +2037,10 @@ BEGIN
   i := 0;
   WHILE i < tdx DO Files.WriteInt(R, program.data.t[i]); INC(i) END ; (*type descriptors*)
   Files.WriteInt(R, varsize - tdx*4);  (*data*)
+  Files.WriteInt(R, procx*4);
+  FOR i := 0 TO procx-1 DO
+    Files.WriteInt(R, program.procs.p[i]);
+  END ; (*procedures*)
   Files.WriteInt(R, strx);
   FOR i := 0 TO strx-1 DO Files.Write(R, program.strings.s[i]) END ;  (*strings*)
   Files.WriteInt(R, pc);  (*code len*)

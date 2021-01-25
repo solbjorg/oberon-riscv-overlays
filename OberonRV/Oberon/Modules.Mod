@@ -2,6 +2,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   IMPORT SYSTEM, Files;
   CONST versionkey = 1X; MT = 4; DescSize = 80;
     addi = 19; load = 3; store = 35;
+    SB = 3;
+    MTOrg* = 20H;
 
   TYPE Module* = POINTER TO ModDesc;
     Command* = PROCEDURE;
@@ -15,7 +17,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END ;
 
   VAR root*, M: Module;
-    MTOrg*, AllocPtr*, res*: INTEGER;
+    AllocPtr*, res*: INTEGER;
     importing*, imported*: ModuleName;
     limit: INTEGER;
 
@@ -73,13 +75,16 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       RETURN ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 1) * 80H + 111
     END Jal;
 
-    PROCEDURE Lw(imm: INTEGER) : INTEGER;
-      VAR rd, rs1, funct3: INTEGER;
+    PROCEDURE Jalr(imm: INTEGER) : INTEGER;
     BEGIN
-      rd := 3; (* SB *)
-      funct3 := 2; (* lw, not lb or lh *)
-      rs1 := 4; (* MT *)
-      RETURN (((imm * 20H + rs1) * 8H + funct3) * 20H + rd) * 80H + 3 (* opcode for all loads is 3 *)
+      (* lw SB, (imm+20H)(0) *)
+      RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 67 (*jalr opcode = 67*)
+    END Jalr;
+
+    PROCEDURE Lw(imm: INTEGER) : INTEGER;
+    BEGIN
+      (* lw SB, (imm+20H)(0) *)
+      RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 3 (* opcode for all loads is 3 *)
     END Lw;
 
     (* returns immediate of an I-type instruction *)
@@ -135,11 +140,13 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         INC(p, DescSize); (*allocate descriptor*)
         mod.name := name; mod.key := key; mod.refcnt := 0;
         mod.data := p;  (*data*)
-        SYSTEM.PUT(mod.num * 4 + MTOrg, p);  (*module table entry*)
+        SYSTEM.PUT(MTOrg + mod.num * 4, p);  (*module table entry*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;  (*type descriptors*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO SYSTEM.PUT(p, 0); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
+        Files.ReadInt(R, n);
+        WHILE n > 0 DO Files.ReadInt(R, w); (*SYSTEM.PUT(p, w); INC(p, 4);*) DEC(n, 4) END ;   (*procedures*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
         mod.code := p;  (*program*)
@@ -204,6 +211,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
             END;
             vno := imm MOD 100H;
             SYSTEM.GET(impmod.ent + vno*4, offset);
+            (*
+               If the bit at (imm DIV 100H) is 1, then we are referring to a procedure in a different module
+            *)
             IF ODD(imm DIV 100H) THEN offset := offset + impmod.code - impmod.data END ;
             IF (op = store) THEN
               SYSTEM.PUT(adr+4, (inst - LSL(imm MOD 20H, 7) - LSL(imm DIV 20H, 25)) + LSL(offset MOD 20H, 7) + LSL(offset DIV 20H, 25));
@@ -265,8 +275,44 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END
   END Free;
 
+  (* Deposits a relative offset jump to `Padr` in location `at` *)
+  (* Used to install functions at places required for the operating system. *)
+  PROCEDURE Install*(Padr, at: INTEGER);
+    VAR inst: LONGINT;
+
+     (* Returns a `jal x0, imm` instruction. *)
+    PROCEDURE Jal(imm: LONGINT) : LONGINT;
+      VAR result, imm20, imm19to12, imm11, imm10to1: LONGINT;
+    BEGIN
+      imm20 := imm DIV 100000H;
+      imm19to12 := (imm - imm20 * 100000H) DIV 1000H;
+      imm11 := (imm - (imm20 * 100000H + imm19to12 * 1000H)) DIV 800H;
+      imm10to1 := (imm - (imm20 * 100000H + imm19to12 * 1000H + imm11 * 800H)) DIV 2H;
+      result := ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 0) * 80H + 111;
+      RETURN result
+    END Jal;
+
+  BEGIN inst := Jal(Padr - at); SYSTEM.PUT(at, inst);
+  END Install;
+
+  (* Any trap before loading the kernel is an overlay trap *)
+  PROCEDURE Trap;
+    VAR mod, impmod: Module; sb: LONGINT; body: Command;
+  BEGIN
+    (*
+    sb := SYSTEM.REG(SB);
+    SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
+    SYSTEM.GET(impmod.ent + pno*4, dest); dest := dest + impmod.code;
+    body := SYSTEM.VAL(Command, mod.code + w);
+    body
+   *)
+  END Trap;
+
+
   PROCEDURE Init*;
-  BEGIN Files.Init; MTOrg := SYSTEM.REG(MT);
+  BEGIN
+    res := 0;
+    Files.Init;
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H);
   END Init;
 

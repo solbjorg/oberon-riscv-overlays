@@ -9,6 +9,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
     SectorMap* = POINTER TO SectorMapDesc;
+    Command*   = PROCEDURE;
 
     SectorMapDesc = RECORD
         map: ARRAY mapsize DIV 32 OF SET;
@@ -70,7 +71,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END
   END GetBlock32;
 
-   PROCEDURE New*(VAR ptr: LONGINT; tag: LONGINT);
+  PROCEDURE New*(VAR ptr: LONGINT; tag: LONGINT);
     (*called by NEW via MT[0]; ptr and tag are pointers*)
     VAR p, size, lim: LONGINT;
   BEGIN SYSTEM.GET(tag, size);
@@ -84,6 +85,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
     END
   END New;
+
+(* ---------- Overlay management ---------*)
+
+  (*called via MT[0] whenever a function call out of module happens*)
+  PROCEDURE Overlay*(pno, mno: INTEGER);
+  BEGIN
+  END Overlay;
+
 
 (* ---------- Garbage collector ----------*)
 
@@ -283,7 +292,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* number _after_ the instruction instead. It can't be executed, so it will cause *)
     (* errors if jumped to (and confuse any disassembler!). *)
     u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
-    IF w = 0 THEN New(a, b)
+    IF w = 0 THEN New(a, b);
+    ELSIF w = 1 THEN Overlay(a, b);
     (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
     (* Note on the note: I currently put the whole trap in the LEDs, for easier debugging *)
     (* with my emulator that supports 32-bit LED output. *)

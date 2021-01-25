@@ -90,12 +90,8 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
     END Jal;
 
     PROCEDURE Lw(imm: INTEGER) : INTEGER;
-      VAR rd, rs1, funct3: INTEGER;
     BEGIN
-      rd := 3; (* SB *)
-      funct3 := 2; (* lw, not lb or lh *)
-      rs1 := 4; (* MT *)
-      RETURN (((imm * 20H + rs1) * 8H + funct3) * 20H + rd) * 80H + 3 (* opcode for all loads is 3 *)
+      RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 3 (* opcode for all loads is 3 *)
     END Lw;
 
     (* returns immediate of an I-type instruction *)
@@ -161,6 +157,8 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*type descriptors*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO buffer[p] := 0; INC(p); DEC(n, 4) END ;  (*variable space*)
+        Files.ReadInt(R, n);
+        WHILE n > 0 DO Files.ReadInt(R, w); (*SYSTEM.PUT(p, w); INC(p);*) DEC(n, 4) END ;   (*procedures*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
         mod.desc.code := p * 4;  (*program*)
@@ -245,11 +243,13 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
             ELSE error(5, name);
             END;
             vno := imm MOD 100H; (* variable number; see p. 23 Pattern 12 *)
-            offset := buffer[impmod.desc.ent DIV 4 + vno]; (* crashes here :(  *)
+            offset := buffer[impmod.desc.ent DIV 4 + vno];
             (* checks if we're looking for a procedure, as then we add 100H. *)
             IF ODD(imm DIV 100H) THEN offset := offset + impmod.desc.code - impmod.desc.data END ;
             (* replace stored imm with calculated offset*)
-            IF (op = store) THEN
+            IF op = store THEN
+              Texts.WriteLn(W); Texts.WriteString(W, "STORE "); Texts.Append(Oberon.Log, W.buf);
+
               buffer[adr DIV 4 + 1] := (inst - LSL(imm MOD 20H, 7) - LSL(imm DIV 20H, 25)) + LSL(offset MOD 20H, 7) + LSL(offset DIV 20H, 25)
             ELSE
               buffer[adr DIV 4 + 1] := (inst - LSL(imm, 20)) + LSL(offset, 20)
