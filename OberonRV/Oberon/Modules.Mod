@@ -146,7 +146,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO SYSTEM.PUT(p, 0); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO Files.ReadInt(R, w); (*SYSTEM.PUT(p, w); INC(p, 4);*) DEC(n, 4) END ;   (*procedures*)
+        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*procedures*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
         mod.code := p;  (*program*)
@@ -311,7 +311,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   PROCEDURE Init*;
   BEGIN
-    res := 0;
     Files.Init;
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H);
   END Init;

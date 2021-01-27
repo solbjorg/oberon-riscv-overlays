@@ -716,7 +716,7 @@ END loadTypTagAdr;
 PROCEDURE loadStringAdr(VAR x: Item);
 VAR offset: INTEGER;
 BEGIN
-  offset := varsize + x.a;
+  offset := varsize + RVOS.proccnt * 4 + x.a;
   GetSB(0); AddImm(SB, offset);
   x.mode := Reg; x.r := RH; incR
 END loadStringAdr;
@@ -2016,7 +2016,7 @@ BEGIN
     obj := obj.next
   END ;
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
-      (pc + nofimps + nofent + nofptrs + 1)*4;
+      (pc + nofimps + nofent + nofptrs + RVOS.proccnt + 1)*4;
 
   IF (varsize > 2048) THEN
     Texts.WriteLn(W); Texts.WriteString(W, "Warning! Global variable size too large at "); Texts.WriteInt(W, varsize, 1);
@@ -2027,6 +2027,8 @@ BEGIN
   F := Files.New(name); Files.Set(R, F, 0);
   Files.WriteString(R, modid); Files.WriteInt(R, key); Files.WriteByte(R, version);
   Files.WriteInt(R, size);
+  Texts.WriteLn(W); Texts.WriteString(W, "test: "); Texts.WriteHex(W, procx); Texts.WriteHex(W, RVOS.proccnt); Texts.Append(Oberon.Log, W.buf);
+
   obj := RVOB.topScope.next;
   WHILE (obj # NIL) & (obj.class = RVOB.Mod) DO  (*imports*)
     IF obj.dsc # RVOB.system THEN Files.WriteString(R, obj(RVOB.Module).orgname); Files.WriteInt(R, obj.val) END ;
@@ -2036,11 +2038,12 @@ BEGIN
   Files.WriteInt(R, tdx*4);
   i := 0;
   WHILE i < tdx DO Files.WriteInt(R, program.data.t[i]); INC(i) END ; (*type descriptors*)
+  i := 0;
   Files.WriteInt(R, varsize - tdx*4);  (*data*)
-  Files.WriteInt(R, procx*4);
-  FOR i := 0 TO procx-1 DO
-    Files.WriteInt(R, program.procs.p[i]);
-  END ; (*procedures*)
+  Files.WriteInt(R, RVOS.proccnt*4);
+  WHILE i < procx DO Files.WriteInt(R, program.procs.p[i]); INC(i); END ; (*procedures*)
+  WHILE i < RVOS.proccnt DO Files.WriteInt(R, 0); INC(i); END;
+
   Files.WriteInt(R, strx);
   FOR i := 0 TO strx-1 DO Files.Write(R, program.strings.s[i]) END ;  (*strings*)
   Files.WriteInt(R, pc);  (*code len*)

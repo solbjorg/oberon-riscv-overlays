@@ -37,6 +37,7 @@ MODULE RVOS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
     str*: ARRAY stringBufSize OF CHAR;
     KWX: ARRAY 10 OF INTEGER;
     errcnt*: INTEGER;
+    proccnt*: INTEGER;
 
     ch: CHAR;  (*last character read*)
     errpos: LONGINT;
@@ -266,8 +267,30 @@ MODULE RVOS; (* NW 19.9.93 / 15.2.2016  Scanner in Oberon-07*)
     UNTIL sym # null;
   END Get;
 
+  (* Counts number of procedures in the module. *)
+  (* This is slightly ugly, because it technically makes this a second-pass compiler, *)
+  (* but it's a lot easier than the alternative, i.e. using fixups in RVOG once #procs *)
+  (* is known. *)
+  (* TODO: We can make this MUCH more efficient by only looking for PROCEDURE, rather than *)
+  (* scanning the entire file twice! This is a bit lazy on my part at the moment. *)
+  (* TODO: Only count procs in the global scope - TOC doesn't need to include non-global procs! *)
+  PROCEDURE CountProcs(T: Texts.Text): INTEGER;
+    VAR sym, countproc: INTEGER;
+  BEGIN
+    Texts.OpenReader(R, T, 0);
+    countproc := 0;
+    REPEAT
+      Get(sym);
+      IF sym = procedure THEN
+        INC(countproc);
+      END;
+    UNTIL sym = eot;
+    RETURN countproc
+  END CountProcs;
+
   PROCEDURE Init*(T: Texts.Text; pos: LONGINT);
-  BEGIN errpos := pos; errcnt := 0; Texts.OpenReader(R, T, pos); Texts.Read(R, ch);
+  BEGIN proccnt := CountProcs(T); errpos := pos; errcnt := 0; Texts.OpenReader(R, T, pos); Texts.Read(R, ch);
+    Texts.WriteLn(W); Texts.WriteString(W, "Procs:"); Texts.WriteHex(W, proccnt); Texts.Append(Oberon.Log, W.buf);
   END Init;
 
   PROCEDURE EnterKW(sym: INTEGER; name: ARRAY OF CHAR);

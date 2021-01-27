@@ -158,7 +158,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         Files.ReadInt(R, n);
         WHILE n > 0 DO buffer[p] := 0; INC(p); DEC(n, 4) END ;  (*variable space*)
         Files.ReadInt(R, n);
-        WHILE n > 0 DO Files.ReadInt(R, w); (*SYSTEM.PUT(p, w); INC(p);*) DEC(n, 4) END ;   (*procedures*)
+        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;   (*procedures*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
         mod.desc.code := p * 4;  (*program*)
