@@ -133,7 +133,7 @@ TYPE
 VAR
   W: Texts.Writer;
   pc*, varsize: INTEGER;  (* program counter, data indices *)
-  tdx, strx, procx: INTEGER;     (* Type descriptor, string array, proc list indices *)
+  tdx, strx, procx*: INTEGER;     (* Type descriptor, string array, proc list indices *)
   entry: INTEGER;         (* module body entrypoint *)
   RH: INTEGER;            (* available registers R[firstReg] ... R[H-1]*)
   curSB: INTEGER;         (* current static base in SB (module table index) *)
@@ -1552,7 +1552,7 @@ END PrepCall;
   with the appropriate JAL instruction.
 *)
 PROCEDURE Call*(VAR x: Item; r: INTEGER);
-  VAR i: INTEGER;
+  VAR i: INTEGER; found: BOOLEAN;
 BEGIN (*x.type.form = RVOB.Proc*)
   (* Store where we call the function from to a magic IO port - for debugging purposes *)
   IF (stacktrace) THEN
@@ -1570,7 +1570,22 @@ BEGIN (*x.type.form = RVOB.Proc*)
 
   IF x.mode = RVOB.Const THEN
     IF x.r >= 0 THEN
-      put(RVAssem.jal(RA, x.a - (pc*InsnSize)))
+      found := FALSE;
+      FOR i := 0 TO procx DO
+        IF (program.procs.p[i] = x.a) & (~found) THEN
+          GetSB(0);
+          Fetch(SB, varsize + i*4);
+          put(RVAssem.jalr(RA, RH, 0));
+          found := TRUE;
+        END;
+      END;
+      IF ~found THEN Texts.WriteLn(W); Texts.WriteString(W, "Warning!!! Procedure not found! pos, x.a:"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.WriteInt(W, x.a, 5); Texts.Append(Oberon.Log, W.buf); END;
+      (*
+      GetSB(x.r);
+      Fetch(SB, varsize + x.a * 4);
+      put(RVAssem.jalr(RA, RH, 0));
+      *)
+      (*put(RVAssem.jal(RA, x.a - (pc*InsnSize)))*)
     ELSE (*imported*)
       IF (fixorgP < 10000H) & (x.a < 100H) & (-x.r < 80H) THEN
         (* x.a = procedureID, -x.r = moduleID *)
@@ -1578,7 +1593,12 @@ BEGIN (*x.type.form = RVOB.Proc*)
         put(x.a MOD 100H + LSL(-x.r, 8) + LSL(fixorgP MOD 10000H, 16)); fixorgP := pc-1
       ELSE RVOS.Mark("fixup impossible")
       END
-    END
+      (*
+      GetSB(x.r);
+      Fetch(SB, varsize + x.a * 4);
+      put(RVAssem.jalr(RA, RH, 0));
+     *)
+      END
   ELSE
     IF x.mode <= RVOB.Par THEN
       load(x); decR
@@ -1595,6 +1615,7 @@ BEGIN (*x.type.form = RVOB.Proc*)
   IF (stacktrace) THEN
     put(RVAssem.sw(0, 0, -32));
   END;
+
   IF x.type.base.form = RVOB.NoTyp THEN (*procedure*) RH := firstReg
   ELSE (*function*)
     IF r > firstReg THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
@@ -1606,7 +1627,7 @@ END Call;
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
   VAR a, r, freereg: INTEGER;
 BEGIN invalSB; frame := 0;
-  program.procs.p[procx] := pc;
+  program.procs.p[procx] := pc * 4;
   INC(procx);
   IF ~int THEN (*procedure prolog*)
     a := IntegerSize; r := firstReg;
@@ -2027,7 +2048,6 @@ BEGIN
   F := Files.New(name); Files.Set(R, F, 0);
   Files.WriteString(R, modid); Files.WriteInt(R, key); Files.WriteByte(R, version);
   Files.WriteInt(R, size);
-  Texts.WriteLn(W); Texts.WriteString(W, "test: "); Texts.WriteHex(W, procx); Texts.WriteHex(W, RVOS.proccnt); Texts.Append(Oberon.Log, W.buf);
 
   obj := RVOB.topScope.next;
   WHILE (obj # NIL) & (obj.class = RVOB.Mod) DO  (*imports*)
@@ -2041,7 +2061,12 @@ BEGIN
   i := 0;
   Files.WriteInt(R, varsize - tdx*4);  (*data*)
   Files.WriteInt(R, RVOS.proccnt*4);
-  WHILE i < procx DO Files.WriteInt(R, program.procs.p[i]); INC(i); END ; (*procedures*)
+  Texts.WriteLn(W); Texts.WriteString(W, "proccnt "); Texts.WriteHex(W, RVOS.proccnt); Texts.WriteHex(W, procx); Texts.Append(Oberon.Log, W.buf);
+  Texts.WriteLn(W); Texts.WriteString(W, "varsize "); Texts.WriteHex(W, varsize); Texts.Append(Oberon.Log, W.buf);
+  WHILE i < procx DO
+    Texts.WriteLn(W); Texts.WriteString(W, "proc "); Texts.WriteHex(W, program.procs.p[i]); Texts.Append(Oberon.Log, W.buf);
+    Files.WriteInt(R, program.procs.p[i]); INC(i);
+  END ; (*procedures*)
   WHILE i < RVOS.proccnt DO Files.WriteInt(R, 0); INC(i); END;
 
   Files.WriteInt(R, strx);

@@ -68,7 +68,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
       res = 2: file not available; res = 3: key conflict;
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
     VAR mod, impmod: Module;
-      i, n, key, impkey, mno, nofimps, size: INTEGER;
+      i, n, m, key, impkey, mno, nofimps, size: INTEGER;
       p, u, v, w: INTEGER;  (*addresses*)
       ch: CHAR;
       body: INTEGER;
@@ -158,10 +158,16 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         Files.ReadInt(R, n);
         WHILE n > 0 DO buffer[p] := 0; INC(p); DEC(n, 4) END ;  (*variable space*)
         Files.ReadInt(R, n);
+        u := p;
+        m := n;
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;   (*procedures*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
         mod.desc.code := p * 4;  (*program*)
+        WHILE m > 0 DO
+          buffer[u] := buffer[u] + mod.desc.code; INC(u); DEC(m, 4);
+          Texts.WriteLn(W); Texts.WriteString(W, "Procedure table:"); Texts.WriteHex(W, buffer[u-1]); Texts.Append(Oberon.Log, W.buf);
+        END ;   (*fixup procedures offset*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n) END ;  (*program code*)
         mod.desc.imp := p * 4;  (*copy imports*)
