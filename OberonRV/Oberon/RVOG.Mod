@@ -62,6 +62,7 @@ CONST
   TrapHandler       = 20H; (* Address to which the trap handler is installed *)
 
   (* Useful constants for bit manip *)
+  C28 = 10000000H;
   C24 = 1000000H;
   C20 = 100000H;
   C16 = 10000H;
@@ -133,7 +134,7 @@ TYPE
 VAR
   W: Texts.Writer;
   pc*, varsize: INTEGER;  (* program counter, data indices *)
-  tdx, strx, procx*: INTEGER;     (* Type descriptor, string array, proc list indices *)
+  tdx, strx, procx*, expoprocx*: INTEGER;     (* Type descriptor, string array, proc list indices, expo proc list indices *)
   entry: INTEGER;         (* module body entrypoint *)
   RH: INTEGER;            (* available registers R[firstReg] ... R[H-1]*)
   curSB: INTEGER;         (* current static base in SB (module table index) *)
@@ -272,9 +273,9 @@ BEGIN
   put(RVAssem.jal(0, 8));
   (* Deposit the trap number as well as where it happened. *)
   IF num > 1 THEN
-    put(LSL(num, 24) + (RVOS.Pos() MOD C24))
+    put(LSL(num, 28) + (RVOS.Pos() MOD C28))
   ELSE
-    put(LSL(num, 24) + regL + regR);
+    put(LSL(num, 28) + LSL(regL, 16) + LSL(regR, 8));
   END;
 END Trap;
 
@@ -440,7 +441,7 @@ BEGIN
     diagnose bugs will occur.
   *)
   ASSERT((0 <= fixorgD) & (fixorgD < maxCode) & (fixorgD < 10000H));
-  ASSERT((-128 <= base) & (base <= 0));  (* Allows up to 128 imported modules *)
+  ASSERT((-16 <= base) & (base <= 0));  (* Allows up to 16 imported modules *)
   RETURN 5 + LSL(-base, 4) + LSL(fixorgD MOD 10000H, 16)
 END MakeLoadSB;
 
@@ -598,6 +599,7 @@ BEGIN
           LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
           put(RVAssem.sub(RH, RH, RH+1));
         ELSE  (* Answer address of procedure in a different module *)
+          ASSERT(x.a < 100H);
           GetSB(x.r); AddImm(SB, x.a+C8);
         END
       ELSE LoadImm(x.a)
@@ -1570,14 +1572,16 @@ BEGIN (*x.type.form = RVOB.Proc*)
 
   IF x.mode = RVOB.Const THEN
     IF x.r >= 0 THEN
-      found := FALSE;
-      FOR i := 0 TO procx DO
-        IF (program.procs.p[i] = x.a) & (~found) THEN
+      (* todo make this better... *)
+      found := FALSE; i := 0;
+      WHILE (~found) & (i < RVOS.proccnt) DO
+        IF (program.procs.p[i] = x.a) THEN
           GetSB(0);
           Fetch(SB, varsize + i*4);
           put(RVAssem.jalr(RA, RH, 0));
           found := TRUE;
         END;
+        INC(i);
       END;
       IF ~found THEN Texts.WriteLn(W); Texts.WriteString(W, "Warning!!! Procedure not found! pos, x.a:"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.WriteInt(W, x.a, 5); Texts.Append(Oberon.Log, W.buf); END;
       (*
@@ -1587,12 +1591,17 @@ BEGIN (*x.type.form = RVOB.Proc*)
       *)
       (*put(RVAssem.jal(RA, x.a - (pc*InsnSize)))*)
     ELSE (*imported*)
+      GetSB(x.r);
+      Fetch(SB, x.a+C8);
+      put(RVAssem.jalr(RA, RH, 0));
+
+      (*
       IF (fixorgP < 10000H) & (x.a < 100H) & (-x.r < 80H) THEN
         (* x.a = procedureID, -x.r = moduleID *)
-        (*Overlay(x);*)
         put(x.a MOD 100H + LSL(-x.r, 8) + LSL(fixorgP MOD 10000H, 16)); fixorgP := pc-1
       ELSE RVOS.Mark("fixup impossible")
       END
+       *)
       (*
       GetSB(x.r);
       Fetch(SB, varsize + x.a * 4);
@@ -1624,9 +1633,18 @@ BEGIN (*x.type.form = RVOB.Proc*)
   invalSB
 END Call;
 
-PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
+PROCEDURE Enter*(parblksize, locblksize: INTEGER; int, expo: BOOLEAN);
   VAR a, r, freereg: INTEGER;
 BEGIN invalSB; frame := 0;
+  (*
+  IF expo THEN
+    program.procs.p[RVOS.expocnt + expoprocx] := pc * 4;
+    INC(expoprocx);
+  ELSE
+    program.procs.p[procx] := pc * 4;
+    INC(procx);
+  END;
+*)
   program.procs.p[procx] := pc * 4;
   INC(procx);
   IF ~int THEN (*procedure prolog*)
@@ -1967,8 +1985,8 @@ END Init;
 
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
   VAR success: BOOLEAN;
-BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
-  stacktrace := TRUE;
+BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
+  stacktrace := FALSE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
 END Open;
@@ -2022,6 +2040,7 @@ PROCEDURE CloseModule(VAR modid: RVOS.Ident; key, nofent: INTEGER);
     i, comsize, nofimps, nofptrs, size: INTEGER;
     name, namecode: RVOS.Ident;
     F: Files.File; R: Files.Rider;
+    found: BOOLEAN;
 BEGIN
   obj := RVOB.topScope.next; nofimps := 0;
   comsize := 4; nofptrs := 0;
@@ -2060,13 +2079,12 @@ BEGIN
   WHILE i < tdx DO Files.WriteInt(R, program.data.t[i]); INC(i) END ; (*type descriptors*)
   i := 0;
   Files.WriteInt(R, varsize - tdx*4);  (*data*)
+
+  (*procedures*)
   Files.WriteInt(R, RVOS.proccnt*4);
-  Texts.WriteLn(W); Texts.WriteString(W, "proccnt "); Texts.WriteHex(W, RVOS.proccnt); Texts.WriteHex(W, procx); Texts.Append(Oberon.Log, W.buf);
-  Texts.WriteLn(W); Texts.WriteString(W, "varsize "); Texts.WriteHex(W, varsize); Texts.Append(Oberon.Log, W.buf);
-  WHILE i < procx DO
-    Texts.WriteLn(W); Texts.WriteString(W, "proc "); Texts.WriteHex(W, program.procs.p[i]); Texts.Append(Oberon.Log, W.buf);
+  WHILE i < procx + expoprocx DO
     Files.WriteInt(R, program.procs.p[i]); INC(i);
-  END ; (*procedures*)
+  END ;
   WHILE i < RVOS.proccnt DO Files.WriteInt(R, 0); INC(i); END;
 
   Files.WriteInt(R, strx);
@@ -2086,8 +2104,19 @@ BEGIN
   obj := RVOB.topScope.next;
   WHILE obj # NIL DO  (*entries*)
     IF obj.exno # 0 THEN
-      IF (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc) OR (obj.class = RVOB.Var) THEN
-        Files.WriteInt(R, obj.val)
+      IF (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc)  THEN
+        (* temporary solution until I make obj.val = proc index in toc *)
+        found := FALSE; i := 0;
+        WHILE (~found) & (i < RVOS.proccnt) DO
+          IF (program.procs.p[i] = obj.val) THEN
+            Files.WriteInt(R, varsize + i * 4);
+            found := TRUE;
+          END;
+          INC(i);
+        END;
+        IF ~found THEN Texts.WriteLn(W); Texts.WriteString(W, "Warning!!! Procedure not found! pos, x.a:"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.WriteInt(W, obj.val, 5); Texts.Append(Oberon.Log, W.buf); END;
+      ELSIF (obj.class = RVOB.Var) THEN
+        Files.WriteInt(R, obj.val);
       ELSIF obj.class = RVOB.Typ THEN
         IF obj.type.form = RVOB.Record THEN Files.WriteInt(R,  obj.type.len MOD 10000H);
         ELSIF (obj.type.form = RVOB.Pointer) & ((obj.type.base.typobj = NIL) OR (obj.type.base.typobj.exno = 0)) THEN

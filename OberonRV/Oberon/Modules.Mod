@@ -20,6 +20,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     AllocPtr*, res*: INTEGER;
     importing*, imported*: ModuleName;
     limit: INTEGER;
+    cnt: INTEGER;
 
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
     VAR i: INTEGER;
@@ -54,6 +55,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
     VAR mod, impmod: Module;
+      (*overlay: Overlay;*)
       i, n, m, key, impkey, mno, nofimps, size: INTEGER;
       p, u, v, w: INTEGER;  (*addresses*)
       ch: CHAR;
@@ -86,17 +88,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       (* lw SB, (imm+20H)(0) *)
       RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 3 (* opcode for all loads is 3 *)
     END Lw;
-
-    (* returns immediate of an I-type instruction *)
-    PROCEDURE GetIImm(inst: INTEGER) : INTEGER;
-    BEGIN
-      RETURN inst DIV 100000H
-    END GetIImm;
-
-    PROCEDURE GetSImm(inst: INTEGER) : INTEGER;
-    BEGIN
-      RETURN (inst DIV 2000000H MOD 80H) + (inst DIV 80H MOD 20H)
-    END GetSImm;
 
   BEGIN
     mod := root; error(0, name); nofimps := 0;
@@ -152,9 +143,10 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
         mod.code := p;  (*program*)
-        WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + mod.code); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*)
+        WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
+        cnt := cnt + (p - mod.code);
         mod.imp := p;  (*copy imports*)
         i := 0;
         WHILE i < nofimps DO
@@ -207,9 +199,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
             SYSTEM.GET(adr+4, inst);
             op := inst MOD 80H;
             IF (op = addi) OR (op = load) THEN
-              imm := GetIImm(inst);
+              imm := inst DIV 100000H;
             ELSIF op = store THEN
-              imm := GetSImm(inst);
+              imm := LSL(inst DIV 2000000H MOD 80H, 5) + (inst DIV 80H MOD 20H);
             ELSE error(5, name);
             END;
             vno := imm MOD 100H;
@@ -217,7 +209,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
             (*
                If the bit at (imm DIV 100H) is 1, then we are referring to a procedure in a different module
             *)
-            IF ODD(imm DIV 100H) THEN offset := offset + impmod.code - impmod.data END ;
+            (*IF ODD(imm DIV 100H) THEN offset := offset + impmod.code - impmod.data END ;*)
             IF (op = store) THEN
               SYSTEM.PUT(adr+4, (inst - LSL(imm MOD 20H, 7) - LSL(imm DIV 20H, 25)) + LSL(offset MOD 20H, 7) + LSL(offset DIV 20H, 25));
             ELSE
@@ -233,7 +225,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           mno := inst DIV 1000000H MOD 10H;
           vno := inst DIV 1000H MOD 1000H;
           disp := inst MOD 1000H;
-          IF mno = 0 THEN (*global*) inst := mod.data + vno ELSE (*import*)
+          IF mno = 0 THEN (*global*)
+            inst := mod.data + vno
+          ELSE (*import*)
             SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
             SYSTEM.GET(impmod.ent + vno*4, offset);
             inst := impmod.data + offset
@@ -246,6 +240,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END
     END ;
     newmod := mod;
+    SYSTEM.PUT(-60, 0F00000H);
+    SYSTEM.PUT(-60, cnt);
   END Load;
 
   PROCEDURE ThisCommand*(mod: Module; name: ARRAY OF CHAR): Command;
@@ -314,9 +310,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   PROCEDURE Init*;
   BEGIN
+    SYSTEM.PUT(-60, 0AH);
     Files.Init;
+    (*NEW(rootOverlay); rootOverlay.size := 0; rootOverlay.next := NIL;*)
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 8000H);
   END Init;
 
-BEGIN Init; Load("Oberon", M); SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE  (*only if load fails*)
+BEGIN Init; cnt := 0; Load("Oberon", M); SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE  (*only if load fails*)
 END Modules.

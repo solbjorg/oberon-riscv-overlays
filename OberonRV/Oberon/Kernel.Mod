@@ -91,6 +91,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   (*called via MT[0] whenever a function call out of module happens*)
   PROCEDURE Overlay*(pno, mno: INTEGER);
   BEGIN
+
   END Overlay;
 
 
@@ -291,9 +292,12 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* then used to encode trap numbers. We don't have that luxury, so we deposit the trap *)
     (* number _after_ the instruction instead. It can't be executed, so it will cause *)
     (* errors if jumped to (and confuse any disassembler!). *)
-    u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
+    u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 10000000H MOD 10H; (*trap number*)
     IF w = 0 THEN New(a, b);
-    ELSIF w = 1 THEN Overlay(a, b);
+      (*
+    ELSIF w = 1 THEN
+      u := v MOD 10H;
+      Overlay(u DIV 100H, u MOD 100H); *)
     (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
     (* Note on the note: I currently put the whole trap in the LEDs, for easier debugging *)
     (* with my emulator that supports 32-bit LED output. *)

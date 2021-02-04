@@ -12,7 +12,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       STS       = FileDir.SecTabSize;
       XS        = FileDir.IndexSize;
 
-  TYPE  DiskAdr = INTEGER;
+  TYPE DiskAdr* = INTEGER;
       File*    = POINTER TO FileDesc;
       Buffer  = POINTER TO BufferRecord;
       Index   = POINTER TO IndexRecord;
@@ -202,7 +202,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
   PROCEDURE Buf(f: File; pos: INTEGER): Buffer;
     VAR buf: Buffer;
   BEGIN
-    buf := f.firstbuf; (* crashes here *)
+    buf := f.firstbuf;
     WHILE (buf.apos # pos) & (buf.next # f.firstbuf) DO buf := buf.next END ;
     IF buf.apos # pos THEN buf := NIL END ;
     RETURN buf

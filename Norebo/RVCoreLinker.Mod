@@ -251,7 +251,10 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
             vno := imm MOD 100H; (* variable number; see p. 23 Pattern 12 *)
             offset := buffer[impmod.desc.ent DIV 4 + vno];
             (* checks if we're looking for a procedure, as then we add 100H. *)
-            IF ODD(imm DIV 100H) THEN offset := offset + impmod.desc.code - impmod.desc.data END ;
+            (*IF ODD(imm DIV 100H) THEN
+              Texts.WriteLn(W); Texts.WriteString(W, "PROC "); Texts.Append(Oberon.Log, W.buf);
+              offset := offset + impmod.desc.code - impmod.desc.data
+            END ; *)
             (* replace stored imm with calculated offset*)
             IF op = store THEN
               Texts.WriteLn(W); Texts.WriteString(W, "STORE "); Texts.Append(Oberon.Log, W.buf);
@@ -305,7 +308,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
     Texts.WriteLn(W); Texts.WriteString(W, "Result of link (0 is good): "); Texts.WriteHex(W, res); Texts.Append(Oberon.Log, W.buf);
     IF res = 0 THEN
       buffer[4] := AllocPtr;
-      buffer[5] := mod.addr; (* crashes here :(  *)
+      buffer[5] := mod.addr;
       (*store module descriptors*)
       WHILE root # NIL DO
         Copy(SYSTEM.ADR(root.desc), SYSTEM.ADR(buffer) + root.addr, DescSize DIV 4);

@@ -900,7 +900,7 @@ END RoundUp;
         REPEAT ProcedureDecl; Check(RVOS.semicolon, "no ;") UNTIL sym # RVOS.procedure;
         RVOG.FixLink(L); proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next
       END ;
-      RVOG.Enter(parblksize, locblksize, int);
+      RVOG.Enter(parblksize, locblksize, int, proc.expo);
       IF sym = RVOS.begin THEN RVOS.Get(sym); StatSequence END ;
       IF sym = RVOS.return THEN
         RVOS.Get(sym); expression(x);
