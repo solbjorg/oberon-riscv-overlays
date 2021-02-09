@@ -41,8 +41,6 @@ The bootloader is embedded in the emulator. Thus, changing it is a separate proc
 - Bootstrap Norebo using a RISC-V emulator rather than RISC-5
 
 ### Known Bugs
-A couple in the compiler.
-- MagicSquares produces incorrect output. This one should be relatively easy to track down and fix.
 - For some reason, the compiler incorrectly reads symbol tables within Project Oberon. It reads parameter lengths of 0FFFFFFFFH as 07FH; probably due to reading only a byte instead of the full word. Currently, there is a workaround in the parser that allows parameter lengths of 07FH to be treated the same as 0FFFFFFFFH.
 
 ## Credits
