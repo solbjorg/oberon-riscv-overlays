@@ -11,7 +11,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         name: ModuleName;
         next: INTEGER;
         key, num, size, refcnt: INTEGER;
-        data, code, imp, cmd, ent, ptr, unused: INTEGER;
+        data, procs, code, imp, cmd, ent, ptr: INTEGER;
       END ;
 
     ModDesc = RECORD
@@ -157,6 +157,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*type descriptors*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO buffer[p] := 0; INC(p); DEC(n, 4) END ;  (*variable space*)
+        mod.desc.procs := p * 4;
         Files.ReadInt(R, n);
         u := p;
         m := n;

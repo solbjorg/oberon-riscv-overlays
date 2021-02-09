@@ -1,0 +1,8 @@
+mode,filename,url
+source,Kernel.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Kernel.Mod.txt
+source,FileDir.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/FileDir.Mod.txt
+source,Files.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Files.Mod.txt
+source,Modules.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Overlays.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Loader.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Overlay1.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
