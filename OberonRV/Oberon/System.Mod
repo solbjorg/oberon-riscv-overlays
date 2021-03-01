@@ -1,5 +1,5 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
-  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
+  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Loader, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
   CONST
     StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store";
@@ -335,7 +335,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
       X, Y: INTEGER;
   BEGIN GetArg(S);
     IF S.class = Texts.Name THEN
-      Modules.Load(S.s, M);
+      Loader.Load(S.s, M);
       IF M # NIL THEN
         Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y); T := TextFrames.Text("");
         V := MenuViewers.New(TextFrames.NewMenu("System.Commands", StandardMenu),

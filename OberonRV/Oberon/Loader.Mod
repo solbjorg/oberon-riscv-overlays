@@ -9,7 +9,7 @@ MODULE Loader;
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
   BEGIN res := n; importing := name;
     IF res > 0 THEN
-      SYSTEM.PUT(-60, res);
+      SYSTEM.PUT(-60, 0F00H + res);
     END;
   END error;
 
@@ -46,6 +46,7 @@ MODULE Loader;
     mod := Modules.root; error(0, name); nofimps := 0;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
     IF mod = NIL THEN
+      SYSTEM.PUT(-60, 0ABCDEFH);
       Check(name);
       IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END ;
       IF F # NIL THEN
@@ -58,7 +59,7 @@ MODULE Loader;
             Load(impname, impmod); import[nofimps] := impmod; importing := name1;
             IF res = 0 THEN
               IF impmod.key = impkey THEN INC(impmod.refcnt); INC(nofimps)
-              ELSE error(3, name1);
+              ELSE error(3, name1); (* error here :(  *)
               END
             END;
             Files.ReadString(R, impname)
@@ -67,13 +68,14 @@ MODULE Loader;
         END;
       ELSE error(1, name)
       END;
+      IF res = 0 THEN
+        entry := Modules.Load(name, mod, numprocs, nofimps, size, import, R);
+        Overlays.GenerateOverlay(mod, numprocs);
+        mod.key := key;
+        entry;
+      ELSE SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE;
+      END;
     END;
-    entry := Modules.Load(name, newmod, numprocs, nofimps, size, import, R);
-    SYSTEM.PUT(-60, numprocs);
-    NEW(ov);
-    Overlays.GenerateOverlay(newmod, ov, numprocs);
-    Overlays.LoadOverlay(ov);
-    entry;
     newmod := mod;
   END Load;
 
@@ -81,5 +83,5 @@ MODULE Loader;
   BEGIN Overlays.Init;
   END Init;
 
-BEGIN Init; Load("Overlay1", M); SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE
+BEGIN SYSTEM.PUT(-60, 86H); Init; SYSTEM.PUT(-60, 88H); Load("Oberon", M); SYSTEM.PUT(-60, 0F000H + res); REPEAT UNTIL FALSE
 END Loader.

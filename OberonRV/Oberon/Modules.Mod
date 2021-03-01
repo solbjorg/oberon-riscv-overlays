@@ -1,9 +1,18 @@
 MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   IMPORT SYSTEM, Files;
-  CONST versionkey = 1X; MT = 4; DescSize = 80;
+  CONST versionkey = 1X; MT = 4; DescSize = 92;
     addi = 19; load = 3; store = 35;
     SB = 3;
     MTOrg* = 20H;
+    (* Useful constants for bit manip *)
+    C28 = 10000000H;
+    C24 = 1000000H;
+    C20 = 100000H;
+    C16 = 10000H;
+    C12 = 1000H;
+    C10 = 400H;
+    C8  = 100H;
+    C4  = 10H;
 
   TYPE Module* = POINTER TO ModDesc;
     Command* = PROCEDURE;
@@ -12,8 +21,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     ModDesc* = RECORD
         name*: ModuleName;
         next*: Module;
-        key*, num*, size*, refcnt*: INTEGER;
-        data*, procs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
+        key*, num*, size*, refcnt*, fixorgD*, fixorgS*: INTEGER;
+        data*, procs*, stubs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
       END ;
 
   VAR root*, M: Module;
@@ -24,7 +33,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
   BEGIN res := n; importing := name;
     IF res > 0 THEN
-      SYSTEM.PUT(-60, res);
+      SYSTEM.PUT(-60, 0F00H + res);
     END;
   END error;
 
@@ -46,6 +55,10 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*procedures*)
     Files.ReadInt(R, n);
     WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
+    (*
+    mod.stubs := p;
+    Files.ReadInt(R, n);
+    WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*stubs*) *)
     mod.code := p;  (*program*)
     (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
     Files.ReadInt(R, n);
@@ -77,11 +90,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
     VAR mod, impmod: Module;
       (*overlay: Overlay;*)
-      i, n, impkey, mno: INTEGER;
-      p, v, w: INTEGER;  (*addresses*)
+      i, n, m, impkey, mno: INTEGER;
+      p, u, v, w: INTEGER;  (*addresses*)
       ch: CHAR;
       body: Command;
-      fixorgP, fixorgD, fixorgT: INTEGER;
+      fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
       op, imm, disp, adr, inst, pno, vno, dest, offset: INTEGER;
       impname: ModuleName;
 
@@ -102,6 +115,14 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 67 (*jalr opcode = 67*)
     END Jalr;
 
+    (* TODO remove these simple helper functions? readability vs compact code *)
+    (* ideally they should be in-lined, but Oberon doesn't support that *)
+    PROCEDURE Addi(imm: INTEGER) : INTEGER;
+    BEGIN
+      (*addi x30, x30, imm*)
+      RETURN ((((imm) * 20H + 30) * 8H + 0) * 20H + 30) * 80H + addi
+    END Addi;
+
     PROCEDURE Lw(imm: INTEGER) : INTEGER;
     BEGIN
       (* lw SB, (imm+20H)(0) *)
@@ -109,7 +130,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END Lw;
 
   BEGIN
-    error(0, mod.name);
+    error(0, name); SYSTEM.PUT(-60, 0F0ADH);
     IF res = 0 THEN (*search for a hole in the list allocate and link*)
       INC(size, DescSize); mod := root;
       WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END ;
@@ -124,34 +145,57 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END
     END ;
     IF res = 0 THEN (*read file*)
-      mod.name := name; (* mod.key := key; *) mod.refcnt := 0;
+      mod.name := name; mod.refcnt := 0;
       numprocs := 0;
-      LoadFile(R, mod, p, numprocs, nofimps, import);
-      Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT);
+      INC(p, DescSize); (*allocate descriptor*)
+      mod.data := p;  (*data*)
+      SYSTEM.PUT(MTOrg + mod.num * 4, p);  (*module table entry*)
+      Files.ReadInt(R, n);
+      WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;  (*type descriptors*)
+      Files.ReadInt(R, n);
+      WHILE n > 0 DO SYSTEM.PUT(p, 0); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
+      mod.procs := p;
+      Files.ReadInt(R, n);
+      numprocs := n DIV 4;
+      m := n;
+      u := p;
+      WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*procedures*)
+      Files.ReadInt(R, n);
+      WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
+      mod.code := p;  (*program*)
+      (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
+      Files.ReadInt(R, n);
+      WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
+      mod.imp := p;  (*copy imports*)
+      i := 0;
+      WHILE i < nofimps DO
+          SYSTEM.PUT(p, import[i]); INC(p, 4); INC(i)
+      END ;
+      mod.cmd := p;  (*commands*) Files.Read(R, ch);
+      WHILE ch # 0X DO
+          REPEAT SYSTEM.PUT(p, ch); INC(p); Files.Read(R, ch) UNTIL ch = 0X;
+          REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
+          Files.ReadInt(R, n); SYSTEM.PUT(p, n); INC(p, 4); Files.Read(R, ch)
+      END ;
+      REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
+      mod.ent := p;  (*entries*)
+      Files.ReadInt(R, n);
+      WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;
+      mod.ptr := p;  (*pointer references*)
+      Files.ReadInt(R, w);
+      WHILE w >= 0 DO SYSTEM.PUT(p, mod.data + w); INC(p, 4); Files.ReadInt(R, w) END ;
+      SYSTEM.PUT(p, 0); INC(p, 4);
+      Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
+      mod.fixorgD := fixorgD; mod.fixorgS := fixorgS;
       Files.ReadInt(R, w); body := SYSTEM.VAL(Command, mod.code + w);
       Files.Read(R, ch);
       IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
     END ;
-    IF res = 0 THEN (*fixup of BL*)
-      (*
-      adr := mod.code + fixorgP*4;
-      WHILE adr # mod.code DO
-        SYSTEM.GET(adr, inst);
-        disp := inst DIV 10000H MOD 10000H;
-        mno := inst DIV 100H MOD 100H;
-        pno := inst MOD 100H;
-        SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
-        SYSTEM.GET(impmod.ent + pno*4, dest); dest := dest + impmod.code;
-        offset := (dest - adr);
-        SYSTEM.PUT(adr, Jal(offset MOD 200000H));
-        adr := mod.code + disp*4
-      END ;
-      *)
+    IF res = 0 THEN
       (*fixup of LDR/STR/ADD*)
       adr := mod.code + fixorgD*4;
       WHILE adr # mod.code DO
         SYSTEM.GET(adr, inst);
-        (*IF (inst MOD 8H # 5) THEN SYSTEM.PUT(-60, 0FFFFFH); END;*)
         mno := inst DIV 10H MOD 128;
         disp := inst DIV 10000H;
         IF mno = 0 THEN (*global*)
@@ -165,14 +209,13 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
             imm := inst DIV 100000H;
           ELSIF op = store THEN
             imm := LSL(inst DIV 2000000H MOD 80H, 5) + (inst DIV 80H MOD 20H);
-          ELSE error(5, name);
           END;
           vno := imm MOD 100H;
           SYSTEM.GET(impmod.ent + vno*4, offset);
-          (*
-             If the bit at (imm DIV 100H) is 1, then we are referring to a procedure in a different module
-          *)
-          (*IF ODD(imm DIV 100H) THEN offset := offset + impmod.code - impmod.data END ;*)
+          (* If the bit at (imm DIV 100H) is 1, then we are referring to a procedure in a different module *)
+          IF ODD(imm DIV 100H) THEN
+            offset := offset * 4 + impmod.procs - impmod.data
+          END;
           IF (op = store) THEN
             SYSTEM.PUT(adr+4, (inst - LSL(imm MOD 20H, 7) - LSL(imm DIV 20H, 25)) + LSL(offset MOD 20H, 7) + LSL(offset DIV 20H, 25));
           ELSE
@@ -180,6 +223,28 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           END;
         END ;
         adr := mod.code + disp*4
+      END ;
+      adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)
+      WHILE adr # mod.code DO
+        SYSTEM.GET(adr-4, inst);
+        imm := inst DIV C12;
+        mno := imm MOD C12;
+        pno := imm DIV C12;
+        IF mno <= 0 THEN
+          mno := mod.num;
+        ELSE
+          SYSTEM.GET(mod.imp + (mno-1)*4, impmod); mno := impmod.num;
+          (* TODO: too much indirection! *)
+          SYSTEM.GET(impmod.ent + pno*4, pno);
+        END;
+        inst := (inst - LSL(imm MOD C20, 12)) + LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12);
+        SYSTEM.PUT(adr-4, inst);
+
+        SYSTEM.GET(adr, inst);
+        disp := inst DIV 10000H;
+        inst := Addi(0); (* TODO: make this sensible ... *)
+        SYSTEM.PUT(adr, inst);
+        adr := mod.code + disp*4;
       END ;
       (*fixup of type descriptors*)
       adr := mod.data + fixorgT*4;
@@ -272,7 +337,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   BEGIN
     Files.Init;
     (*NEW(rootOverlay); rootOverlay.size := 0; rootOverlay.next := NIL;*)
-    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 9000H);
+    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 0D000H);
   END Init;
 
 END Modules.

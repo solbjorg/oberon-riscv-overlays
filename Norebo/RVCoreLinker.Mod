@@ -1,6 +1,6 @@
 MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Corelinker for RISC-5 *)
   IMPORT SYSTEM, Files, Texts, Oberon;
-  CONST versionkey = 1X; MT = 12; MTOrg = 20H; DescSize = 80;
+  CONST versionkey = 1X; MT = 12; MTOrg = 20H; DescSize = 92;
     addi = 19; load = 3; store = 35;
 
   TYPE Module = POINTER TO ModDesc;
@@ -10,8 +10,8 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
     ImageModDesc = RECORD
         name: ModuleName;
         next: INTEGER;
-        key, num, size, refcnt: INTEGER;
-        data, procs, code, imp, cmd, ent, ptr: INTEGER;
+        key, num, size, refcnt, fixorgD, fixorgS: INTEGER;
+        data, procs, stubs, code, imp, cmd, ent, ptr: INTEGER;
       END ;
 
     ModDesc = RECORD
@@ -72,7 +72,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
       p, u, v, w: INTEGER;  (*addresses*)
       ch: CHAR;
       body: INTEGER;
-      fixorgP, fixorgD, fixorgT: INTEGER;
+      fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
       disp, adr, inst, pno, vno, op, imm, dest, offset: INTEGER;
       name1, impname: ModuleName;
       F: Files.File; R: Files.Rider;
@@ -89,9 +89,15 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
       RETURN ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 1) * 80H + 111
     END Jal;
 
+    PROCEDURE Addi(imm: INTEGER) : INTEGER;
+    BEGIN
+      (*addi x30, x30, imm*)
+      RETURN ((((imm) * 20H + 30) * 8H + 0) * 20H + 30) * 80H + addi
+    END Addi;
+
     PROCEDURE Lw(imm: INTEGER) : INTEGER;
     BEGIN
-      RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 3 (* opcode for all loads is 3 *)
+      RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + load (* opcode for all loads is 3 *)
     END Lw;
 
     (* returns immediate of an I-type instruction *)
@@ -164,6 +170,11 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;   (*procedures*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
+        mod.desc.stubs := p * 4;
+        (*
+        Files.ReadInt(R, n);
+        Texts.WriteLn(W); Texts.WriteString(W, "Stub size: "); Texts.WriteInt(W, n, 5); Texts.Append(Oberon.Log, W.buf);
+        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*stubs*) *)
         mod.desc.code := p * 4;  (*program*)
         WHILE m > 0 DO
           buffer[u] := buffer[u] + mod.desc.code; INC(u); DEC(m, 4);
@@ -193,6 +204,8 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         WHILE w >= 0 DO buffer[p] := mod.desc.data + w; INC(p); Files.ReadInt(R, w) END ;
         buffer[p] := 0; INC(p);
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT);
+        Files.ReadInt(R, fixorgS);
+        mod.desc.fixorgD := fixorgD; mod.desc.fixorgS := fixorgS;
         Texts.Append(Oberon.Log, W.buf);
         Files.ReadInt(R, w); body := mod.desc.code + w;
         Files.Read(R, ch);
@@ -252,10 +265,9 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
             vno := imm MOD 100H; (* variable number; see p. 23 Pattern 12 *)
             offset := buffer[impmod.desc.ent DIV 4 + vno];
             (* checks if we're looking for a procedure, as then we add 100H. *)
-            (*IF ODD(imm DIV 100H) THEN
-              Texts.WriteLn(W); Texts.WriteString(W, "PROC "); Texts.Append(Oberon.Log, W.buf);
-              offset := offset + impmod.desc.code - impmod.desc.data
-            END ; *)
+            IF ODD(imm DIV 100H) THEN
+              offset := offset * 4 + impmod.desc.procs - impmod.desc.data
+            END ;
             (* replace stored imm with calculated offset*)
             IF op = store THEN
               Texts.WriteLn(W); Texts.WriteString(W, "STORE "); Texts.Append(Oberon.Log, W.buf);
@@ -266,6 +278,14 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
             END;
           END ;
           adr := mod.desc.code + disp*4;
+        END ;
+        (*fixup of overlay register loads*)
+        adr := mod.desc.code + fixorgS*4;
+        WHILE adr # mod.desc.code DO
+          inst := buffer[adr DIV 4];
+          disp := inst DIV 10000H;
+          inst := Addi(0); (* TODO: make this sensible ... *)
+          buffer[adr DIV 4] := inst; adr := mod.desc.code + disp*4;
         END ;
         (*fixup of type descriptors*)
         adr := mod.desc.data + fixorgT*4;

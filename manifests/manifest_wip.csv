@@ -5,4 +5,11 @@ source,Files.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Fi
 source,Modules.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
 source,Overlays.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
 source,Loader.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Display.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Fonts.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Texts.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Viewers.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Overlay4.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Overlay3.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
+source,Overlay2.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt
 source,Overlay1.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/Modules.Mod.txt

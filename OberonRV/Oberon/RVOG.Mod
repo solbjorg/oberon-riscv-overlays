@@ -6,6 +6,15 @@ IMPORT SYSTEM, Files, Texts, Oberon, RVAssem, RVOS, RVOB; (*RVDis;*)
   Procedural interface to Parser OSAP; result in array "code".
   Procedure Close writes code-files
 *)
+(*
+  Notes on a few assumptions the compiler makes about the Oberon
+  system as a whole:
+    - A module can only import up to 16 other modules, not including SYSTEM.
+      This assumption is first made in Modules; in fact, in Wirth's OR compiler,
+      it allows for 256 imported modules, despite the fact that the linker would
+      crash if it exceeded 16...
+    - Similarly, a module can have a maximum of 256 procedures.
+*)
 
 CONST
   BitsPerInteger = RVOB.BitsPerInteger;
@@ -33,6 +42,7 @@ CONST
   maxStrx = 3000;   (* statically allocated strings *)
   maxTD = 512;      (* 512 words of space for type descriptors *)
   maxProcs = 512;   (* 512 words of space for procedure listing *)
+  maxStubs = 200;
 
   Reg = 10; RegI = 11; Cond = 12;  (*internal item modes*)
 
@@ -51,14 +61,13 @@ CONST
   (* Trap numbers *)
 
   TrapNew           = 0; (* NEW *)
-  TrapOverlay       = 1; (* Call overlay manager *)
-  TrapIndexBounds   = 2; (* Array index bounds check failed *)
-  TrapTypeMismatch  = 3; (* Type check failed at runtime *)
-  TrapSourceTooBig  = 4; (* Source record, array, or string is too big for := *)
-  TrapNilProcedure  = 5; (* Attempt to call NIL procedure *)
-  TrapDivByZero     = 7; (* Attempt to divide by zero *)
-  TrapAssertFailure = 8;
-  TrapNegativeSize  = 9;
+  TrapIndexBounds   = 1; (* Array index bounds check failed *)
+  TrapTypeMismatch  = 2; (* Type check failed at runtime *)
+  TrapSourceTooBig  = 3; (* Source record, array, or string is too big for := *)
+  TrapNilProcedure  = 4; (* Attempt to call NIL procedure *)
+  TrapDivByZero     = 5; (* Attempt to divide by zero *)
+  TrapAssertFailure = 6;
+  TrapNegativeSize  = 7;
   TrapHandler       = 20H; (* Address to which the trap handler is installed *)
 
   (* Useful constants for bit manip *)
@@ -67,6 +76,7 @@ CONST
   C20 = 100000H;
   C16 = 10000H;
   C12 = 1000H;
+  C10 = 400H;
   C8  = 100H;
   C4  = 10H;
 
@@ -76,6 +86,19 @@ TYPE
     type*: RVOB.Type;
     a*, b*, r, cl, cr: INTEGER;
     rdo*: BOOLEAN  (*read only*)
+  END;
+
+  Stub* = POINTER TO StubDesc;
+  Program* = POINTER TO ProgramDesc;
+  Code* = POINTER TO CodeDesc;
+  Strings* = POINTER TO StringsDesc;
+  TypeDescriptors* = POINTER TO TypeDescriptorsDesc;
+  Procs* = POINTER TO ProceduresDesc;
+
+  StubDesc* = RECORD
+    word: INTEGER;
+    mno: INTEGER;
+    pno: INTEGER;
   END;
 
   CodeDesc* = RECORD
@@ -93,12 +116,6 @@ TYPE
   TypeDescriptorsDesc* = RECORD
     t: ARRAY maxTD OF INTEGER;  (*type descriptors*)
   END;
-
-  Program* = POINTER TO ProgramDesc;
-  Code* = POINTER TO CodeDesc;
-  Strings* = POINTER TO StringsDesc;
-  TypeDescriptors* = POINTER TO TypeDescriptorsDesc;
-  Procs* = POINTER TO ProceduresDesc;
 
   ProgramDesc* = RECORD
     code: Code;
@@ -134,7 +151,7 @@ TYPE
 VAR
   W: Texts.Writer;
   pc*, varsize: INTEGER;  (* program counter, data indices *)
-  tdx, strx, procx*, expoprocx*: INTEGER;     (* Type descriptor, string array, proc list indices, expo proc list indices *)
+  tdx, strx, stubx, procx*, expoprocx*: INTEGER;     (* Type descriptor, string array, proc list indices, expo proc list indices *)
   entry: INTEGER;         (* module body entrypoint *)
   RH: INTEGER;            (* available registers R[firstReg] ... R[H-1]*)
   curSB: INTEGER;         (* current static base in SB (module table index) *)
@@ -146,11 +163,12 @@ VAR
 
   sym2rel: ARRAY 6 OF INTEGER;
   sym2uRel: ARRAY 6 OF INTEGER;
-    
+  stubs: ARRAY maxStubs OF StubDesc;
+
   program: Program;
 
   (* Origins of lists of relocations to be fixed up by the loader *)
-  fixorgP, fixorgD, fixorgT: INTEGER;
+  fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
 
 PROCEDURE put*(w: INTEGER);
 BEGIN
@@ -268,15 +286,18 @@ END opposite;
 PROCEDURE Trap(cond, num, regL, regR: INTEGER);
 BEGIN
   (* Emits a branch that skips past the trap if requirement is met. *)
-  IF num > 1 THEN put(RVAssem.fmtSB(63H, opposite(cond), regL, regR, 16)) END;
+  IF num > 0 THEN put(RVAssem.fmtSB(63H, opposite(cond), regL, regR, 16)) END;
   put(RVAssem.jalr(RA, 0, TrapHandler));
   put(RVAssem.jal(0, 8));
   (* Deposit the trap number as well as where it happened. *)
-  IF num > 1 THEN
+  (*
+  IF num > 1 THEN *)
     put(LSL(num, 28) + (RVOS.Pos() MOD C28))
+    (*
   ELSE
     put(LSL(num, 28) + LSL(regL, 16) + LSL(regR, 8));
   END;
+    *)
 END Trap;
 
 (*
@@ -424,14 +445,13 @@ END merged;
   this also needs fixups. There are three different "scenarios" to my knowledge
   that require reloading SB that need consideration:
     - loading another module's exported var/proc
-    - storing a value to another module's exported var/proc
+    - storing a value to another module's exported var/proc(!?)
     - loading the address of another module's exported var/proc
   These are LOAD, STORE, and ADDI instructions respectively. Only their immediates
   need fixing up after the fact, and since we're only dealing with I-type and S-type
   formatting, it isn't *too* hairy to do it directly in codespace rather than using a
   placeholder word. Thus it becomes the linker's job to fix this too.
 *)
-
 PROCEDURE MakeLoadSB(base: INTEGER): INTEGER;
 BEGIN
   (*
@@ -1467,6 +1487,51 @@ END For2;
 
 (* Branches, procedure calls, procedure prolog and epilog *)
 
+(*TODO document this format in source code*)
+PROCEDURE GenerateOutgoing(mno, pno: INTEGER): INTEGER;
+BEGIN
+  RETURN LSL(pno MOD C10, 22) + LSL(mno MOD C10, 12) + 1
+END GenerateOutgoing;
+
+(*return index into stub table*)
+PROCEDURE GenerateStub(mno, pno: INTEGER): INTEGER;
+  VAR i, index: INTEGER;
+  s: StubDesc;
+BEGIN
+  index := -1; i := 0;
+  WHILE (i < stubx) & (index = -1) DO
+    Texts.WriteLn(W); Texts.WriteHex(W, stubx); Texts.Append(Oberon.Log, W.buf);
+
+    IF (stubs[i].mno = mno) & (stubs[i].pno = pno) THEN
+      index := i;
+    END;
+    INC(i);
+  END;
+  IF index = -1 THEN
+    IF stubx >= maxStubs THEN
+      RVOS.Mark("too many function call candidates");
+    ELSE
+      stubs[stubx].mno := mno; stubs[stubx].pno := pno;
+      stubs[stubx].word := GenerateOutgoing(mno, pno);
+      index := stubx;
+      INC(stubx);
+    END;
+  END;
+  RETURN index
+END GenerateStub;
+
+PROCEDURE FixStubs;
+  VAR fix, word, index: INTEGER;
+BEGIN
+  fix := fixorgS;
+  WHILE fix # 0 DO
+    SYSTEM.GET(fix, word);
+    index := word MOD C16;
+    SYSTEM.PUT(fix, RVAssem.lw(30, SB, index + varsize + RVOS.proccnt + strx));
+    fix := word DIV C16;
+  END;
+END FixStubs;
+
 PROCEDURE Here*(): INTEGER;
 BEGIN invalSB; RETURN pc
 END Here;
@@ -1559,16 +1624,20 @@ BEGIN (*x.type.form = RVOB.Proc*)
   (* Store where we call the function from to a magic IO port - for debugging purposes *)
   IF (stacktrace) THEN
     incR;
-    i := 0;
-    WHILE (modid[i] # 0X) & (i < 5) DO
-        LoadImm(LSL(0AAH, 24) + ORD(modid[i]) MOD C24);
-        put(RVAssem.sw(RH, 0, -32));
-        INC(i);
-    END;
+    i := LSL(0AAH, 24) +
+         ORD(modid[0]) MOD C8 +
+         LSL(ORD(modid[1]) MOD C8, 8) +
+         LSL(ORD(modid[2]) MOD C8, 16);
+    LoadImm(i);
+    put(RVAssem.sw(RH, 0, -32));
     LoadImm(LSL(0CCH, 24) + RVOS.Pos() MOD C24);
     put(RVAssem.sw(RH, 0, -32));
     decR;
   END;
+
+  (*i := (*GenerateStub(x.r, x.a);*) 0;*)
+  (* lui/addi pair to load the overlay token *)
+  (* lui will have to be fixed up wrt pno/mno *)
 
   IF x.mode = RVOB.Const THEN
     IF x.r >= 0 THEN
@@ -1576,14 +1645,20 @@ BEGIN (*x.type.form = RVOB.Proc*)
       found := FALSE; i := 0;
       WHILE (~found) & (i < RVOS.proccnt) DO
         IF (program.procs.p[i] = x.a) THEN
+          put(RVAssem.lui(30, LSL(i, 24) + LSL((-x.r) MOD C12, 12)));
+          (* To construct a call graph, let the linker know the index of the function we're calling from. *)
+          (* Note that the linker will already know what module this call is coming from; so that information *)
+          (* is useless (and impossible to know compile-time anyway). *)
+          (* This will be replaced with a `addi` call in the linker. *)
+          put(LSL(fixorgS MOD C16, 16) + procx-1); fixorgS := pc-1;
           GetSB(0);
-          Fetch(SB, varsize + i*4);
+          Fetch(SB, varsize + i * 4);
           put(RVAssem.jalr(RA, RH, 0));
           found := TRUE;
         END;
         INC(i);
       END;
-      IF ~found THEN Texts.WriteLn(W); Texts.WriteString(W, "Warning!!! Procedure not found! pos, x.a:"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.WriteInt(W, x.a, 5); Texts.Append(Oberon.Log, W.buf); END;
+      IF ~found THEN RVOS.Mark("function not found"); END;
       (*
       GetSB(x.r);
       Fetch(SB, varsize + x.a * 4);
@@ -1591,6 +1666,12 @@ BEGIN (*x.type.form = RVOB.Proc*)
       *)
       (*put(RVAssem.jal(RA, x.a - (pc*InsnSize)))*)
     ELSE (*imported*)
+      put(RVAssem.lui(30, LSL(x.a MOD C8, 24) + LSL((-x.r) MOD C12, 12)));
+      (* To construct a call graph, let the linker know the index of the function we're calling from. *)
+      (* Note that the linker will already know what module this call is coming from; so that information *)
+      (* is useless (and impossible to know compile-time anyway). *)
+      (* This will be replaced with a `addi` call in the linker. *)
+      put(LSL(fixorgS MOD C16, 16) + procx-1); fixorgS := pc-1;
       GetSB(x.r);
       Fetch(SB, x.a+C8);
       put(RVAssem.jalr(RA, RH, 0));
@@ -1980,13 +2061,17 @@ BEGIN
   ELSE
     program := p; program.code := c; program.strings := s; program.data := d; program.procs := procs;
     success := TRUE;
+    IF stacktrace THEN
+        Texts.WriteLn(W); Texts.WriteString(W, "Warning! Stack trace enabled! This will increase executable size considerably!");
+        Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+    END;
   END;
 END Init;
 
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
   VAR success: BOOLEAN;
-BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; check := v # 0; version := v;
-  stacktrace := FALSE;
+BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; stubx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; fixorgS := 0; check := v # 0; version := v;
+  stacktrace := TRUE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
 END Open;
@@ -2035,6 +2120,28 @@ BEGIN
   END
 END FindPtrs;
 
+(* index: index into module's TOC *)
+(* TODO: finding ways of optimising this may well be beneficial! *)
+(* currently, this leads to 8 words per outgoing function. *)
+(* so an overlay with e.g. 8 outgoing functions would spend 64 words = 256B just on stubs... *)
+(* not a dealbreaker, but not great either *)
+(* TODO: actually document this more clearly! *)
+(* currently, I'm not writing in a very literate style because it's still amenable to many changes...*)
+(*
+PROCEDURE GenerateStub(index: INTEGER);
+BEGIN
+  (*
+  program.procs.s[stubx] := pc; INC(stubx); *)
+  put(RVAssem.addi(SP, SP, -4));
+  put(RVAssem.sw(RA, SP, 0));
+  put(index);
+  put(0); (*no-op, to be fixed up*)
+  Fetch(SB, varsize + index*4);
+  put(RVAssem.lw(RA, SP, 0));
+  put(RVAssem.addi(SP, SP, 4));
+  put(RVAssem.jalr(0, RH, 0));
+END GenerateStub;
+ *)
 PROCEDURE CloseModule(VAR modid: RVOS.Ident; key, nofent: INTEGER);
   VAR obj: RVOB.Object;
     i, comsize, nofimps, nofptrs, size: INTEGER;
@@ -2042,6 +2149,7 @@ PROCEDURE CloseModule(VAR modid: RVOS.Ident; key, nofent: INTEGER);
     F: Files.File; R: Files.Rider;
     found: BOOLEAN;
 BEGIN
+  (*FixStubs;*)
   obj := RVOB.topScope.next; nofimps := 0;
   comsize := 4; nofptrs := 0;
   WHILE obj # NIL DO
@@ -2074,6 +2182,8 @@ BEGIN
     obj := obj.next
   END ;
   Files.Write(R, 0X);
+  Texts.WriteLn(W); Texts.WriteString(W, "tdx: "); Texts.WriteInt(W, tdx*4, 4); Texts.Append(Oberon.Log, W.buf);
+
   Files.WriteInt(R, tdx*4);
   i := 0;
   WHILE i < tdx DO Files.WriteInt(R, program.data.t[i]); INC(i) END ; (*type descriptors*)
@@ -2089,6 +2199,9 @@ BEGIN
 
   Files.WriteInt(R, strx);
   FOR i := 0 TO strx-1 DO Files.Write(R, program.strings.s[i]) END ;  (*strings*)
+(*
+  Files.WriteInt(R, stubx*4);
+  FOR i := 0 TO stubx-1 DO Files.WriteInt(R, stubs[i].word) END ;  (*stubs*) *)
   Files.WriteInt(R, pc);  (*code len*)
   FOR i := 0 TO pc-1 DO Files.WriteInt(R, program.code.c[i]); END ;  (*program*)
   obj := RVOB.topScope.next;
@@ -2109,7 +2222,7 @@ BEGIN
         found := FALSE; i := 0;
         WHILE (~found) & (i < RVOS.proccnt) DO
           IF (program.procs.p[i] = obj.val) THEN
-            Files.WriteInt(R, varsize + i * 4);
+            Files.WriteInt(R, i);
             found := TRUE;
           END;
           INC(i);
@@ -2132,17 +2245,11 @@ BEGIN
     obj := obj.next
   END ;
   Files.WriteInt(R, -1);
-  Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, entry);
+  Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, fixorgS); Files.WriteInt(R, entry);
   Files.Write(R, "O"); Files.Register(F);
   program.code := NIL; program.strings := NIL; program.data := NIL;
   program := NIL;
 END CloseModule;
-
-PROCEDURE writeDword(VAR R: Files.Rider; i: INTEGER);
-BEGIN
-  Files.WriteInt(R, i);
-  IF i < 0 THEN Files.WriteInt(R, -1) ELSE Files.WriteInt(R, 0) END
-END writeDword;
 
 PROCEDURE Close*(VAR modid: RVOS.Ident; key, nofent: INTEGER);
   VAR obj: RVOB.Object;
@@ -2153,7 +2260,6 @@ BEGIN  (* module body epilog *)
   IF version = 0 THEN  (* ROM ABI *)
     put(RVAssem.addi(RA, 0, 0));
     put(RVAssem.jalr(0, RA, 0));
-    (*CloseRom(modid, key, nofent);*)
     CloseModule(modid, key, nofent);
   ELSE
     put(RVAssem.lw(RA, SP, 0));

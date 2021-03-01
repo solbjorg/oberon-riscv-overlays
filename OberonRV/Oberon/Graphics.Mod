@@ -1,5 +1,5 @@
 MODULE Graphics;   (*NW 21.12.89 / 18.11.201 / 8.4.2016*)
-  IMPORT SYSTEM, Files, Modules, Fonts, (*Printer,*) Texts, Oberon;
+  IMPORT SYSTEM, Files, Modules, Loader, Fonts, (*Printer,*) Texts, Oberon;
 
   CONST NameLen* = 32; GraphFileId = 0FAX; LibFileId = 0FBX;
 
@@ -304,7 +304,7 @@ MODULE Graphics;   (*NW 21.12.89 / 18.11.201 / 8.4.2016*)
 
   PROCEDURE GetClass*(module, allocator: ARRAY OF CHAR; VAR com: Modules.Command);
     VAR mod: Modules.Module;
-  BEGIN Modules.Load(module, mod);
+  BEGIN Loader.Load(module, mod);
     IF mod # NIL THEN
       com := Modules.ThisCommand(mod, allocator);
       IF com = NIL THEN WMsg(allocator, " unknown") END

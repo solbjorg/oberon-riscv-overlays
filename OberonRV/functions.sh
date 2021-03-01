@@ -26,3 +26,7 @@ ot() {
   nor ORTool.DecObj $*
 }
 
+rox() {
+  nor RVOX.WriteCode $*
+}
+
