@@ -117,10 +117,10 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
     (* TODO remove these simple helper functions? readability vs compact code *)
     (* ideally they should be in-lined, but Oberon doesn't support that *)
-    PROCEDURE Addi(imm: INTEGER) : INTEGER;
+    PROCEDURE Addi(reg, imm: INTEGER) : INTEGER;
     BEGIN
-      (*addi x30, x30, imm*)
-      RETURN ((((imm) * 20H + 30) * 8H + 0) * 20H + 30) * 80H + addi
+      (*addi reg, reg, imm*)
+      RETURN ((((imm) * 20H + reg) * 8H + 0) * 20H + reg) * 80H + addi
     END Addi;
 
     PROCEDURE Lw(imm: INTEGER) : INTEGER;
@@ -237,13 +237,14 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           (* TODO: too much indirection! *)
           SYSTEM.GET(impmod.ent + pno*4, pno);
         END;
+        SYSTEM.PUT(-60, mno);
         inst := (inst - LSL(imm MOD C20, 12)) + LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12);
         SYSTEM.PUT(adr-4, inst);
 
         SYSTEM.GET(adr, inst);
         disp := inst DIV 10000H;
-        inst := Addi(0); (* TODO: make this sensible ... *)
-        SYSTEM.PUT(adr, inst);
+        SYSTEM.PUT(-60, inst MOD 20H);
+        SYSTEM.PUT(adr, Addi(inst MOD 20H, 1));
         adr := mod.code + disp*4;
       END ;
       (*fixup of type descriptors*)

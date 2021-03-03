@@ -27,7 +27,8 @@ CONST
   VarOrg0 = 0;
 
   firstReg* = 8;    (* First usable data register *)
-  maxReg* = 32;     (* Last usable data register, plus one *)
+  maxReg* = 30;     (* Last usable data register, plus one *)
+  maxRegReserved* = 32;     (* Last register, plus one *)
 
   RA = 1;           (* Return address register *)
   SP = 2;           (* Stack pointer *)
@@ -217,6 +218,21 @@ BEGIN
   RETURN TRUE  (* hack for 32-bit Oberon bootstrap (-80000000H <= n) & (n < 80000000H) *)
 END FitsIn32Bits;
 
+PROCEDURE FindProcIndexGivenAddress(addr: INTEGER): INTEGER;
+  VAR found: BOOLEAN; i, result: INTEGER;
+BEGIN
+  found := FALSE; i := 0;
+  WHILE (~found) & (i < RVOS.proccnt) DO
+    IF (program.procs.p[i] = addr) THEN
+      result := i;
+      found := TRUE;
+    END;
+    INC(i);
+  END;
+  IF ~found THEN RVOS.Mark("function not found, addr:"); Texts.WriteHex(W, addr); Texts.Append(Oberon.Log, W.buf);
+  END;
+  RETURN result
+END FindProcIndexGivenAddress;
 (*
   Initialize an item that represents a conditional jump later on.
   The true and false fixup chains are zeroed.  Additionally, the left and
@@ -605,6 +621,26 @@ PROCEDURE AddImm(base, n: INTEGER);
 BEGIN AddImmTo(RH, base, n)
 END AddImm;
 
+PROCEDURE GenerateOverlayToken(pno, mno: INTEGER): INTEGER;
+BEGIN
+  RETURN LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12)
+END GenerateOverlayToken;
+
+PROCEDURE PutOverlayToken(r, pno, mno: INTEGER);
+BEGIN
+  put(RVAssem.lui(r, GenerateOverlayToken(pno, mno)));
+  (* To construct a call graph, let the linker know the index of the function we're calling from. *)
+  (* Note that the linker will already know what module this call is coming from; so that information *)
+  (* is useless (and impossible to know compile-time anyway). *)
+  (* This will be replaced with a `addi` call in the linker. *)
+  put(LSL(fixorgS MOD C16, 16) + LSL(procx-1, 8) + r MOD 20H); fixorgS := pc-1;
+END PutOverlayToken;
+
+PROCEDURE LoadOverlayRegister(pno, mno: INTEGER);
+BEGIN
+  PutOverlayToken(30, pno, mno);
+END LoadOverlayRegister;
+
 PROCEDURE load(VAR x: Item);
   VAR op: INTEGER;
 BEGIN
@@ -615,13 +651,17 @@ BEGIN
       IF x.type.form = RVOB.Proc THEN
         IF x.r > 0 THEN RVOS.Mark("not allowed")
         ELSIF x.r = 0 THEN  (* Answer address of procedure in current module *)
-          put(RVAssem.auipc(RH, 0));
+          PutOverlayToken(RH, FindProcIndexGivenAddress(x.a), -x.r);
+          Texts.WriteLn(W); Texts.WriteString(W, "hewo"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.WriteInt(W, x.a, 5); Texts.Append(Oberon.Log, W.buf);
+
+          (* GetSB(0); AddImm(SB, x.a+C8); *)
+          (* put(RVAssem.auipc(RH, 0));
           LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
-          put(RVAssem.sub(RH, RH, RH+1));
+          put(RVAssem.sub(RH, RH, RH+1)); *)
         ELSE  (* Answer address of procedure in a different module *)
-          ASSERT(x.a < 100H);
-          GetSB(x.r); AddImm(SB, x.a+C8);
-        END
+          PutOverlayToken(RH, x.a, -x.r);
+          (* GetSB(x.r); AddImm(SB, x.a+C8); *)
+        END;
       ELSE LoadImm(x.a)
       END;
       x.r := RH; incR
@@ -670,6 +710,26 @@ BEGIN
     x.mode := Reg
   END
 END load;
+
+PROCEDURE loadToken(VAR x: Item);
+BEGIN
+  (* check if it is a token; if it is, then LSB is 1 *)
+  put(RVAssem.and(RH, x.r, 1));
+  put(RVAssem.beq(RH, 0, 8));
+  (* if it is a token *)
+  (* move the token to the token register *)
+  put(RVAssem.addi(30, x.r, 0));
+  (*put(RVAssem.jalr(RA, 31, 0));*)
+  (*
+  (* load data pointer from module table... *)
+  put(RVAssem.srai(RH, x.r, 12));
+  put(RVAssem.and(RH, RH, 0FFFH)); (* strip away function index *)
+  put(RVAssem.mul(RH, RH, 4));
+  put(RVAssem.lw(RH, RH, 20H));
+  put(RVAssem.srai(RH+1, x.r, 24));
+  *)
+  (* it is a normal address; nothing needs to be done *)
+END loadToken;
 
 PROCEDURE loadAdr(VAR x: Item);
 BEGIN
@@ -1598,7 +1658,9 @@ END Overlay;
 
 PROCEDURE PrepCall*(VAR x: Item; VAR r: INTEGER);
 BEGIN (*x.type.form = RVOB.Proc*)
-  IF x.mode > RVOB.Par THEN load(x) END ;
+  IF x.mode > RVOB.Par THEN
+    load(x)
+  END ;
   r := RH;
   IF RH > firstReg THEN SaveRegs(RH); RH := firstReg END
 END PrepCall;
@@ -1642,23 +1704,13 @@ BEGIN (*x.type.form = RVOB.Proc*)
   IF x.mode = RVOB.Const THEN
     IF x.r >= 0 THEN
       (* todo make this better... *)
-      found := FALSE; i := 0;
-      WHILE (~found) & (i < RVOS.proccnt) DO
-        IF (program.procs.p[i] = x.a) THEN
-          put(RVAssem.lui(30, LSL(i, 24) + LSL((-x.r) MOD C12, 12)));
-          (* To construct a call graph, let the linker know the index of the function we're calling from. *)
-          (* Note that the linker will already know what module this call is coming from; so that information *)
-          (* is useless (and impossible to know compile-time anyway). *)
-          (* This will be replaced with a `addi` call in the linker. *)
-          put(LSL(fixorgS MOD C16, 16) + procx-1); fixorgS := pc-1;
-          GetSB(0);
-          Fetch(SB, varsize + i * 4);
-          put(RVAssem.jalr(RA, RH, 0));
-          found := TRUE;
-        END;
-        INC(i);
-      END;
-      IF ~found THEN RVOS.Mark("function not found"); END;
+      i := FindProcIndexGivenAddress(x.a);
+      Texts.WriteLn(W); Texts.WriteString(W, "i: "); Texts.WriteInt(W, i, 3); Texts.Append(Oberon.Log, W.buf);
+
+      LoadOverlayRegister(i, -x.r);
+      GetSB(0);
+      Fetch(SB, varsize + i * 4);
+      put(RVAssem.jalr(RA, RH, 0));
       (*
       GetSB(x.r);
       Fetch(SB, varsize + x.a * 4);
@@ -1666,12 +1718,7 @@ BEGIN (*x.type.form = RVOB.Proc*)
       *)
       (*put(RVAssem.jal(RA, x.a - (pc*InsnSize)))*)
     ELSE (*imported*)
-      put(RVAssem.lui(30, LSL(x.a MOD C8, 24) + LSL((-x.r) MOD C12, 12)));
-      (* To construct a call graph, let the linker know the index of the function we're calling from. *)
-      (* Note that the linker will already know what module this call is coming from; so that information *)
-      (* is useless (and impossible to know compile-time anyway). *)
-      (* This will be replaced with a `addi` call in the linker. *)
-      put(LSL(fixorgS MOD C16, 16) + procx-1); fixorgS := pc-1;
+      LoadOverlayRegister(x.a, -x.r);
       GetSB(x.r);
       Fetch(SB, x.a+C8);
       put(RVAssem.jalr(RA, RH, 0));
@@ -1691,8 +1738,13 @@ BEGIN (*x.type.form = RVOB.Proc*)
       END
   ELSE
     IF x.mode <= RVOB.Par THEN
+      Texts.WriteLn(W); Texts.WriteString(W, "indirect function call at "); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
       load(x); decR
     ELSE
+      (* called when the proc is a field of a record *)
+      (* I think this works because, in PrepCall, we load x, then *)
+      (* do SaveRegs, pushing x.r on top of the stack. Thus, the address *)
+      (* we want is at 0(SP). *)
       put(RVAssem.lw(RH, SP, 0)); put(RVAssem.addi(SP, SP, IntegerSize));
       DEC(r);
       DEC(frame, IntegerSize)
@@ -1714,6 +1766,12 @@ BEGIN (*x.type.form = RVOB.Proc*)
   invalSB
 END Call;
 
+PROCEDURE ProcedureEntrance*;
+BEGIN
+  program.procs.p[procx] := pc * 4;
+  INC(procx);
+END ProcedureEntrance;
+
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int, expo: BOOLEAN);
   VAR a, r, freereg: INTEGER;
 BEGIN invalSB; frame := 0;
@@ -1726,8 +1784,6 @@ BEGIN invalSB; frame := 0;
     INC(procx);
   END;
 *)
-  program.procs.p[procx] := pc * 4;
-  INC(procx);
   IF ~int THEN (*procedure prolog*)
     a := IntegerSize; r := firstReg;
     IF locblksize >= 10000H THEN RVOS.Mark("too many locals") END ;
@@ -2019,15 +2075,24 @@ END Bit;
 (* Loads register x.a into x.r *)
 PROCEDURE Register*(VAR x: Item);
 BEGIN (*x.mode = Const*)
-  put(RVAssem.addi(RH, x.a MOD maxReg, 0));
+  put(RVAssem.addi(RH, x.a MOD maxRegReserved, 0));
   x.mode := Reg; x.r := RH; incR
 END Register;
 
 PROCEDURE Adr*(VAR x: Item);
 BEGIN 
-  IF x.mode IN {RVOB.Var, RVOB.Par, RegI} THEN loadAdr(x)
-  ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.Proc) THEN load(x)
-  ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.String) THEN loadStringAdr(x)
+  IF x.mode IN {RVOB.Var, RVOB.Par, RegI} THEN
+    loadAdr(x)
+  ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.Proc) THEN
+    (* load the actual, physical address into x.r, as opposed to an overlay token and the like *)
+    (* obviously does not play nice with overlays ! *)
+    put(RVAssem.auipc(RH, 0));
+    LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
+    put(RVAssem.sub(RH, RH, RH+1));
+    x.r := RH; incR; x.mode := Reg
+  ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.String) THEN
+    Texts.WriteLn(W); Texts.WriteString(W, "lod"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
+    loadStringAdr(x)
   ELSE RVOS.Mark("not addressable")
   END
 END Adr;
@@ -2062,8 +2127,8 @@ BEGIN
     program := p; program.code := c; program.strings := s; program.data := d; program.procs := procs;
     success := TRUE;
     IF stacktrace THEN
-        Texts.WriteLn(W); Texts.WriteString(W, "Warning! Stack trace enabled! This will increase executable size considerably!");
-        Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+      Texts.WriteLn(W); Texts.WriteString(W, "Warning! Stack trace enabled! This will increase executable size considerably!");
+      Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
     END;
   END;
 END Init;

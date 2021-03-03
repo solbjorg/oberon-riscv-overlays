@@ -541,9 +541,12 @@ END RoundUp;
           ELSIF sym = RVOS.lparen THEN (*procedure call*)
             RVOS.Get(sym);
             IF (x.type.form = RVOB.Proc) & (x.type.base.form = RVOB.NoTyp) THEN
+              (* have to make changes here *)
+              IF (x.mode # RVOB.Const) THEN
+                (* blahhhh *)
+              ELSE
+              END;
               RVOG.PrepCall(x, rx);
-
-
               ParamList(x); RVOG.Call(x, rx)
             ELSE RVOS.Mark("not a procedure"); ParamList(x)
             END
@@ -895,10 +898,11 @@ END RoundUp;
       Check(RVOS.semicolon, "no ;"); locblksize := parblksize;
       Declarations(locblksize);
       proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next;
+      RVOG.ProcedureEntrance;
       IF sym = RVOS.procedure THEN
         L := 0; RVOG.FJump(L);
         REPEAT ProcedureDecl; Check(RVOS.semicolon, "no ;") UNTIL sym # RVOS.procedure;
-        RVOG.FixLink(L); proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next
+        RVOG.FixLink(L); (*proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next*)
       END ;
       RVOG.Enter(parblksize, locblksize, int, proc.expo);
       IF sym = RVOS.begin THEN RVOS.Get(sym); StatSequence END ;

@@ -55,8 +55,10 @@ MODULE Input; (*NW 5.10.86 / 15.11.90 Ceres-2; PDR 21.4.12 / NW 15.5.2013 Ceres-
   END SetMouseLimits;
 
   PROCEDURE Init*;
-  BEGIN Up := FALSE; Shift := FALSE; Ctrl := FALSE; Recd := FALSE;
-    (* This isn't covered by the Oberon07 report. What's happening here??? *)
+  BEGIN
+    Up := FALSE; Shift := FALSE; Ctrl := FALSE; Recd := FALSE;
+    (* The $$s define a hex string, which is placed in the module's data section. *)
+    (* Then, SYSTEM.ADR returns the address of the beginning of that hex string. *)
     KTabAdr := SYSTEM.ADR($
       00 00 00 00 00 1A 00 00  00 00 00 00 00 09 60 00
       00 00 00 00 00 71 31 00  00 00 7A 73 61 77 32 00

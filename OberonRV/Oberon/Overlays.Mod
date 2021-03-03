@@ -60,7 +60,7 @@ MODULE Overlays;
       ov, old: Overlay;
       proc: Procedure; body: Func;
 
-    PROCEDURE LoadOverlay(ov, old: Overlay; pno: INTEGER): Func;
+    PROCEDURE LoadOverlay(ov, old: Overlay; mno, pno: INTEGER): Func;
     VAR F: Files.File; R: Files.Rider; found: BOOLEAN;
       i, u, addr: INTEGER;
       proc: Procedure; body: Func;
@@ -117,6 +117,7 @@ MODULE Overlays;
     (* this is just a stopgap so we can test small parts at a time*)
     (* this is currently ~guaranteed(!) to find a hit, hence the lack of safety *)
     (* TODO: MAKE THIS SAFE *)
+    SYSTEM.PUT(-60, SYSTEM.REG(30));
     WHILE overlays[i].proc.mod.num # mno DO INC(i) END;
     ov := overlays[i];
     pno := (ov.proc.mod.procs - ov.proc.mod.data) + pno * 4;
@@ -131,10 +132,10 @@ MODULE Overlays;
       (*
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
-      body := LoadOverlay(ov, old, pno);
+      body := LoadOverlay(ov, old, mno, pno);
       i := body(a,b,c,d,e,f,g,h);
       IF (old # NIL) & (oldmapped = ov.mapped) THEN
-        body := LoadOverlay(old, ov, -1);
+        body := LoadOverlay(old, ov, -1, -1);
         mappedIndex := oldIndex;
       END;
     ELSE
@@ -225,6 +226,8 @@ MODULE Overlays;
     regions[0] := Modules.limit;
     mappedIndex := -1;
     stackLoc := 0;
+    (* load location of the overlay manager *)
+    SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
   END Init;
 
 END Overlays.
