@@ -711,15 +711,16 @@ BEGIN
   END
 END load;
 
-PROCEDURE loadToken(VAR x: Item);
+PROCEDURE loadToken(reg: INTEGER);
 BEGIN
   (* check if it is a token; if it is, then LSB is 1 *)
-  put(RVAssem.and(RH, x.r, 1));
-  put(RVAssem.beq(RH, 0, 8));
+  put(RVAssem.andi(RH, reg, 1));
+  put(RVAssem.beq(RH, 0, 16));
   (* if it is a token *)
   (* move the token to the token register *)
-  put(RVAssem.addi(30, x.r, 0));
-  (*put(RVAssem.jalr(RA, 31, 0));*)
+  put(RVAssem.addi(30, reg, 0));
+  put(RVAssem.jalr(RA, 31, 0));
+  put(RVAssem.beq(0, 0, 8));
   (*
   (* load data pointer from module table... *)
   put(RVAssem.srai(RH, x.r, 12));
@@ -728,7 +729,8 @@ BEGIN
   put(RVAssem.lw(RH, RH, 20H));
   put(RVAssem.srai(RH+1, x.r, 24));
   *)
-  (* it is a normal address; nothing needs to be done *)
+  (* it is a normal address; jump right to it *)
+  put(RVAssem.jalr(RA, reg, 0));
 END loadToken;
 
 PROCEDURE loadAdr(VAR x: Item);
@@ -1739,18 +1741,20 @@ BEGIN (*x.type.form = RVOB.Proc*)
   ELSE
     IF x.mode <= RVOB.Par THEN
       Texts.WriteLn(W); Texts.WriteString(W, "indirect function call at "); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
-      load(x); decR
+      load(x); loadToken(x.r);
+      decR
     ELSE
       (* called when the proc is a field of a record *)
       (* I think this works because, in PrepCall, we load x, then *)
       (* do SaveRegs, pushing x.r on top of the stack. Thus, the address *)
       (* we want is at 0(SP). *)
+      Texts.WriteLn(W); Texts.WriteString(W, "field func call at "); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
       put(RVAssem.lw(RH, SP, 0)); put(RVAssem.addi(SP, SP, IntegerSize));
       DEC(r);
-      DEC(frame, IntegerSize)
+      DEC(frame, IntegerSize);
+      incR; loadToken(RH-1); decR;
     END ;
     IF check THEN Trap(EQ, TrapNilProcedure, RH, 0) END ;
-    put(RVAssem.jalr(RA, RH, 0))
   END ;
 
   (* Store that we return from that call context - debug *)
