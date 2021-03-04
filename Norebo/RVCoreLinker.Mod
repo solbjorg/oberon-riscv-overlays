@@ -2,6 +2,15 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
   IMPORT SYSTEM, Files, Texts, Oberon;
   CONST versionkey = 1X; MT = 12; MTOrg = 20H; DescSize = 92;
     addi = 19; load = 3; store = 35;
+    (* Useful constants for bit manip *)
+    C28 = 10000000H;
+    C24 = 1000000H;
+    C20 = 100000H;
+    C16 = 10000H;
+    C12 = 1000H;
+    C10 = 400H;
+    C8  = 100H;
+    C4  = 10H;
 
   TYPE Module = POINTER TO ModDesc;
     ModuleName* = ARRAY 32 OF CHAR;
@@ -89,10 +98,10 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
       RETURN ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 1) * 80H + 111
     END Jal;
 
-    PROCEDURE Addi(imm: INTEGER) : INTEGER;
+    PROCEDURE Addi(reg, imm: INTEGER) : INTEGER;
     BEGIN
       (*addi x30, x30, imm*)
-      RETURN ((((imm) * 20H + 30) * 8H + 0) * 20H + 30) * 80H + addi
+      RETURN ((((imm) * 20H + reg) * 8H + 0) * 20H + reg) * 80H + addi
     END Addi;
 
     PROCEDURE Lw(imm: INTEGER) : INTEGER;
@@ -284,8 +293,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         WHILE adr # mod.desc.code DO
           inst := buffer[adr DIV 4];
           disp := inst DIV 10000H;
-          inst := Addi(0); (* TODO: make this sensible ... *)
-          buffer[adr DIV 4] := inst; adr := mod.desc.code + disp*4;
+          buffer[adr DIV 4] := Addi(inst MOD 20H, 1); adr := mod.desc.code + disp*4;
         END ;
         (*fixup of type descriptors*)
         adr := mod.desc.data + fixorgT*4;

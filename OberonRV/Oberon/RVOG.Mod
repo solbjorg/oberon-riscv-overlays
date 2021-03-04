@@ -1741,8 +1741,7 @@ BEGIN (*x.type.form = RVOB.Proc*)
   ELSE
     IF x.mode <= RVOB.Par THEN
       Texts.WriteLn(W); Texts.WriteString(W, "indirect function call at "); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
-      load(x); loadToken(x.r);
-      decR
+      load(x);
     ELSE
       (* called when the proc is a field of a record *)
       (* I think this works because, in PrepCall, we load x, then *)
@@ -1752,9 +1751,10 @@ BEGIN (*x.type.form = RVOB.Proc*)
       put(RVAssem.lw(RH, SP, 0)); put(RVAssem.addi(SP, SP, IntegerSize));
       DEC(r);
       DEC(frame, IntegerSize);
-      incR; loadToken(RH-1); decR;
+      incR;
     END ;
     IF check THEN Trap(EQ, TrapNilProcedure, RH, 0) END ;
+    loadToken(RH-1); decR;
   END ;
 
   (* Store that we return from that call context - debug *)
