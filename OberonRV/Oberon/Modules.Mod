@@ -157,14 +157,14 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       mod.procs := p;
       Files.ReadInt(R, n);
       numprocs := n DIV 4;
-      m := n;
-      u := p;
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*procedures*)
       Files.ReadInt(R, n);
       WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
       mod.code := p;  (*program*)
       (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
-      Files.ReadInt(R, n);
+      Files.ReadInt(R, n); (*) Files.Set(R, F, Files.Pos(R) + n); (*skip code*)*)
+      m := n;
+      u := Files.Pos(R);
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
       mod.imp := p;  (*copy imports*)
       i := 0;
@@ -187,9 +187,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       SYSTEM.PUT(p, 0); INC(p, 4);
       Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
       mod.fixorgD := fixorgD; mod.fixorgS := fixorgS;
-      Files.ReadInt(R, w); body := SYSTEM.VAL(Command, mod.code + w);
+      Files.ReadInt(R, w);
       Files.Read(R, ch);
       IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
+      (* Copy entry code after data; this will be overwritten later *)
+      body := SYSTEM.VAL(Command, p);
     END ;
     IF res = 0 THEN
       (*fixup of LDR/STR/ADD*)
@@ -237,13 +239,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           (* TODO: too much indirection! *)
           SYSTEM.GET(impmod.ent + pno*4, pno);
         END;
-        SYSTEM.PUT(-60, mno);
         inst := (inst - LSL(imm MOD C20, 12)) + LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12);
         SYSTEM.PUT(adr-4, inst);
 
         SYSTEM.GET(adr, inst);
         disp := inst DIV 10000H;
-        SYSTEM.PUT(-60, inst MOD 20H);
         SYSTEM.PUT(adr, Addi(inst MOD 20H, 1));
         adr := mod.code + disp*4;
       END ;
@@ -267,6 +267,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     ELSIF res >= 3 THEN importing := name;
       WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END;
     END;
+    i := w;
+    WHILE i < m * 4 DO
+      SYSTEM.GET(mod.code + i, n); SYSTEM.PUT(p, n); INC(p, 4); INC(i, 4);
+      (*SYSTEM.PUT(-60, n);*)
+    END ; (*entry*)
     newmod := mod;
     RETURN body
   END Load;
