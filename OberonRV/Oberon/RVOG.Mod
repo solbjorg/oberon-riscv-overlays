@@ -2271,8 +2271,6 @@ BEGIN
 (*
   Files.WriteInt(R, stubx*4);
   FOR i := 0 TO stubx-1 DO Files.WriteInt(R, stubs[i].word) END ;  (*stubs*) *)
-  Files.WriteInt(R, pc);  (*code len*)
-  FOR i := 0 TO pc-1 DO Files.WriteInt(R, program.code.c[i]); END ;  (*program*)
   obj := RVOB.topScope.next;
   WHILE obj # NIL DO  (*commands*)
     IF (obj.exno # 0) & (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc) &
@@ -2314,6 +2312,8 @@ BEGIN
     obj := obj.next
   END ;
   Files.WriteInt(R, -1);
+  Files.WriteInt(R, pc);  (*code len*)
+  FOR i := 0 TO pc-1 DO Files.WriteInt(R, program.code.c[i]); END ;  (*program*)
   Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, fixorgS); Files.WriteInt(R, entry);
   Files.Write(R, "O"); Files.Register(F);
   program.code := NIL; program.strings := NIL; program.data := NIL;

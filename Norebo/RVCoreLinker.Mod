@@ -1,6 +1,6 @@
 MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Corelinker for RISC-5 *)
   IMPORT SYSTEM, Files, Texts, Oberon;
-  CONST versionkey = 1X; MT = 12; MTOrg = 20H; DescSize = 92;
+  CONST versionkey = 1X; MT = 12; MTOrg = 20H; DescSize = 88;
     addi = 19; load = 3; store = 35;
     (* Useful constants for bit manip *)
     C28 = 10000000H;
@@ -19,7 +19,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
     ImageModDesc = RECORD
         name: ModuleName;
         next: INTEGER;
-        key, num, size, refcnt, fixorgD, fixorgS: INTEGER;
+        key, num, size, refcnt: INTEGER;
         data, procs, stubs, code, imp, cmd, ent, ptr: INTEGER;
       END ;
 
@@ -184,13 +184,6 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         Files.ReadInt(R, n);
         Texts.WriteLn(W); Texts.WriteString(W, "Stub size: "); Texts.WriteInt(W, n, 5); Texts.Append(Oberon.Log, W.buf);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*stubs*) *)
-        mod.desc.code := p * 4;  (*program*)
-        WHILE m > 0 DO
-          buffer[u] := buffer[u] + mod.desc.code; INC(u); DEC(m, 4);
-          Texts.WriteLn(W); Texts.WriteString(W, "Procedure table:"); Texts.WriteHex(W, buffer[u-1]); Texts.Append(Oberon.Log, W.buf);
-        END ;   (*fixup procedures offset*)
-        Files.ReadInt(R, n);
-        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n) END ;  (*program code*)
         mod.desc.imp := p * 4;  (*copy imports*)
         i := 0;
         WHILE i < nofimps DO
@@ -212,9 +205,15 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         Files.ReadInt(R, w);
         WHILE w >= 0 DO buffer[p] := mod.desc.data + w; INC(p); Files.ReadInt(R, w) END ;
         buffer[p] := 0; INC(p);
+        mod.desc.code := p * 4;  (*program*)
+        WHILE m > 0 DO
+          buffer[u] := buffer[u] + mod.desc.code; INC(u); DEC(m, 4);
+          Texts.WriteLn(W); Texts.WriteString(W, "Procedure table:"); Texts.WriteHex(W, buffer[u-1]); Texts.Append(Oberon.Log, W.buf);
+        END ;   (*fixup procedures offset*)
+        Files.ReadInt(R, n);
+        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n) END ;  (*program code*)
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT);
         Files.ReadInt(R, fixorgS);
-        mod.desc.fixorgD := fixorgD; mod.desc.fixorgS := fixorgS;
         Texts.Append(Oberon.Log, W.buf);
         Files.ReadInt(R, w); body := mod.desc.code + w;
         Files.Read(R, ch);

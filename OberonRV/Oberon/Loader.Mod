@@ -59,7 +59,7 @@ MODULE Loader;
             Load(impname, impmod); import[nofimps] := impmod; importing := name1;
             IF res = 0 THEN
               IF impmod.key = impkey THEN INC(impmod.refcnt); INC(nofimps)
-              ELSE error(3, name1); (* error here :(  *)
+              ELSE error(3, name1);
               END
             END;
             Files.ReadString(R, impname)
@@ -72,7 +72,9 @@ MODULE Loader;
         entry := Modules.Load(name, mod, numprocs, nofimps, size, import, R);
         Overlays.GenerateOverlay(mod, numprocs);
         mod.key := key;
+        SYSTEM.PUT(-60, 0FE3H);
         entry;
+        SYSTEM.PUT(-60, 03EFH);
       ELSE SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE;
       END;
     END;

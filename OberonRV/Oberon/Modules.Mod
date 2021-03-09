@@ -1,6 +1,6 @@
 MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   IMPORT SYSTEM, Files;
-  CONST versionkey = 1X; MT = 4; DescSize = 92;
+  CONST versionkey = 1X; MT = 4; DescSize = 84;
     addi = 19; load = 3; store = 35;
     SB = 3;
     MTOrg* = 20H;
@@ -21,7 +21,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     ModDesc* = RECORD
         name*: ModuleName;
         next*: Module;
-        key*, num*, size*, refcnt*, fixorgD*, fixorgS*: INTEGER;
+        key*, num*, size*, refcnt*: INTEGER;
         data*, procs*, stubs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
       END ;
 
@@ -37,6 +37,19 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END;
   END error;
 
+  (* create a file to hold the fixed-up version of a module *)
+  (* TODO: verify that this works if the file already exists! *)
+  PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
+    VAR i: INTEGER;
+      filename: ModuleName;
+  BEGIN
+    i := 0;
+    WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
+    filename[i] := "."; filename[i+1] := "f"; filename[i+2] := "i"; filename[i+3] := "x"; filename[i+4] := 0X;
+    RETURN Files.New(filename)
+  END ThisFile;
+
+  (*
   PROCEDURE LoadFile(VAR R: Files.Rider; VAR mod: Module; VAR p: INTEGER; VAR numprocs: INTEGER; nofimps: INTEGER; import: ARRAY OF Module);
     VAR i, n, m, u, w: INTEGER; ch: CHAR;
   BEGIN
@@ -59,10 +72,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     mod.stubs := p;
     Files.ReadInt(R, n);
     WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*stubs*) *)
-    mod.code := p;  (*program*)
-    (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
-    Files.ReadInt(R, n);
-    WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
     mod.imp := p;  (*copy imports*)
     i := 0;
     WHILE i < nofimps DO
@@ -82,8 +91,12 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     Files.ReadInt(R, w);
     WHILE w >= 0 DO SYSTEM.PUT(p, mod.data + w); INC(p, 4); Files.ReadInt(R, w) END ;
     SYSTEM.PUT(p, 0); INC(p, 4);
+    mod.code := p;  (*program*)
+    (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
+    Files.ReadInt(R, n);
+    WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
   END LoadFile;
-
+ *)
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Module; VAR numprocs, nofimps, size: INTEGER; VAR import: ARRAY OF Module; VAR R: Files.Rider): Command;
     (*search module in list; if not found, load module.
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
@@ -137,7 +150,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       IF mod = NIL THEN (*no large enough hole was found*)
         IF AllocPtr + size < limit THEN (*allocate*)
           p := AllocPtr; mod := SYSTEM.VAL(Module, p);
-          AllocPtr := (p + size + 100H) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
+          AllocPtr := (p + size) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
           mod.next := root; root := mod
         ELSE error(7, name)
         END
@@ -145,6 +158,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END
     END ;
     IF res = 0 THEN (*read file*)
+      error(0, name);
       mod.name := name; mod.refcnt := 0;
       numprocs := 0;
       INC(p, DescSize); (*allocate descriptor*)
@@ -160,12 +174,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*procedures*)
       Files.ReadInt(R, n);
       WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
-      mod.code := p;  (*program*)
-      (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
-      Files.ReadInt(R, n); (*) Files.Set(R, F, Files.Pos(R) + n); (*skip code*)*)
-      m := n;
-      u := Files.Pos(R);
-      WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
       mod.imp := p;  (*copy imports*)
       i := 0;
       WHILE i < nofimps DO
@@ -185,13 +193,18 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       Files.ReadInt(R, w);
       WHILE w >= 0 DO SYSTEM.PUT(p, mod.data + w); INC(p, 4); Files.ReadInt(R, w) END ;
       SYSTEM.PUT(p, 0); INC(p, 4);
+      mod.code := p;  (*program*)
+      (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
+      Files.ReadInt(R, n); (*) Files.Set(R, F, Files.Pos(R) + n); (*skip code*)*)
+      SYSTEM.PUT(-60, n);
+      WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
       Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
-      mod.fixorgD := fixorgD; mod.fixorgS := fixorgS;
       Files.ReadInt(R, w);
+      body := SYSTEM.VAL(Command, mod.code + w);
       Files.Read(R, ch);
       IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
-      (* Copy entry code after data; this will be overwritten later *)
-      body := SYSTEM.VAL(Command, p);
+      (* set alloc ptr such that the next loaded module will overwrite this one *)
+      AllocPtr := mod.code;
     END ;
     IF res = 0 THEN
       (*fixup of LDR/STR/ADD*)
@@ -267,12 +280,14 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     ELSIF res >= 3 THEN importing := name;
       WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END;
     END;
+    (*
     i := w;
     WHILE i < m * 4 DO
       SYSTEM.GET(mod.code + i, n); SYSTEM.PUT(p, n); INC(p, 4); INC(i, 4);
       (*SYSTEM.PUT(-60, n);*)
-    END ; (*entry*)
+    END ; (*entry*) *)
     newmod := mod;
+    SYSTEM.PUT(-60, 0DA0FH);
     RETURN body
   END Load;
 

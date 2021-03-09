@@ -164,12 +164,6 @@ MODULE RVOTool;
         Files.ReadInt(R, n); i := 0;
         WHILE i < n DO Files.Read(R, ch); Texts.Write(W, ch); INC(i) END ;
         Texts.WriteLn(W);
-        Texts.WriteString(W, "code"); Texts.WriteLn(W);
-        Files.ReadInt(R, n); i := 0;
-        WHILE i < n DO
-          Files.ReadInt(R, data); Texts.WriteInt(W, i, 4); Texts.Write(W, 9X); Texts.WriteHex(W, data);
-          Texts.Write(W, 9X); (* opcode(data); *)  RVDis.WriteOpcode(W, data); Texts.WriteLn(W); INC(i)
-        END ;
       (* Sync(R); *)
         Texts.WriteString(W, "commands:"); Texts.WriteLn(W);
         Files.ReadString(R, name);
@@ -190,9 +184,16 @@ MODULE RVOTool;
         WHILE adr # -1 DO Texts.WriteInt(W, adr, 6); Files.ReadInt(R, adr) END ;
         Texts.WriteLn(W);
       (* Sync(R); *)
+        Texts.WriteString(W, "code"); Texts.WriteLn(W);
+        Files.ReadInt(R, n); i := 0;
+        WHILE i < n DO
+          Files.ReadInt(R, data); Texts.WriteInt(W, i, 4); Texts.Write(W, 9X); Texts.WriteHex(W, data);
+          Texts.Write(W, 9X); (* opcode(data); *)  RVDis.WriteOpcode(W, data); Texts.WriteLn(W); INC(i)
+        END ;
         Files.ReadInt(R, data); Texts.WriteString(W, "fixP = "); Texts.WriteInt(W, data, 8); Texts.WriteLn(W);
         Files.ReadInt(R, data); Texts.WriteString(W, "fixD = "); Texts.WriteInt(W, data, 8); Texts.WriteLn(W);
         Files.ReadInt(R, data); Texts.WriteString(W, "fixT = "); Texts.WriteInt(W, data, 8); Texts.WriteLn(W);
+        Files.ReadInt(R, data); Texts.WriteString(W, "fixS = "); Texts.WriteInt(W, data, 8); Texts.WriteLn(W);
         Files.ReadInt(R, data); Texts.WriteString(W, "entry = "); Texts.WriteInt(W, data, 8); Texts.WriteLn(W);
         Files.Read(R, ch);
         IF ch # "O" THEN Texts.WriteString(W, "format eror"); Texts.WriteLn(W) END
@@ -203,6 +204,6 @@ MODULE RVOTool;
     END
   END DecObj;
 
-BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "RVOTool 18.2.2013");
+BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "RVOTool 09.03.2021");
   Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
 END RVOTool.

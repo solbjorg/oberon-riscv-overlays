@@ -54,7 +54,6 @@ MODULE Overlays;
     RETURN Files.Old(filename)
   END ThisFile;
 
-  (* TODO, we need to fixup SB references every time we load an overlay ... *)
   PROCEDURE OverlayManager(a,b,c,d,e,f,g,h: INTEGER): INTEGER;
     VAR i, mno, pno, addr, oldmapped, oldIndex: INTEGER;
       ov, old: Overlay;
@@ -70,7 +69,6 @@ MODULE Overlays;
       SYSTEM.PUT(-60, 0F0000FH);
       SYSTEM.PUT(-60, pno);
       SYSTEM.PUT(-60, ov.proc.mod.key);
-      SYSTEM.PUT(-60, ov.size);
       IF F # NIL THEN
         i := ov.proc.mod.key;
         ov.mapped := regions[0]; IF old # NIL THEN old.mapped := 0; END;
@@ -133,6 +131,7 @@ MODULE Overlays;
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
       body := LoadOverlay(ov, old, mno, pno);
+      SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, body));
       i := body(a,b,c,d,e,f,g,h);
       IF (old # NIL) & (oldmapped = ov.mapped) THEN
         body := LoadOverlay(old, ov, -1, -1);
@@ -142,6 +141,8 @@ MODULE Overlays;
       (* this shouldn't happen in the current system *)
       SYSTEM.PUT(-60, 0DADA1H);
     END;
+    SYSTEM.PUT(-60, 0BADBADH);
+    SYSTEM.PUT(-60, i);
     RETURN i
   END OverlayManager;
 
@@ -192,7 +193,10 @@ MODULE Overlays;
     (* TODO generate stubs here ? *)
     (*Copy code into "mod.ovl"*)
     i := mod.code;
-    WHILE i < mod.imp DO SYSTEM.GET(i, u); Files.WriteInt(R, u); INC(i, 4) END;
+    SYSTEM.PUT(-60, 0FH);
+    SYSTEM.PUT(-60, i);
+    SYSTEM.PUT(-60, mod.data + mod.size );
+    WHILE i < mod.data + mod.size DO SYSTEM.GET(i, u); Files.WriteInt(R, u); INC(i, 4) END;
     Files.Register(F);
     (* initialise overlay object, add it to overlay table *)
     ov.filename := filename;
