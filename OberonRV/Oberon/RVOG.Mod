@@ -1753,7 +1753,7 @@ BEGIN (*x.type.form = RVOB.Proc*)
       DEC(frame, IntegerSize);
       incR;
     END ;
-    IF check THEN Trap(EQ, TrapNilProcedure, RH, 0) END ;
+    IF check THEN Trap(EQ, TrapNilProcedure, RH-1, 0) END ;
     loadToken(RH-1); decR;
   END ;
 
@@ -2140,7 +2140,7 @@ END Init;
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
   VAR success: BOOLEAN;
 BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; stubx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; fixorgS := 0; check := v # 0; version := v;
-  stacktrace := TRUE;
+  stacktrace := FALSE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
 END Open;
