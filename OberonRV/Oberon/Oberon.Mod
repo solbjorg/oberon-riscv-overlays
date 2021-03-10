@@ -400,6 +400,12 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 
+  PROCEDURE Init;
+  BEGIN
+    Loader.Load("System", Mod);
+    Mod := NIL; Loop
+  END Init;
+
 BEGIN
   SYSTEM.PUT(-60, 0AEAEH);
   User[0] := 0X;
@@ -416,6 +422,5 @@ BEGIN
 
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
   SYSTEM.PUT(-60, 0ADADH);
-  Loader.Load("System", Mod);
-  Mod := NIL; Loop
+  Init;
 END Oberon.
