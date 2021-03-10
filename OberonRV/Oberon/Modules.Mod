@@ -1,6 +1,6 @@
 MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   IMPORT SYSTEM, Files;
-  CONST versionkey = 1X; MT = 4; DescSize = 84;
+  CONST versionkey = 1X; MT = 4; DescSize = 88;
     addi = 19; load = 3; store = 35;
     SB = 3;
     MTOrg* = 20H;
@@ -15,15 +15,30 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     C4  = 10H;
 
   TYPE Module* = POINTER TO ModDesc;
+    Node* = POINTER TO NodeDesc;
+    Edge* = POINTER TO EdgeDesc; (*outgoing calls*)
     Command* = PROCEDURE;
     ModuleName* = ARRAY 32 OF CHAR;
 
     ModDesc* = RECORD
-        name*: ModuleName;
-        next*: Module;
-        key*, num*, size*, refcnt*: INTEGER;
-        data*, procs*, stubs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
-      END ;
+      name*: ModuleName;
+      next*: Module;
+      rootNode*: Node;
+      key*, num*, size*, refcnt*: INTEGER;
+      data*, procs*, stubs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
+    END ;
+
+    NodeDesc* = RECORD
+      prev*, next*: Node;
+      dsc*: Edge;
+      mno*, pno*: BYTE;
+    END;
+
+    EdgeDesc* = RECORD
+      next*: Edge;
+      node*: Node;
+      weight*: INTEGER; (* TODO: Make this a Byte? *)
+    END;
 
   VAR root*, M: Module;
     AllocPtr*, res*: INTEGER;
@@ -49,54 +64,22 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     RETURN Files.New(filename)
   END ThisFile;
 
-  (*
-  PROCEDURE LoadFile(VAR R: Files.Rider; VAR mod: Module; VAR p: INTEGER; VAR numprocs: INTEGER; nofimps: INTEGER; import: ARRAY OF Module);
-    VAR i, n, m, u, w: INTEGER; ch: CHAR;
+  (* Linearly search through procs (assumed sorted) to find the index of *)
+  (* the proc that PC is currently at. *)
+  (* procs is an address *)
+  PROCEDURE FindIndex(pc, procs, numprocs: INTEGER): INTEGER;
+    VAR i, p: INTEGER; found: BOOLEAN;
   BEGIN
-    INC(p, DescSize); (*allocate descriptor*)
-    mod.data := p;  (*data*)
-    SYSTEM.PUT(MTOrg + mod.num * 4, p);  (*module table entry*)
-    Files.ReadInt(R, n);
-    WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;  (*type descriptors*)
-    Files.ReadInt(R, n);
-    WHILE n > 0 DO SYSTEM.PUT(p, 0); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
-    mod.procs := p;
-    Files.ReadInt(R, n);
-    numprocs := n DIV 4;
-    m := n;
-    u := p;
-    WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*procedures*)
-    Files.ReadInt(R, n);
-    WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
-    (*
-    mod.stubs := p;
-    Files.ReadInt(R, n);
-    WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*stubs*) *)
-    mod.imp := p;  (*copy imports*)
     i := 0;
-    WHILE i < nofimps DO
-        SYSTEM.PUT(p, import[i]); INC(p, 4); INC(i)
-    END ;
-    mod.cmd := p;  (*commands*) Files.Read(R, ch);
-    WHILE ch # 0X DO
-        REPEAT SYSTEM.PUT(p, ch); INC(p); Files.Read(R, ch) UNTIL ch = 0X;
-        REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
-        Files.ReadInt(R, n); SYSTEM.PUT(p, n); INC(p, 4); Files.Read(R, ch)
-    END ;
-    REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
-    mod.ent := p;  (*entries*)
-    Files.ReadInt(R, n);
-    WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;
-    mod.ptr := p;  (*pointer references*)
-    Files.ReadInt(R, w);
-    WHILE w >= 0 DO SYSTEM.PUT(p, mod.data + w); INC(p, 4); Files.ReadInt(R, w) END ;
-    SYSTEM.PUT(p, 0); INC(p, 4);
-    mod.code := p;  (*program*)
-    (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
-    Files.ReadInt(R, n);
-    WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
-  END LoadFile;
- *)
+    WHILE (~found) & (i < numprocs) DO
+      SYSTEM.GET(procs + i * 4, p);
+      IF pc > p THEN
+        found := TRUE;
+      END
+    END;
+    RETURN p
+  END FindIndex;
+
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Module; VAR numprocs, nofimps, size: INTEGER; VAR import: ARRAY OF Module; VAR R: Files.Rider): Command;
     (*search module in list; if not found, load module.
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
@@ -108,8 +91,10 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       ch: CHAR;
       body: Command;
       fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
-      op, imm, disp, adr, inst, pno, vno, dest, offset: INTEGER;
+      op, imm, disp, adr, inst, pno, vno, dest, offset, index: INTEGER;
       impname: ModuleName;
+      rootNode, tempNode: Node;
+      outgoing, tempOut: Edge;
 
      (* Returns a `jal ra, imm` instruction. *)
     PROCEDURE Jal(imm: INTEGER) : INTEGER;
@@ -171,7 +156,13 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       mod.procs := p;
       Files.ReadInt(R, n);
       numprocs := n DIV 4;
-      WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;   (*procedures*)
+      WHILE n > 0 DO
+        Files.ReadInt(R, w); SYSTEM.PUT(p, w);
+        NEW(tempNode); tempNode.mno := mod.num; tempNode.pno := numprocs - n DIV 4;
+        tempNode.next := rootNode; rootNode.prev := tempNode; rootNode := tempNode;
+        INC(p, 4); DEC(n, 4)
+      END ;   (*procedures*)
+      mod.rootNode := rootNode;
       Files.ReadInt(R, n);
       WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
       mod.imp := p;  (*copy imports*)
@@ -241,6 +232,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END ;
       adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)
       WHILE adr # mod.code DO
+        (* fixup LUI *)
         SYSTEM.GET(adr-4, inst);
         imm := inst DIV C12;
         mno := imm MOD C12;
@@ -256,6 +248,29 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         SYSTEM.PUT(adr-4, inst);
 
         SYSTEM.GET(adr, inst);
+
+        (* fill in call graph *)
+        (* can easily be made more effective with caching etc *)
+        index := inst DIV C8 MOD C16;
+        tempNode := rootNode;
+        outgoing := tempNode.dsc;
+        IF mno = mod.num THEN
+          tempNode := rootNode;
+        ELSE
+          tempNode := impmod.rootNode;
+        END;
+        WHILE (tempNode # NIL) & (tempNode.pno # pno) DO tempNode := tempNode.next END;
+        IF outgoing # NIL THEN
+          WHILE (outgoing.next # NIL) & (outgoing.node # tempNode) DO outgoing := outgoing.next END;
+        ELSE
+          NEW(outgoing); rootNode.dsc := outgoing;
+        END;
+
+        IF outgoing.node = tempNode THEN
+          INC(outgoing.weight);
+        ELSIF outgoing.next = NIL THEN
+          NEW(tempOut); outgoing.next := tempOut; tempOut.node := tempNode; tempOut.weight := 1;
+        END;
         disp := inst DIV 10000H;
         SYSTEM.PUT(adr, Addi(inst MOD 20H, 1));
         adr := mod.code + disp*4;
