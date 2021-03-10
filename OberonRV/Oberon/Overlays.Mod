@@ -16,7 +16,7 @@ MODULE Overlays;
     C4  = 10H;
 
   TYPE
-    Func = PROCEDURE(a,b,c,d,e,f,g,h: INTEGER): INTEGER;
+    Func = PROCEDURE(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
     Procedure* = POINTER TO ProcedureDesc;
     Overlay* = POINTER TO OverlayDesc;
     FileName = ARRAY 20 OF CHAR;
@@ -54,8 +54,8 @@ MODULE Overlays;
     RETURN Files.Old(filename)
   END ThisFile;
 
-  PROCEDURE OverlayManager(a,b,c,d,e,f,g,h: INTEGER): INTEGER;
-    VAR i, mno, pno, addr, oldmapped, oldIndex: INTEGER;
+  PROCEDURE OverlayManager(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
+    VAR k, mno, pno, addr, oldmapped, oldIndex: INTEGER;
       ov, old: Overlay;
       proc: Procedure; body: Func;
 
@@ -110,29 +110,29 @@ MODULE Overlays;
     SYSTEM.PUT(-60, 0AABBCCDDH);
     mno := SYSTEM.REG(30) DIV C12 MOD C12;
     pno := SYSTEM.REG(30) DIV C24 MOD C8;
-    i := 0;
+    k := 0;
     (* TODO we will later store /the actual overlay index/ in the address token *)
     (* this is just a stopgap so we can test small parts at a time*)
     (* this is currently ~guaranteed(!) to find a hit, hence the lack of safety *)
     (* TODO: MAKE THIS SAFE *)
     SYSTEM.PUT(-60, SYSTEM.REG(30));
-    WHILE overlays[i].proc.mod.num # mno DO INC(i) END;
-    ov := overlays[i];
+    WHILE overlays[k].proc.mod.num # mno DO INC(k) END;
+    ov := overlays[k];
     pno := (ov.proc.mod.procs - ov.proc.mod.data) + pno * 4;
     IF ov.mapped = 0 THEN
-      IF (mappedIndex >= 0) & (mappedIndex # i) THEN
+      IF (mappedIndex >= 0) & (mappedIndex # k) THEN
         old := overlays[mappedIndex];
         oldmapped := old.mapped;
       ELSE old := NIL; oldmapped := -1024;
       END;
       oldIndex := mappedIndex;
-      mappedIndex := i;
+      mappedIndex := k;
       (*
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
       body := LoadOverlay(ov, old, mno, pno);
       SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, body));
-      i := body(a,b,c,d,e,f,g,h);
+      k := body(a,b,c,d,e,f,g,h,i,j,l,m);
       IF (old # NIL) & (oldmapped = ov.mapped) THEN
         body := LoadOverlay(old, ov, -1, -1);
         mappedIndex := oldIndex;
@@ -142,8 +142,8 @@ MODULE Overlays;
       SYSTEM.PUT(-60, 0DADA1H);
     END;
     SYSTEM.PUT(-60, 0BADBADH);
-    SYSTEM.PUT(-60, i);
-    RETURN i
+    SYSTEM.PUT(-60, k);
+    RETURN k
   END OverlayManager;
 
   (* generate overlay for given module already in memory*)
