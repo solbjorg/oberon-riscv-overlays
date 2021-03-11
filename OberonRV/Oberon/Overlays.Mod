@@ -59,16 +59,14 @@ MODULE Overlays;
       ov, old: Overlay;
       proc: Procedure; body: Func;
 
-    PROCEDURE LoadOverlay(ov, old: Overlay; mno, pno: INTEGER): Func;
-    VAR F: Files.File; R: Files.Rider; found: BOOLEAN;
-      i, u, addr: INTEGER;
-      proc: Procedure; body: Func;
+    PROCEDURE LoadOverlay(ov, old: Overlay);
+    VAR F: Files.File; R: Files.Rider; 
+      i, addr, u: INTEGER;
+      proc: Procedure;
 
     BEGIN
       F := Files.Old(ov.filename);
       SYSTEM.PUT(-60, 0F0000FH);
-      SYSTEM.PUT(-60, pno);
-      SYSTEM.PUT(-60, ov.proc.mod.key);
       IF F # NIL THEN
         i := ov.proc.mod.key;
         ov.mapped := regions[0]; IF old # NIL THEN old.mapped := 0; END;
@@ -88,22 +86,13 @@ MODULE Overlays;
         END;
         proc := ov.proc;
         (* Fill in correct addresses to TOC *)
-        found := FALSE; (* these are temporarily here, just to make dev work easier *)
         WHILE proc # NIL DO
           addr := proc.mod.data + proc.index;
           SYSTEM.PUT(addr, proc.addr + ov.mapped);
-          IF proc.index = pno THEN
-            u := proc.addr + ov.mapped;
-            body := SYSTEM.VAL(Func, u);
-            found := TRUE;
-          END;
-
           proc := proc.next;
         END;
       ELSE SYSTEM.PUT(-60, 0FAFAFAH);
-      END;
-      ASSERT((pno < 0) OR (found));
-      RETURN body
+      END
     END LoadOverlay;
 
   BEGIN
@@ -112,7 +101,7 @@ MODULE Overlays;
     pno := SYSTEM.REG(30) DIV C24 MOD C8;
     k := 0;
     (* TODO we will later store /the actual overlay index/ in the address token *)
-    (* this is just a stopgap so we can test small parts at a time*)
+    (* this is just a stopgap so we can test small parts at a time *)
     (* this is currently ~guaranteed(!) to find a hit, hence the lack of safety *)
     (* TODO: MAKE THIS SAFE *)
     SYSTEM.PUT(-60, SYSTEM.REG(30));
@@ -130,19 +119,39 @@ MODULE Overlays;
       (*
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
-      body := LoadOverlay(ov, old, mno, pno);
-      SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, body));
-      k := body(a,b,c,d,e,f,g,h,i,j,l,m);
+      ASSERT(pno >= 0);
+      LoadOverlay(ov, old);
+
+      (* call function in loaded overlay *)
+      proc := ov.proc;
+      body := NIL;
+      WHILE body = NIL DO
+        IF proc.index = pno THEN
+          body := SYSTEM.VAL(Func, proc.addr + ov.mapped);
+          ASSERT(SYSTEM.VAL(INTEGER, body) >= regions[0]);
+          SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, body));
+          k := body(a,b,c,d,e,f,g,h,i,j,l,m);
+        END;
+        proc := proc.next;
+      END;
+
       IF (old # NIL) & (oldmapped = ov.mapped) THEN
-        body := LoadOverlay(old, ov, -1, -1);
+        LoadOverlay(old, ov);
         mappedIndex := oldIndex;
       END;
     ELSE
-      (* this shouldn't happen in the current system *)
-      SYSTEM.PUT(-60, 0DADA1H);
+      (* probably indirect function call within same module *)
+      proc := ov.proc;
+      body := NIL;
+      WHILE body = NIL DO
+        IF proc.index = pno THEN
+          body := SYSTEM.VAL(Func, proc.addr + ov.mapped);
+          ASSERT(SYSTEM.VAL(INTEGER, body) >= regions[0]);
+          k := body(a,b,c,d,e,f,g,h,i,j,l,m);
+        END;
+        proc := proc.next;
+      END;
     END;
-    SYSTEM.PUT(-60, 0BADBADH);
-    SYSTEM.PUT(-60, k);
     RETURN k
   END OverlayManager;
 
