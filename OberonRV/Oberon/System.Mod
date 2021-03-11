@@ -1,9 +1,9 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
-  IMPORT SYSTEM, Kernel, FileDir, Files, Modules, Loader, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
+  IMPORT SYSTEM, Kernel, FileDir, Files, Linker, Loader, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
   CONST
-    StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store";
-    LogMenu = "Edit.Locate Edit.Search System.Copy System.Grow System.Clear";
+    StandardMenu = "";
+    LogMenu = "";
     RA = 1;
 
   VAR W: Texts.Writer;
@@ -142,8 +142,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   PROCEDURE Free1(VAR S: Texts.Scanner);
   BEGIN Texts.WriteString(W, S.s); Texts.WriteString(W, " unloading");
-    Modules.Free(S.s);
-    IF Modules.res # 0 THEN Texts.WriteString(W, " failed") END;
+    Linker.Free(S.s);
+    IF Linker.res # 0 THEN Texts.WriteString(W, " failed") END;
     EndLine
   END Free1;
 
@@ -296,8 +296,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   PROCEDURE Watch*;
   BEGIN Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
-    Texts.WriteString(W, "  Modules space (bytes)"); Texts.WriteInt(W, Modules.AllocPtr, 8);
-    Texts.WriteInt(W, Modules.AllocPtr * 100 DIV Kernel.heapOrg, 4); Texts.Write(W, "%"); EndLine;
+    Texts.WriteString(W, "  Linker space (bytes)"); Texts.WriteInt(W, Linker.AllocPtr, 8);
+    Texts.WriteInt(W, Linker.AllocPtr * 100 DIV Kernel.heapOrg, 4); Texts.Write(W, "%"); EndLine;
     Texts.WriteString(W, "  Heap speace"); Texts.WriteInt(W, Kernel.allocated, 8);
     Texts.WriteInt(W, Kernel.allocated * 100 DIV (Kernel.heapLim - Kernel.heapOrg), 4); Texts.Write(W, "%"); EndLine;
     Texts.WriteString(W, "  Disk sectors "); Texts.WriteInt(W, Kernel.NofSectors, 4);
@@ -305,16 +305,16 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     Texts.WriteString(W, "  Tasks"); Texts.WriteInt(W, Oberon.NofTasks, 4); EndLine
   END Watch;
 
-  PROCEDURE ShowModules*;
+  PROCEDURE ShowLinker*;
     VAR T: Texts.Text;
       V: Viewers.Viewer;
-      M: Modules.Module;
+      M: Linker.Module;
       X, Y: INTEGER;
   BEGIN T := TextFrames.Text("");
     Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y);
-    V := MenuViewers.New(TextFrames.NewMenu("System.ShowModules", StandardMenu),
+    V := MenuViewers.New(TextFrames.NewMenu("System.ShowLinker", StandardMenu),
         TextFrames.NewText(T, 0), TextFrames.menuH, X, Y);
-    M := Modules.root;
+    M := Linker.root;
     WHILE M # NIL DO
       IF M.name[0] # 0X THEN
         Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));
@@ -324,10 +324,10 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
       Texts.WriteLn(W); M := M.next
     END;
     Texts.Append(T, W.buf)
-  END ShowModules;
+  END ShowLinker;
 
   PROCEDURE ShowCommands*;
-    VAR M: Modules.Module;
+    VAR M: Linker.Module;
       comadr: LONGINT; ch: CHAR;
       T: Texts.Text;
       S: Texts.Scanner;
@@ -394,13 +394,13 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   END ExtendDisplay;
 
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
-    VAR u, v, w: INTEGER; mod: Modules.Module;
+    VAR u, v, w: INTEGER; mod: Linker.Module;
   BEGIN u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
     IF w = 0 THEN Kernel.New(a, b)
     ELSE (*trap*)
       SYSTEM.PUT(-32, 0BB000000H); (* emu debug; prints stack trace *)
       Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteHex(W, v MOD 1000000H);
-      Texts.WriteString(W, "  TRAP"); Texts.WriteInt(W, w, 4); mod := Modules.root;
+      Texts.WriteString(W, "  TRAP"); Texts.WriteInt(W, w, 4); mod := Linker.root;
       WHILE (mod # NIL) & ((u < mod.code) OR (u >= mod.imp)) DO mod := mod.next END ;
       IF mod # NIL THEN Texts.WriteString(W, " in "); Texts.WriteString(W, mod.name) END ;
       Texts.WriteString(W, " at"); Texts.WriteHex(W, u);

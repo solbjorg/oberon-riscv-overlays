@@ -1,4 +1,4 @@
-MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
+MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   IMPORT SYSTEM, Files;
   CONST versionkey = 1X; MT = 4; DescSize = 88;
     addi = 19; load = 3; store = 35;
@@ -376,4 +376,4 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 0D000H);
   END Init;
 
-END Modules.
+END Linker.

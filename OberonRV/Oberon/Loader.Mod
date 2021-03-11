@@ -1,9 +1,9 @@
 MODULE Loader;
-  IMPORT SYSTEM, Files, Modules, Overlays;
+  IMPORT SYSTEM, Files, Linker, Overlays;
   CONST versionkey = 1X;
 
-  VAR M: Modules.Module;
-    importing: Modules.ModuleName;
+  VAR M: Linker.Module;
+    importing: Linker.ModuleName;
     res: INTEGER;
 
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
@@ -15,7 +15,7 @@ MODULE Loader;
 
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
     VAR i: INTEGER;
-      filename: Modules.ModuleName;
+      filename: Linker.ModuleName;
   BEGIN
     i := 0;
     WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
@@ -34,16 +34,16 @@ MODULE Loader;
     END
   END Check;
 
-  PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Modules.Module);
-    VAR ov: Overlays.Overlay; entry: Modules.Command;
+  PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Linker.Module);
+    VAR ov: Overlays.Overlay; entry: Linker.Command;
         numprocs, impkey, nofimps, key, size: INTEGER;
-        name1, impname: Modules.ModuleName;
-        mod, impmod: Modules.Module;
+        name1, impname: Linker.ModuleName;
+        mod, impmod: Linker.Module;
         F: Files.File; R: Files.Rider;
         ch: CHAR;
-        import: ARRAY 16 OF Modules.Module;
+        import: ARRAY 16 OF Linker.Module;
   BEGIN
-    mod := Modules.root; error(0, name); nofimps := 0;
+    mod := Linker.root; error(0, name); nofimps := 0;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
     IF mod = NIL THEN
       SYSTEM.PUT(-60, 0ABCDEFH);
@@ -69,7 +69,7 @@ MODULE Loader;
       ELSE error(1, name)
       END;
       IF res = 0 THEN
-        entry := Modules.Load(name, mod, numprocs, nofimps, size, import, R);
+        entry := Linker.Load(name, mod, numprocs, nofimps, size, import, R);
         Overlays.GenerateOverlay(mod, numprocs);
         mod.key := key;
         SYSTEM.PUT(-60, 0FE3H);

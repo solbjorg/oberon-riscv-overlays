@@ -1,5 +1,5 @@
 MODULE Overlays;
-  IMPORT SYSTEM, FileDir, Files, Modules;
+  IMPORT SYSTEM, FileDir, Files, Linker;
   CONST numRegions = 1;
     numOverlays = 100;
     regionSize = 1000H;
@@ -23,7 +23,7 @@ MODULE Overlays;
 
     ProcedureDesc* = RECORD
       addr*: INTEGER; (* relative address within overlay; i.e. proc address assuming overlay starts at address 0 *)
-      mod*: Modules.Module; (* module this proc belongs to *)
+      mod*: Linker.Module; (* module this proc belongs to *)
       index*: INTEGER; (* toc index of proc for module *)
       next*: Procedure;
     END;
@@ -42,7 +42,7 @@ MODULE Overlays;
 
   PROCEDURE ThisFile(proc: Procedure): Files.File;
     VAR i: INTEGER;
-      mod: Modules.Module;
+      mod: Linker.Module;
       filename: FileDir.FileName;
   BEGIN
     i := 0;
@@ -156,9 +156,9 @@ MODULE Overlays;
   END OverlayManager;
 
   (* generate overlay for given module already in memory*)
-  PROCEDURE GenerateOverlay*(mod: Modules.Module; numproc: INTEGER);
+  PROCEDURE GenerateOverlay*(mod: Linker.Module; numproc: INTEGER);
     VAR i, u, tocoffset, adr, inst, mno, disp, op: INTEGER;
-      root, proc: Procedure; impmod: Modules.Module;
+      root, proc: Procedure; impmod: Linker.Module;
       F: Files.File; R: Files.Rider;
       filename: FileName;
       ov: Overlay;
@@ -235,8 +235,8 @@ MODULE Overlays;
   PROCEDURE Init*;
     VAR i: INTEGER;
   BEGIN
-    Modules.Init;
-    regions[0] := Modules.limit;
+    Linker.Init;
+    regions[0] := Linker.limit;
     mappedIndex := -1;
     stackLoc := 0;
     (* load location of the overlay manager *)

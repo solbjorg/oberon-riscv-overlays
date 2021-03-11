@@ -1,5 +1,5 @@
 MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
-  IMPORT SYSTEM, Kernel, Files, Modules, Loader, Input, Display, Viewers, Fonts, Texts;
+  IMPORT SYSTEM, Kernel, Files, Linker, Loader, Input, Display, Viewers, Fonts, Texts;
 
   CONST (*message ids*)
     consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
@@ -68,7 +68,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     CurTask: Task;
     DW, DH, CL: INTEGER;
     ActCnt: INTEGER; (*action count for GC*)
-    Mod: Modules.Module;
+    Mod: Linker.Module;
 
   (*user identification*)
 
@@ -281,20 +281,20 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END SetPar;
 
   PROCEDURE Call* (name: ARRAY OF CHAR; VAR res: INTEGER);
-    VAR mod: Modules.Module; P: Modules.Command;
+    VAR mod: Linker.Module; P: Linker.Command;
       i, j: INTEGER; ch: CHAR;
       Mname, Cname: ARRAY 32 OF CHAR;
   BEGIN i := 0; ch := name[0];
     WHILE (ch # ".") & (ch # 0X) DO Mname[i] := ch; INC(i); ch := name[i] END ;
     IF ch = "." THEN
       Mname[i] := 0X; INC(i);
-      Loader.Load(Mname, mod); res := Modules.res;
-      IF Modules.res = 0 THEN
+      Loader.Load(Mname, mod); res := Linker.res;
+      IF Linker.res = 0 THEN
         j := 0; ch := name[i]; INC(i);
         WHILE ch # 0X DO Cname[j] := ch; INC(j); ch := name[i]; INC(i) END ;
         Cname[j] := 0X;
-        P := Modules.ThisCommand(mod, Cname); res := Modules.res;
-        IF Modules.res = 0 THEN P END
+        P := Linker.ThisCommand(mod, Cname); res := Linker.res;
+        IF Linker.res = 0 THEN P END
       END
     ELSE res := 5
     END
@@ -308,10 +308,10 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END GetSelection;
 
   PROCEDURE GC;
-    VAR mod: Modules.Module;
+    VAR mod: Linker.Module;
   BEGIN
     IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
-      mod := Modules.root; SYSTEM.PUT(-60, 21H);
+      mod := Linker.root; SYSTEM.PUT(-60, 21H);
       WHILE mod # NIL DO
         IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
         mod := mod.next
