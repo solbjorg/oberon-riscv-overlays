@@ -1,5 +1,5 @@
 MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
-  IMPORT SYSTEM, Kernel, Files, Linker, Loader, Input, Display, Viewers, Fonts, Texts;
+  IMPORT SYSTEM, Kernel, Files, Overlays, Linker, Loader, Input, Display, Viewers, Fonts, Texts;
 
   CONST (*message ids*)
     consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
@@ -68,7 +68,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     CurTask: Task;
     DW, DH, CL: INTEGER;
     ActCnt: INTEGER; (*action count for GC*)
-    Mod: Linker.Module;
+    Mod: Overlays.Module;
 
   (*user identification*)
 
@@ -281,7 +281,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END SetPar;
 
   PROCEDURE Call* (name: ARRAY OF CHAR; VAR res: INTEGER);
-    VAR mod: Linker.Module; P: Linker.Command;
+    VAR mod: Overlays.Module; P: Linker.Command;
       i, j: INTEGER; ch: CHAR;
       Mname, Cname: ARRAY 32 OF CHAR;
   BEGIN i := 0; ch := name[0];
@@ -308,7 +308,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END GetSelection;
 
   PROCEDURE GC;
-    VAR mod: Linker.Module;
+    VAR mod: Overlays.Module;
   BEGIN
     IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
       mod := Linker.root; SYSTEM.PUT(-60, 21H);

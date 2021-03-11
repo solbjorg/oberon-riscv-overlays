@@ -1,5 +1,5 @@
 MODULE Overlays;
-  IMPORT SYSTEM, FileDir, Files, Linker;
+  IMPORT SYSTEM, FileDir, Files;
   CONST numRegions = 1;
     numOverlays = 100;
     regionSize = 1000H;
@@ -15,15 +15,38 @@ MODULE Overlays;
     C8  = 100H;
     C4  = 10H;
 
-  TYPE
+  TYPE Module* = POINTER TO ModDesc;
+    Node* = POINTER TO NodeDesc;
+    Edge* = POINTER TO EdgeDesc; (*outgoing calls*)
     Func = PROCEDURE(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
     Procedure* = POINTER TO ProcedureDesc;
     Overlay* = POINTER TO OverlayDesc;
     FileName = ARRAY 20 OF CHAR;
+    ModuleName* = ARRAY 32 OF CHAR;
+
+    ModDesc* = RECORD
+      name*: ModuleName;
+      next*: Module;
+      rootNode*: Node;
+      key*, num*, size*, refcnt*: INTEGER;
+      data*, procs*, stubs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
+    END ;
+
+    NodeDesc* = RECORD
+      prev*, next*: Node;
+      dsc*: Edge;
+      mno*, pno*: BYTE;
+    END;
+
+    EdgeDesc* = RECORD
+      next*: Edge;
+      node*: Node;
+      weight*: INTEGER; (* TODO: Make this a Byte? *)
+    END;
 
     ProcedureDesc* = RECORD
       addr*: INTEGER; (* relative address within overlay; i.e. proc address assuming overlay starts at address 0 *)
-      mod*: Linker.Module; (* module this proc belongs to *)
+      mod*: Module; (* module this proc belongs to *)
       index*: INTEGER; (* toc index of proc for module *)
       next*: Procedure;
     END;
@@ -42,7 +65,7 @@ MODULE Overlays;
 
   PROCEDURE ThisFile(proc: Procedure): Files.File;
     VAR i: INTEGER;
-      mod: Linker.Module;
+      mod: Module;
       filename: FileDir.FileName;
   BEGIN
     i := 0;
@@ -156,9 +179,9 @@ MODULE Overlays;
   END OverlayManager;
 
   (* generate overlay for given module already in memory*)
-  PROCEDURE GenerateOverlay*(mod: Linker.Module; numproc: INTEGER);
+  PROCEDURE GenerateOverlay*(mod: Module; numproc: INTEGER);
     VAR i, u, tocoffset, adr, inst, mno, disp, op: INTEGER;
-      root, proc: Procedure; impmod: Linker.Module;
+      root, proc: Procedure; impmod: Module;
       F: Files.File; R: Files.Rider;
       filename: FileName;
       ov: Overlay;
@@ -191,14 +214,6 @@ MODULE Overlays;
     F := Files.New(filename);
     Files.Set(R, F, 0);
 
-    (* generate stubs for loading outgoing overlays *)
-    (*
-    i := mod.imp;
-    WHILE i < mod.cmd DO
-      SYSTEM.GET(i, impmod);
-
-      INC(i, 4);
-    END; *)
     (* TODO generate stubs here ? *)
     (*Copy code into "mod.ovl"*)
     i := mod.code;
@@ -235,11 +250,11 @@ MODULE Overlays;
   PROCEDURE Init*;
     VAR i: INTEGER;
   BEGIN
-    Linker.Init;
-    regions[0] := Linker.limit;
+    SYSTEM.GET(24, regions[0]);
+    DEC(regions[0], 0D000H);
     mappedIndex := -1;
     stackLoc := 0;
-    (* load location of the overlay manager *)
+    (* load location of the overlay manager to predetermined reg *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
   END Init;
 

@@ -1,9 +1,9 @@
 MODULE Loader;
-  IMPORT SYSTEM, Files, Linker, Overlays;
+  IMPORT SYSTEM, Files, Overlays, Linker;
   CONST versionkey = 1X;
 
-  VAR M: Linker.Module;
-    importing: Linker.ModuleName;
+  VAR M: Overlays.Module;
+    importing: Overlays.ModuleName;
     res: INTEGER;
 
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
@@ -15,7 +15,7 @@ MODULE Loader;
 
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
     VAR i: INTEGER;
-      filename: Linker.ModuleName;
+      filename: Overlays.ModuleName;
   BEGIN
     i := 0;
     WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
@@ -34,14 +34,14 @@ MODULE Loader;
     END
   END Check;
 
-  PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Linker.Module);
+  PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Overlays.Module);
     VAR ov: Overlays.Overlay; entry: Linker.Command;
         numprocs, impkey, nofimps, key, size: INTEGER;
-        name1, impname: Linker.ModuleName;
-        mod, impmod: Linker.Module;
+        name1, impname: Overlays.ModuleName;
+        mod, impmod: Overlays.Module;
         F: Files.File; R: Files.Rider;
         ch: CHAR;
-        import: ARRAY 16 OF Linker.Module;
+        import: ARRAY 16 OF Overlays.Module;
   BEGIN
     mod := Linker.root; error(0, name); nofimps := 0;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
@@ -82,7 +82,7 @@ MODULE Loader;
   END Load;
 
   PROCEDURE Init;
-  BEGIN Overlays.Init;
+  BEGIN Linker.Init;
   END Init;
 
 BEGIN SYSTEM.PUT(-60, 86H); Init; SYSTEM.PUT(-60, 88H); Load("Oberon", M); SYSTEM.PUT(-60, 0F000H + res); REPEAT UNTIL FALSE

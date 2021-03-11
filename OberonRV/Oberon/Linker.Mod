@@ -1,5 +1,5 @@
 MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
-  IMPORT SYSTEM, Files;
+  IMPORT SYSTEM, Overlays, Files;
   CONST versionkey = 1X; MT = 4; DescSize = 88;
     addi = 19; load = 3; store = 35;
     SB = 3;
@@ -14,35 +14,11 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     C8  = 100H;
     C4  = 10H;
 
-  TYPE Module* = POINTER TO ModDesc;
-    Node* = POINTER TO NodeDesc;
-    Edge* = POINTER TO EdgeDesc; (*outgoing calls*)
-    Command* = PROCEDURE;
-    ModuleName* = ARRAY 32 OF CHAR;
+  TYPE Command* = PROCEDURE;
 
-    ModDesc* = RECORD
-      name*: ModuleName;
-      next*: Module;
-      rootNode*: Node;
-      key*, num*, size*, refcnt*: INTEGER;
-      data*, procs*, stubs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
-    END ;
-
-    NodeDesc* = RECORD
-      prev*, next*: Node;
-      dsc*: Edge;
-      mno*, pno*: BYTE;
-    END;
-
-    EdgeDesc* = RECORD
-      next*: Edge;
-      node*: Node;
-      weight*: INTEGER; (* TODO: Make this a Byte? *)
-    END;
-
-  VAR root*, M: Module;
+  VAR root*, M: Overlays.Module;
     AllocPtr*, res*: INTEGER;
-    importing*, imported*: ModuleName;
+    importing*, imported*: Overlays.ModuleName;
     limit*: INTEGER;
 
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
@@ -56,7 +32,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   (* TODO: verify that this works if the file already exists! *)
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
     VAR i: INTEGER;
-      filename: ModuleName;
+      filename: Overlays.ModuleName;
   BEGIN
     i := 0;
     WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
@@ -80,11 +56,11 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     RETURN p
   END FindIndex;
 
-  PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Module; VAR numprocs, nofimps, size: INTEGER; VAR import: ARRAY OF Module; VAR R: Files.Rider): Command;
+  PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Overlays.Module; VAR numprocs, nofimps, size: INTEGER; VAR import: ARRAY OF Overlays.Module; VAR R: Files.Rider): Command;
     (*search module in list; if not found, load module.
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
-    VAR mod, impmod: Module;
+    VAR mod, impmod: Overlays.Module;
       (*overlay: Overlay;*)
       i, n, m, impkey, mno: INTEGER;
       p, u, v, w: INTEGER;  (*addresses*)
@@ -92,9 +68,9 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       body: Command;
       fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
       op, imm, disp, adr, inst, pno, vno, dest, offset, index: INTEGER;
-      impname: ModuleName;
-      rootNode, tempNode: Node;
-      outgoing, tempOut: Edge;
+      impname: Overlays.ModuleName;
+      rootNode, tempNode: Overlays.Node;
+      outgoing, tempOut: Overlays.Edge;
 
      (* Returns a `jal ra, imm` instruction. *)
     PROCEDURE Jal(imm: INTEGER) : INTEGER;
@@ -134,7 +110,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END ;
       IF mod = NIL THEN (*no large enough hole was found*)
         IF AllocPtr + size < limit THEN (*allocate*)
-          p := AllocPtr; mod := SYSTEM.VAL(Module, p);
+          p := AllocPtr; mod := SYSTEM.VAL(Overlays.Module, p);
           AllocPtr := (p + size) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
           mod.next := root; root := mod
         ELSE error(7, name)
@@ -306,7 +282,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     RETURN body
   END Load;
 
-  PROCEDURE ThisCommand*(mod: Module; name: ARRAY OF CHAR): Command;
+  PROCEDURE ThisCommand*(mod: Overlays.Module; name: ARRAY OF CHAR): Command;
     VAR k, adr, w: INTEGER; ch: CHAR;
       s: ARRAY 32 OF CHAR;
   BEGIN res := 5; w := 0;
@@ -324,7 +300,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END ThisCommand;
 
   PROCEDURE Free*(name: ARRAY OF CHAR);
-    VAR mod, imp: Module; p, q: INTEGER;
+    VAR mod, imp: Overlays.Module; p, q: INTEGER;
   BEGIN mod := root; res := 0;
     WHILE (mod # NIL) & (mod.name # name) DO mod := mod.next END ;
     IF mod # NIL THEN
@@ -356,21 +332,9 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   BEGIN inst := Jal(Padr - at); SYSTEM.PUT(at, inst);
   END Install;
 
-  (* Any trap before loading the kernel is an overlay trap *)
-  PROCEDURE Trap;
-    VAR mod, impmod: Module; sb: LONGINT; body: Command;
-  BEGIN
-    (*
-    sb := SYSTEM.REG(SB);
-    SYSTEM.GET(mod.imp + (mno-1)*4, impmod);
-    SYSTEM.GET(impmod.ent + pno*4, dest); dest := dest + impmod.code;
-    body := SYSTEM.VAL(Command, mod.code + w);
-    body
-   *)
-  END Trap;
-
   PROCEDURE Init*;
   BEGIN
+    Overlays.Init;
     Files.Init;
     (*NEW(rootOverlay); rootOverlay.size := 0; rootOverlay.next := NIL;*)
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 0D000H);

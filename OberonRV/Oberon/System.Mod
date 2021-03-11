@@ -1,5 +1,5 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
-  IMPORT SYSTEM, Kernel, FileDir, Files, Linker, Loader, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
+  IMPORT SYSTEM, Kernel, FileDir, Files, Overlays, Linker, Loader, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
   CONST
     StandardMenu = "";
@@ -305,14 +305,14 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     Texts.WriteString(W, "  Tasks"); Texts.WriteInt(W, Oberon.NofTasks, 4); EndLine
   END Watch;
 
-  PROCEDURE ShowLinker*;
+  PROCEDURE ShowModules*;
     VAR T: Texts.Text;
       V: Viewers.Viewer;
-      M: Linker.Module;
+      M: Overlays.Module;
       X, Y: INTEGER;
   BEGIN T := TextFrames.Text("");
     Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y);
-    V := MenuViewers.New(TextFrames.NewMenu("System.ShowLinker", StandardMenu),
+    V := MenuViewers.New(TextFrames.NewMenu("System.ShowModules", StandardMenu),
         TextFrames.NewText(T, 0), TextFrames.menuH, X, Y);
     M := Linker.root;
     WHILE M # NIL DO
@@ -324,10 +324,10 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
       Texts.WriteLn(W); M := M.next
     END;
     Texts.Append(T, W.buf)
-  END ShowLinker;
+  END ShowModules;
 
   PROCEDURE ShowCommands*;
-    VAR M: Linker.Module;
+    VAR M: Overlays.Module;
       comadr: LONGINT; ch: CHAR;
       T: Texts.Text;
       S: Texts.Scanner;
@@ -394,7 +394,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   END ExtendDisplay;
 
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
-    VAR u, v, w: INTEGER; mod: Linker.Module;
+    VAR u, v, w: INTEGER; mod: Overlays.Module;
   BEGIN u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
     IF w = 0 THEN Kernel.New(a, b)
     ELSE (*trap*)
