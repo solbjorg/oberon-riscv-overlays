@@ -633,7 +633,13 @@ BEGIN
   (* Note that the linker will already know what module this call is coming from; so that information *)
   (* is useless (and impossible to know compile-time anyway). *)
   (* This will be replaced with a `addi` call in the linker. *)
-  put(LSL(fixorgS MOD C16, 16) + LSL(procx-1, 8) + r MOD 20H); fixorgS := pc-1;
+  (* Note: This info isn't actually necessary, as the linker can figure out the index on its own. *)
+  (* But I guess it's nice-to-have. *)
+  IF pc*InsnSize >= entry THEN (* special handling for caller index in entry *)
+    put(LSL(fixorgS MOD C16, 16) + LSL((-1) MOD C8, 8) + r MOD 20H); fixorgS := pc-1;
+  ELSE
+    put(LSL(fixorgS MOD C16, 16) + LSL((procx-1) MOD C8, 8) + r MOD 20H); fixorgS := pc-1;
+  END;
 END PutOverlayToken;
 
 PROCEDURE LoadOverlayRegister(pno, mno: INTEGER);
@@ -652,7 +658,7 @@ BEGIN
         IF x.r > 0 THEN RVOS.Mark("not allowed")
         ELSIF x.r = 0 THEN  (* Answer address of procedure in current module *)
           PutOverlayToken(RH, FindProcIndexGivenAddress(x.a), -x.r);
-          Texts.WriteLn(W); Texts.WriteString(W, "hewo"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.WriteInt(W, x.a, 5); Texts.Append(Oberon.Log, W.buf);
+          Texts.WriteLn(W); Texts.WriteString(W, "overlay token generated"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.WriteInt(W, x.a, 5); Texts.Append(Oberon.Log, W.buf);
 
           (* GetSB(0); AddImm(SB, x.a+C8); *)
           (* put(RVAssem.auipc(RH, 0));
@@ -1707,8 +1713,6 @@ BEGIN (*x.type.form = RVOB.Proc*)
     IF x.r >= 0 THEN
       (* todo make this better... *)
       i := FindProcIndexGivenAddress(x.a);
-      Texts.WriteLn(W); Texts.WriteString(W, "i: "); Texts.WriteInt(W, i, 3); Texts.Append(Oberon.Log, W.buf);
-
       LoadOverlayRegister(i, -x.r);
       GetSB(0);
       Fetch(SB, varsize + i * 4);
@@ -1802,6 +1806,9 @@ BEGIN invalSB; frame := 0;
     ELSE put(RVAssem.addi(SP, SP, -locblksize));
     END;
     put(RVAssem.sw(RA, SP, 0));
+    IF (parblksize - IntegerSize) DIV IntegerSize > 12 THEN
+      Texts.WriteLn(W); Texts.WriteString(W, "Too many arguments!"); Texts.WriteHex(W, RVOS.Pos()); Texts.Append(Oberon.Log, W.buf);
+    END;
     WHILE a < parblksize DO
       put(RVAssem.sw(r, SP, a)); INC(r); INC(a, IntegerSize)
     END
@@ -2140,7 +2147,7 @@ END Init;
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
   VAR success: BOOLEAN;
 BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; stubx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; fixorgS := 0; check := v # 0; version := v;
-  stacktrace := FALSE;
+  stacktrace := TRUE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
 END Open;

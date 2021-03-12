@@ -92,7 +92,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   PROCEDURE FindProcCalls(mod: Overlays.Module; fixorgS: INTEGER);
     VAR adr, imm, mno, pno, inst, index, disp: INTEGER;
-      tempNode: Overlays.Node;
+      caller, called: Overlays.Node;
       outgoing, tempOut: Overlays.Edge;
       impmod: Overlays.Module;
   BEGIN
@@ -118,45 +118,54 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
       (* fill in call graph *)
       (* can easily be made more effective with caching etc *)
-      index := inst DIV C8 MOD C16;
+      (* pick list of nodes to search based on module the call is going to *)
       IF mno = mod.num THEN
-        tempNode := mod.rootNode;
+        called := mod.rootNode;
       ELSE
-        tempNode := impmod.rootNode;
+        called := impmod.rootNode;
       END;
-      WHILE (tempNode # NIL) & (tempNode.pno # pno) DO
-        tempNode := tempNode.next
-      END;
-      IF tempNode = NIL THEN
+      SYSTEM.PUT(-60, 0AFEFAH);
+      SYSTEM.PUT(-60, pno);
+      (* search through nodes for the one belonging to the function being called *)
+      WHILE (called # NIL) & (called.pno # pno) DO called := called.next END;
+      IF called = NIL THEN
         (* assume that the function does not belong to an overlay, *)
-        (* i.e. it is part of core (Kernel, etc.) *)
+        (* i.e. it is part of core (Kernel, etc.) or entry *)
+        (* No more to be done, we can ignore this in our graph (for now) *)
       ELSE
-        outgoing := tempNode.dsc;
-        IF outgoing # NIL THEN
-          WHILE (outgoing.next # NIL) & (outgoing.node # tempNode) DO outgoing := outgoing.next END;
-        ELSE
-          NEW(outgoing); mod.rootNode.dsc := outgoing; outgoing.node := tempNode; outgoing.weight := 0;
-        END;
+        (* called procedure was found in graph *)
+        (* index is currently given by fixup information, but can also be found indirectly *)
+        index := inst DIV C8 MOD C8;
+        IF index # 0FFH THEN (* index = FF => caller is module entry, safely ignore *)
+          (* find node of calling function as indicated by index*)
+          (* find node of callee *)
+          caller := mod.rootNode;
+          WHILE (caller # NIL) & (caller.pno # index) DO caller := caller.next END;
+          outgoing := caller.dsc;
+          IF outgoing # NIL THEN
+            (* search through edges for one leading to the function being called *)
+            WHILE (outgoing.next # NIL) & (outgoing.node # called) DO outgoing := outgoing.next END;
+          ELSE
+            (* this is the first function call in the module *)
+            NEW(tempOut); caller.dsc := tempOut; tempOut.node := called; tempOut.weight := 0; outgoing := tempOut;
+          END;
 
-        IF outgoing.node = tempNode THEN
-          INC(outgoing.weight);
-        ELSIF outgoing.next = NIL THEN
-          NEW(tempOut);
-          SYSTEM.PUT(-60, 0FFFH);
-          outgoing.next := tempOut;
-          SYSTEM.PUT(-60, 0FFFH);
-          tempOut.node := tempNode;
-          SYSTEM.PUT(-60, 0FFFH);
-          tempOut.weight := 1;
+          IF outgoing.node = called THEN
+            (* edge already exists; increase weight *)
+            INC(outgoing.weight);
+          ELSIF outgoing.next = NIL THEN
+            (* this edge hasn't been made yet; make it *)
+            SYSTEM.PUT(-60, 0EEH);
+            NEW(tempOut);
+            outgoing.next := tempOut;
+            tempOut.node := called;
+            tempOut.weight := 1;
+          END;
         END;
       END;
       disp := inst DIV 10000H;
       adr := mod.code + disp*4;
     END ;
-    SYSTEM.PUT(-60, 0BABECAFEH);
-    outgoing := mod.rootNode.dsc;
-    WHILE outgoing # NIL DO SYSTEM.PUT(-60, outgoing.node.mno); outgoing := outgoing.next; END;
-    SYSTEM.PUT(-60, 0CAFEBABEH);
   END FindProcCalls;
 
   PROCEDURE FixupOverlayTokens(mod: Overlays.Module; fixorgS: INTEGER);
