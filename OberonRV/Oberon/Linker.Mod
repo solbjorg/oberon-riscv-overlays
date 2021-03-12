@@ -28,6 +28,40 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END;
   END error;
 
+  (* ---------- Linker helper functions ----------*)
+  (* Returns a `jal ra, imm` instruction. *)
+  PROCEDURE Jal(imm: INTEGER) : INTEGER;
+    VAR imm20, imm19to12, imm11, imm10to1: INTEGER;
+  BEGIN
+    imm20 := imm DIV 100000H;
+    imm19to12 := (imm - imm20 * 100000H) DIV 1000H;
+    imm11 := (imm - (imm20 * 100000H + imm19to12 * 1000H)) DIV 800H;
+    imm10to1 := (imm - (imm20 * 100000H + imm19to12 * 1000H + imm11 * 800H)) DIV 2H;
+    RETURN ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 1) * 80H + 111
+  END Jal;
+
+  PROCEDURE Jalr(imm: INTEGER) : INTEGER;
+  BEGIN
+    (* lw SB, (imm+20H)(0) *)
+    RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 67 (*jalr opcode = 67*)
+  END Jalr;
+
+  (* TODO remove these simple helper functions? readability vs compact code *)
+  (* ideally they should be in-lined, but Oberon doesn't support that *)
+  PROCEDURE Addi(reg, imm: INTEGER) : INTEGER;
+  BEGIN
+    (*addi reg, reg, imm*)
+    RETURN ((((imm) * 20H + reg) * 8H + 0) * 20H + reg) * 80H + addi
+  END Addi;
+
+  PROCEDURE Lw(imm: INTEGER) : INTEGER;
+  BEGIN
+    (* lw SB, (imm+20H)(0) *)
+    RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 3 (* opcode for all loads is 3 *)
+  END Lw;
+
+  (* Linking functions *)
+
   (* create a file to hold the fixed-up version of a module *)
   (* TODO: verify that this works if the file already exists! *)
   PROCEDURE ThisFile(name: ARRAY OF CHAR): Files.File;
@@ -56,12 +90,111 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     RETURN p
   END FindIndex;
 
+  PROCEDURE FindProcCalls(mod: Overlays.Module; fixorgS: INTEGER);
+    VAR adr, imm, mno, pno, inst, index, disp: INTEGER;
+      tempNode: Overlays.Node;
+      outgoing, tempOut: Overlays.Edge;
+      impmod: Overlays.Module;
+  BEGIN
+    adr := mod.code + fixorgS*4;
+    WHILE adr # mod.code DO
+      SYSTEM.PUT(-60, 0FEFAH);
+      (* fixup LUI *)
+      SYSTEM.GET(adr-4, inst);
+      imm := inst DIV C12;
+      mno := imm MOD C12;
+      pno := imm DIV C12;
+      IF mno <= 0 THEN
+        mno := mod.num;
+      ELSE
+        SYSTEM.GET(mod.imp + (mno-1)*4, impmod); mno := impmod.num;
+        (* TODO: too much indirection! *)
+        SYSTEM.GET(impmod.ent + pno*4, pno);
+        (*pno := (mod.procs - mod.data) + pno * 4;*)
+        SYSTEM.PUT(-60, 0E000000H + pno);
+      END;
+
+      SYSTEM.GET(adr, inst);
+
+      (* fill in call graph *)
+      (* can easily be made more effective with caching etc *)
+      index := inst DIV C8 MOD C16;
+      IF mno = mod.num THEN
+        tempNode := mod.rootNode;
+      ELSE
+        tempNode := impmod.rootNode;
+      END;
+      WHILE (tempNode # NIL) & (tempNode.pno # pno) DO
+        tempNode := tempNode.next
+      END;
+      IF tempNode = NIL THEN
+        (* assume that the function does not belong to an overlay, *)
+        (* i.e. it is part of core (Kernel, etc.) *)
+      ELSE
+        outgoing := tempNode.dsc;
+        IF outgoing # NIL THEN
+          WHILE (outgoing.next # NIL) & (outgoing.node # tempNode) DO outgoing := outgoing.next END;
+        ELSE
+          NEW(outgoing); mod.rootNode.dsc := outgoing; outgoing.node := tempNode; outgoing.weight := 0;
+        END;
+
+        IF outgoing.node = tempNode THEN
+          INC(outgoing.weight);
+        ELSIF outgoing.next = NIL THEN
+          NEW(tempOut);
+          SYSTEM.PUT(-60, 0FFFH);
+          outgoing.next := tempOut;
+          SYSTEM.PUT(-60, 0FFFH);
+          tempOut.node := tempNode;
+          SYSTEM.PUT(-60, 0FFFH);
+          tempOut.weight := 1;
+        END;
+      END;
+      disp := inst DIV 10000H;
+      adr := mod.code + disp*4;
+    END ;
+    SYSTEM.PUT(-60, 0BABECAFEH);
+    outgoing := mod.rootNode.dsc;
+    WHILE outgoing # NIL DO SYSTEM.PUT(-60, outgoing.node.mno); outgoing := outgoing.next; END;
+    SYSTEM.PUT(-60, 0CAFEBABEH);
+  END FindProcCalls;
+
+  PROCEDURE FixupOverlayTokens(mod: Overlays.Module; fixorgS: INTEGER);
+    VAR adr, mno, pno, imm, inst, index, disp: INTEGER;
+      tempNode: Overlays.Node;
+      outgoing, tempOut: Overlays.Edge;
+      impmod: Overlays.Module;
+  BEGIN
+    adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)
+    WHILE adr # mod.code DO
+      (* fixup LUI *)
+      SYSTEM.GET(adr-4, inst);
+      imm := inst DIV C12;
+      mno := imm MOD C12;
+      pno := imm DIV C12;
+      IF mno <= 0 THEN
+        mno := mod.num;
+      ELSE
+        SYSTEM.GET(mod.imp + (mno-1)*4, impmod); mno := impmod.num;
+        (* TODO: too much indirection! *)
+        SYSTEM.GET(impmod.ent + pno*4, pno);
+      END;
+      inst := (inst - LSL(imm MOD C20, 12)) + LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12);
+      SYSTEM.PUT(adr-4, inst);
+
+      SYSTEM.GET(adr, inst);
+      disp := inst DIV 10000H;
+      SYSTEM.PUT(adr, Addi(inst MOD 20H, 1));
+      adr := mod.code + disp*4;
+    END ;
+  END FixupOverlayTokens;
+
+
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Overlays.Module; VAR numprocs, nofimps, size: INTEGER; VAR import: ARRAY OF Overlays.Module; VAR R: Files.Rider): Command;
     (*search module in list; if not found, load module.
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
     VAR mod, impmod: Overlays.Module;
-      (*overlay: Overlay;*)
       i, n, m, impkey, mno: INTEGER;
       p, u, v, w: INTEGER;  (*addresses*)
       ch: CHAR;
@@ -69,40 +202,9 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
       op, imm, disp, adr, inst, pno, vno, dest, offset, index: INTEGER;
       impname: Overlays.ModuleName;
+      (* used for constructing call graph *)
       rootNode, tempNode: Overlays.Node;
       outgoing, tempOut: Overlays.Edge;
-
-     (* Returns a `jal ra, imm` instruction. *)
-    PROCEDURE Jal(imm: INTEGER) : INTEGER;
-      VAR imm20, imm19to12, imm11, imm10to1: INTEGER;
-    BEGIN
-      imm20 := imm DIV 100000H;
-      imm19to12 := (imm - imm20 * 100000H) DIV 1000H;
-      imm11 := (imm - (imm20 * 100000H + imm19to12 * 1000H)) DIV 800H;
-      imm10to1 := (imm - (imm20 * 100000H + imm19to12 * 1000H + imm11 * 800H)) DIV 2H;
-      RETURN ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 1) * 80H + 111
-    END Jal;
-
-    PROCEDURE Jalr(imm: INTEGER) : INTEGER;
-    BEGIN
-      (* lw SB, (imm+20H)(0) *)
-      RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 67 (*jalr opcode = 67*)
-    END Jalr;
-
-    (* TODO remove these simple helper functions? readability vs compact code *)
-    (* ideally they should be in-lined, but Oberon doesn't support that *)
-    PROCEDURE Addi(reg, imm: INTEGER) : INTEGER;
-    BEGIN
-      (*addi reg, reg, imm*)
-      RETURN ((((imm) * 20H + reg) * 8H + 0) * 20H + reg) * 80H + addi
-    END Addi;
-
-    PROCEDURE Lw(imm: INTEGER) : INTEGER;
-    BEGIN
-      (* lw SB, (imm+20H)(0) *)
-      RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 3 (* opcode for all loads is 3 *)
-    END Lw;
-
   BEGIN
     error(0, name); SYSTEM.PUT(-60, 0F0ADH);
     IF res = 0 THEN (*search for a hole in the list allocate and link*)
@@ -132,9 +234,17 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       mod.procs := p;
       Files.ReadInt(R, n);
       numprocs := n DIV 4;
+      Files.ReadInt(R, w); SYSTEM.PUT(p, w);
+      SYSTEM.PUT(p, w);
+      NEW(rootNode); rootNode.mno := mod.num; rootNode.pno := 0;
+        SYSTEM.PUT(-60, 0FEH);
+        SYSTEM.PUT(-60, rootNode.mno);
+      INC(p, 4); DEC(n, 4);
       WHILE n > 0 DO
         Files.ReadInt(R, w); SYSTEM.PUT(p, w);
         NEW(tempNode); tempNode.mno := mod.num; tempNode.pno := numprocs - n DIV 4;
+        SYSTEM.PUT(-60, 0FEH);
+        SYSTEM.PUT(-60, tempNode.mno);
         tempNode.next := rootNode; rootNode.prev := tempNode; rootNode := tempNode;
         INC(p, 4); DEC(n, 4)
       END ;   (*procedures*)
@@ -163,7 +273,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       mod.code := p;  (*program*)
       (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
       Files.ReadInt(R, n); (*) Files.Set(R, F, Files.Pos(R) + n); (*skip code*)*)
-      SYSTEM.PUT(-60, n);
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
       Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
       Files.ReadInt(R, w);
@@ -206,51 +315,8 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         END ;
         adr := mod.code + disp*4
       END ;
-      adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)
-      WHILE adr # mod.code DO
-        (* fixup LUI *)
-        SYSTEM.GET(adr-4, inst);
-        imm := inst DIV C12;
-        mno := imm MOD C12;
-        pno := imm DIV C12;
-        IF mno <= 0 THEN
-          mno := mod.num;
-        ELSE
-          SYSTEM.GET(mod.imp + (mno-1)*4, impmod); mno := impmod.num;
-          (* TODO: too much indirection! *)
-          SYSTEM.GET(impmod.ent + pno*4, pno);
-        END;
-        inst := (inst - LSL(imm MOD C20, 12)) + LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12);
-        SYSTEM.PUT(adr-4, inst);
-
-        SYSTEM.GET(adr, inst);
-
-        (* fill in call graph *)
-        (* can easily be made more effective with caching etc *)
-        index := inst DIV C8 MOD C16;
-        tempNode := rootNode;
-        outgoing := tempNode.dsc;
-        IF mno = mod.num THEN
-          tempNode := rootNode;
-        ELSE
-          tempNode := impmod.rootNode;
-        END;
-        WHILE (tempNode # NIL) & (tempNode.pno # pno) DO tempNode := tempNode.next END;
-        IF outgoing # NIL THEN
-          WHILE (outgoing.next # NIL) & (outgoing.node # tempNode) DO outgoing := outgoing.next END;
-        ELSE
-          NEW(outgoing); rootNode.dsc := outgoing;
-        END;
-
-        IF outgoing.node = tempNode THEN
-          INC(outgoing.weight);
-        ELSIF outgoing.next = NIL THEN
-          NEW(tempOut); outgoing.next := tempOut; tempOut.node := tempNode; tempOut.weight := 1;
-        END;
-        disp := inst DIV 10000H;
-        SYSTEM.PUT(adr, Addi(inst MOD 20H, 1));
-        adr := mod.code + disp*4;
-      END ;
+      FindProcCalls(mod, fixorgS);
+      FixupOverlayTokens(mod, fixorgS);
       (*fixup of type descriptors*)
       adr := mod.data + fixorgT*4;
       WHILE adr # mod.data DO
