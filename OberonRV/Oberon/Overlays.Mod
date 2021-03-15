@@ -21,7 +21,7 @@ MODULE Overlays;
     Func = PROCEDURE(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
     Procedure* = POINTER TO ProcedureDesc;
     Overlay* = POINTER TO OverlayDesc;
-    FileName = ARRAY 20 OF CHAR;
+    FileName = ARRAY 32 OF CHAR;
     ModuleName* = ARRAY 32 OF CHAR;
 
     ModDesc* = RECORD
@@ -33,9 +33,10 @@ MODULE Overlays;
     END ;
 
     NodeDesc* = RECORD
-      prev*, next*: Node;
+      prev*, next*: Node; (* move between nodes within a module *)
       dsc*: Edge;
-      mno*, pno*: BYTE;
+      mod*: Module;
+      pno*: BYTE;
     END;
 
     EdgeDesc* = RECORD
@@ -57,11 +58,12 @@ MODULE Overlays;
       size: INTEGER; (* length of code segment; excludes footer *)
       numproc: INTEGER; (* number of procedures covered by this overlay *)
       proc*: Procedure; (* list of procedures in overlay *)
+      entryMno, entryPno: BYTE;
     END;
 
   VAR regions: ARRAY numRegions OF INTEGER; (*reserved addresses to map overlays onto*)
     overlays: ARRAY numOverlays OF Overlay;
-    mappedIndex, stackLoc: INTEGER; (* index into table of overlay that is currently mapped *)
+    numGeneratedOverlays, mappedIndex, stackLoc: INTEGER; (* index into table of overlay that is currently mapped *)
 
   PROCEDURE ThisFile(proc: Procedure): Files.File;
     VAR i: INTEGER;
@@ -78,7 +80,7 @@ MODULE Overlays;
   END ThisFile;
 
   PROCEDURE OverlayManager(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
-    VAR k, mno, pno, addr, oldmapped, oldIndex: INTEGER;
+    VAR k, ovindex, pno, addr, oldmapped, oldIndex: INTEGER;
       ov, old: Overlay;
       proc: Procedure; body: Func;
 
@@ -89,10 +91,9 @@ MODULE Overlays;
 
     BEGIN
       F := Files.Old(ov.filename);
-      SYSTEM.PUT(-60, 0F0000FH);
       IF F # NIL THEN
-        i := ov.proc.mod.key;
-        ov.mapped := regions[0]; IF old # NIL THEN old.mapped := 0; END;
+        ov.mapped := regions[0];
+        IF old # NIL THEN old.mapped := 0; END;
         Files.Set(R, F, 0);
         i := 0;
         WHILE i < ov.size DO
@@ -110,35 +111,30 @@ MODULE Overlays;
         proc := ov.proc;
         (* Fill in correct addresses to TOC *)
         WHILE proc # NIL DO
-          addr := proc.mod.data + proc.index;
-          SYSTEM.PUT(addr, proc.addr + ov.mapped);
+          SYSTEM.PUT(proc.mod.data + proc.index, proc.addr + ov.mapped);
           proc := proc.next;
         END;
-      ELSE SYSTEM.PUT(-60, 0FAFAFAH);
+      ELSE ASSERT(FALSE); (* should never happen! abort *)
       END
     END LoadOverlay;
 
   BEGIN
-    SYSTEM.PUT(-60, 0AABBCCDDH);
-    mno := SYSTEM.REG(30) DIV C12 MOD C12;
+    ovindex := SYSTEM.REG(30) DIV 2 MOD 200H;
     pno := SYSTEM.REG(30) DIV C24 MOD C8;
-    k := 0;
     (* TODO we will later store /the actual overlay index/ in the address token *)
     (* this is just a stopgap so we can test small parts at a time *)
     (* this is currently ~guaranteed(!) to find a hit, hence the lack of safety *)
     (* TODO: MAKE THIS SAFE *)
-    SYSTEM.PUT(-60, SYSTEM.REG(30));
-    WHILE overlays[k].proc.mod.num # mno DO INC(k) END;
-    ov := overlays[k];
+    ov := overlays[ovindex];
     pno := (ov.proc.mod.procs - ov.proc.mod.data) + pno * 4;
     IF ov.mapped = 0 THEN
-      IF (mappedIndex >= 0) & (mappedIndex # k) THEN
+      IF (mappedIndex >= 0) & (mappedIndex # ovindex) THEN
         old := overlays[mappedIndex];
         oldmapped := old.mapped;
       ELSE old := NIL; oldmapped := -1024;
       END;
       oldIndex := mappedIndex;
-      mappedIndex := k;
+      mappedIndex := ovindex;
       (*
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
@@ -152,7 +148,6 @@ MODULE Overlays;
         IF proc.index = pno THEN
           body := SYSTEM.VAL(Func, proc.addr + ov.mapped);
           ASSERT(SYSTEM.VAL(INTEGER, body) >= regions[0]);
-          SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, body));
           k := body(a,b,c,d,e,f,g,h,i,j,l,m);
         END;
         proc := proc.next;
@@ -178,57 +173,87 @@ MODULE Overlays;
     RETURN k
   END OverlayManager;
 
-  (* generate overlay for given module already in memory*)
-  PROCEDURE GenerateOverlay*(mod: Module; numproc: INTEGER);
-    VAR i, u, tocoffset, adr, inst, mno, disp, op: INTEGER;
+  (* Return the overlay index corresponding to entry point (mno, pno) *)
+  (* Currently only checks mno*)
+  PROCEDURE FindOverlayIndex*(mno, pno: INTEGER): INTEGER;
+    VAR index: INTEGER;
+  BEGIN
+    index := 0;
+    WHILE (overlays[index] # NIL) & (overlays[index].entryMno # mno) DO INC(index) END;
+    RETURN index
+  END FindOverlayIndex;
+
+  (* generate overlay for an array of function nodes*)
+  (* returns index in overlay table *)
+  PROCEDURE NewOverlay*(nodes: ARRAY OF Node; numnodes: INTEGER);
+    VAR index, i, u, tocoffset, adr, inst, mno, disp, op: INTEGER;
       root, proc: Procedure; impmod: Module;
       F: Files.File; R: Files.Rider;
-      filename: FileName;
       ov: Overlay;
   BEGIN
-    NEW(ov); i := 0;
-    WHILE overlays[i] # NIL DO INC(i) END;
-    overlays[i] := ov;
+    NEW(ov); index := 0;
+    WHILE overlays[index] # NIL DO INC(index) END;
+    (* add the overlay we're about to generate to the table *)
+    overlays[index] := ov;
     (*First, initialise the list of procedures contained in the overlay.*)
     (*Create a linked list of `Procedure` filled in with pointers to procedure addresses; *)
     (*this is later used to fill in the TOC.*)
-    tocoffset := mod.procs - mod.data;
-    i := 0;
-    NEW(root); root.mod := mod; root.index := tocoffset + i; SYSTEM.GET(mod.procs, root.addr);
-    WHILE i < numproc * 4 DO
-      (*assume procs is ordered*)
-      NEW(proc); proc.mod := mod; proc.index := tocoffset + i; SYSTEM.GET(mod.procs + i, proc.addr);
-      (* for now, assume that upon generating an overlay, it is safe to replace all calls to procs *)
-      (* contained in the overlay with calls to the overlay manager. *)
-      (* NOTE: this will break if we generate a new overlay that includes a function that is currently loaded*)
-      SYSTEM.PUT(mod.procs + i, SYSTEM.ADR(OverlayManager));
+    impmod := nodes[0].mod;
+    tocoffset := impmod.procs - nodes[0].mod.data;
+    NEW(root); root.mod := impmod; root.index := tocoffset + nodes[0].pno * 4; SYSTEM.GET(impmod.procs + nodes[0].pno * 4, root.addr);
+    SYSTEM.PUT(impmod.procs + nodes[0].pno * 4, SYSTEM.ADR(OverlayManager));
+    i := 1;
+    WHILE i < numnodes DO
+      impmod := nodes[i].mod;
+      tocoffset := impmod.procs - nodes[i].mod.data;
+      NEW(proc); proc.mod := impmod; proc.index := tocoffset + nodes[i].pno * 4; SYSTEM.GET(impmod.procs + nodes[i].pno * 4, proc.addr);
+      SYSTEM.PUT(impmod.procs + nodes[i].pno * 4, SYSTEM.ADR(OverlayManager));
       proc.next := root; root := proc;
-      INC(i, 4);
+      INC(i);
     END;
 
+    ov.proc := root;
+    ov.entryMno := nodes[0].mod.num;
+    ov.entryPno := nodes[0].pno;
+    ov.mapped := 0;
+  END NewOverlay;
+
+  (* generates overlays for a given module's entry points *)
+  PROCEDURE GenerateOverlays*(mod: Module);
+  VAR i: INTEGER;
+    nodes: ARRAY 100 OF Node;
+    tempNode: Node;
+    ov: Overlay;
+  BEGIN
+    tempNode := mod.rootNode; i := 0;
+    WHILE tempNode # NIL DO nodes[i] := tempNode; tempNode := tempNode.next; INC(i); END;
+    NewOverlay(nodes, i);
+  END GenerateOverlays;
+
+  PROCEDURE WriteOverlay*(index: INTEGER);
+    VAR i, u: INTEGER; mod: Module; ov: Overlay;
+      F: Files.File; R: Files.Rider;
+      filename: FileName;
+  BEGIN
+    ov := overlays[index];
+    mod := ov.proc.mod;
     (*Create the file "mod.ovl"*)
+    (* temporary until I come up with a better way to name overlays *)
     i := 0;
     WHILE mod.name[i] # 0X DO filename[i] := mod.name[i]; INC(i) END;
     filename[i] := "."; filename[i+1] := "o"; filename[i+2] := "v"; filename[i+3] := "l";
     filename[i+4] := 0X;
+    (*copy contents of module in memory into an overlay file*)
     F := Files.New(filename);
     Files.Set(R, F, 0);
-
-    (* TODO generate stubs here ? *)
-    (*Copy code into "mod.ovl"*)
     i := mod.code;
-    SYSTEM.PUT(-60, 0FH);
-    SYSTEM.PUT(-60, i);
-    SYSTEM.PUT(-60, mod.data + mod.size );
-    WHILE i < mod.data + mod.size DO SYSTEM.GET(i, u); Files.WriteInt(R, u); INC(i, 4) END;
+    WHILE i < mod.data + mod.size DO
+      SYSTEM.GET(i, u); Files.WriteInt(R, u); INC(i, 4)
+    END;
     Files.Register(F);
-    (* initialise overlay object, add it to overlay table *)
-    ov.filename := filename;
     ov.size := i - mod.code; (* identifies the length of the code segment to be loaded *)
-    ov.numproc := numproc;
-    ov.proc := root;
-    ov.mapped := 0;
-  END GenerateOverlay;
+    ov.filename := filename;
+  END WriteOverlay;
 
   (*
   PROCEDURE SerializeProc(VAR R: Files.Rider; p: Procedure);
@@ -253,6 +278,7 @@ MODULE Overlays;
     SYSTEM.GET(24, regions[0]);
     DEC(regions[0], 0D000H);
     mappedIndex := -1;
+    numGeneratedOverlays := 0;
     stackLoc := 0;
     (* load location of the overlay manager to predetermined reg *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));

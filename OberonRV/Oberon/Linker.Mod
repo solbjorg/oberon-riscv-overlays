@@ -98,7 +98,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   BEGIN
     adr := mod.code + fixorgS*4;
     WHILE adr # mod.code DO
-      SYSTEM.PUT(-60, 0FEFAH);
       (* fixup LUI *)
       SYSTEM.GET(adr-4, inst);
       imm := inst DIV C12;
@@ -111,7 +110,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         (* TODO: too much indirection! *)
         SYSTEM.GET(impmod.ent + pno*4, pno);
         (*pno := (mod.procs - mod.data) + pno * 4;*)
-        SYSTEM.PUT(-60, 0E000000H + pno);
+        (*SYSTEM.PUT(-60, 0E000000H + pno);*)
       END;
 
       SYSTEM.GET(adr, inst);
@@ -124,8 +123,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       ELSE
         called := impmod.rootNode;
       END;
-      SYSTEM.PUT(-60, 0AFEFAH);
-      SYSTEM.PUT(-60, pno);
       (* search through nodes for the one belonging to the function being called *)
       WHILE (called # NIL) & (called.pno # pno) DO called := called.next END;
       IF called = NIL THEN
@@ -155,7 +152,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
             INC(outgoing.weight);
           ELSIF outgoing.next = NIL THEN
             (* this edge hasn't been made yet; make it *)
-            SYSTEM.PUT(-60, 0EEH);
             NEW(tempOut);
             outgoing.next := tempOut;
             tempOut.node := called;
@@ -170,8 +166,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   PROCEDURE FixupOverlayTokens(mod: Overlays.Module; fixorgS: INTEGER);
     VAR adr, mno, pno, imm, inst, index, disp: INTEGER;
-      tempNode: Overlays.Node;
-      outgoing, tempOut: Overlays.Edge;
       impmod: Overlays.Module;
   BEGIN
     adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)
@@ -193,7 +187,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
       SYSTEM.GET(adr, inst);
       disp := inst DIV 10000H;
-      SYSTEM.PUT(adr, Addi(inst MOD 20H, 1));
+      SYSTEM.PUT(adr, Addi(inst MOD 20H, LSL(Overlays.FindOverlayIndex(mno, pno) MOD C8, 1) + 1));
       adr := mod.code + disp*4;
     END ;
   END FixupOverlayTokens;
@@ -213,7 +207,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       impname: Overlays.ModuleName;
       (* used for constructing call graph *)
       rootNode, tempNode: Overlays.Node;
-      outgoing, tempOut: Overlays.Edge;
   BEGIN
     error(0, name); SYSTEM.PUT(-60, 0F0ADH);
     IF res = 0 THEN (*search for a hole in the list allocate and link*)
@@ -245,15 +238,11 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       numprocs := n DIV 4;
       Files.ReadInt(R, w); SYSTEM.PUT(p, w);
       SYSTEM.PUT(p, w);
-      NEW(rootNode); rootNode.mno := mod.num; rootNode.pno := 0;
-        SYSTEM.PUT(-60, 0FEH);
-        SYSTEM.PUT(-60, rootNode.mno);
+      NEW(rootNode); rootNode.mod := mod; rootNode.pno := 0;
       INC(p, 4); DEC(n, 4);
       WHILE n > 0 DO
         Files.ReadInt(R, w); SYSTEM.PUT(p, w);
-        NEW(tempNode); tempNode.mno := mod.num; tempNode.pno := numprocs - n DIV 4;
-        SYSTEM.PUT(-60, 0FEH);
-        SYSTEM.PUT(-60, tempNode.mno);
+        NEW(tempNode); tempNode.mod := mod; tempNode.pno := numprocs - n DIV 4;
         tempNode.next := rootNode; rootNode.prev := tempNode; rootNode := tempNode;
         INC(p, 4); DEC(n, 4)
       END ;   (*procedures*)
@@ -324,8 +313,14 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         END ;
         adr := mod.code + disp*4
       END ;
+      (* iterate over procs in module *)
       FindProcCalls(mod, fixorgS);
+      (* generate overlays based on this module *)
+      Overlays.GenerateOverlays(MOD);
+      (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
+      (* after fixups are done, write overlay file *)
+      Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, 0));
       (*fixup of type descriptors*)
       adr := mod.data + fixorgT*4;
       WHILE adr # mod.data DO
@@ -342,16 +337,9 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         END ;
         SYSTEM.PUT(adr, inst); adr := adr - disp*4
       END ;
-      (*body   (*initialize module*)*)
     ELSIF res >= 3 THEN importing := name;
       WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END;
     END;
-    (*
-    i := w;
-    WHILE i < m * 4 DO
-      SYSTEM.GET(mod.code + i, n); SYSTEM.PUT(p, n); INC(p, 4); INC(i, 4);
-      (*SYSTEM.PUT(-60, n);*)
-    END ; (*entry*) *)
     newmod := mod;
     SYSTEM.PUT(-60, 0DA0FH);
     RETURN body

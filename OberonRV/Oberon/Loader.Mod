@@ -70,8 +70,8 @@ MODULE Loader;
       END;
       IF res = 0 THEN
         entry := Linker.Load(name, mod, numprocs, nofimps, size, import, R);
-        Overlays.GenerateOverlay(mod, numprocs);
         mod.key := key;
+        (*Overlays.GenerateOverlay(mod, numprocs);*)
         SYSTEM.PUT(-60, 0FE3H);
         entry;
         SYSTEM.PUT(-60, 03EFH);
