@@ -316,7 +316,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       (* iterate over procs in module *)
       FindProcCalls(mod, fixorgS);
       (* generate overlays based on this module *)
-      Overlays.GenerateOverlays(MOD);
+      Overlays.GenerateOverlays(mod);
       (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
       (* after fixups are done, write overlay file *)
