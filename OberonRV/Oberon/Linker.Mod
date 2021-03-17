@@ -237,16 +237,22 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       Files.ReadInt(R, n);
       numprocs := n DIV 4;
       Files.ReadInt(R, w); SYSTEM.PUT(p, w);
-      SYSTEM.PUT(p, w);
+      (*procedures*)
       NEW(rootNode); rootNode.mod := mod; rootNode.pno := 0;
+      u := w;
       INC(p, 4); DEC(n, 4);
       WHILE n > 0 DO
         Files.ReadInt(R, w); SYSTEM.PUT(p, w);
+        (* set size based on position of previous proc and this one *)
+        rootNode.size := w - u;
+        u := w;
         NEW(tempNode); tempNode.mod := mod; tempNode.pno := numprocs - n DIV 4;
+        (* set up linked list *)
         tempNode.next := rootNode; rootNode.prev := tempNode; rootNode := tempNode;
         INC(p, 4); DEC(n, 4)
-      END ;   (*procedures*)
+      END ;
       mod.rootNode := rootNode;
+      (* we set root size later, when its value can be ascertained *)
       Files.ReadInt(R, n);
       WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
       mod.imp := p;  (*copy imports*)
@@ -274,6 +280,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
       Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
       Files.ReadInt(R, w);
+      rootNode.size := w - u; (* size of final node = distance from start of proc to entry *)
       body := SYSTEM.VAL(Command, mod.code + w);
       Files.Read(R, ch);
       IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;

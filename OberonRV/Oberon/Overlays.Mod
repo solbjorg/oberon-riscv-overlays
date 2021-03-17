@@ -2,7 +2,8 @@ MODULE Overlays;
   IMPORT SYSTEM, FileDir, Files;
   CONST numRegions = 1;
     numOverlays = 100;
-    regionSize = 1000H;
+    numIndices = 2; (* maximum number of overlays possible to map at once *)
+    regionSize = 0B000H;
     addi = 19; load = 3; store = 35;
 
     (* Useful constants for bit manip *)
@@ -32,9 +33,16 @@ MODULE Overlays;
       data*, procs*, stubs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
     END ;
 
+    (* TODO: the data structures Node and Procedure overlap in some rather *)
+    (* nasty ways. In particular, although Procedure is per-procedure in an overlay, *)
+    (* a lot of its information will be duplicated as a procedure is shared across overlays. *)
+    (* Ideally, this duplicated information shall be held in the node, and the Overlay-specific *)
+    (* information will be stored along with a pointer to the more general node. *)
+    (* node in inter-module call graph *)
     NodeDesc* = RECORD
       prev*, next*: Node; (* move between nodes within a module *)
       dsc*: Edge;
+      size*: INTEGER; (* size of procedure *)
       mod*: Module;
       pno*: BYTE;
     END;
@@ -45,8 +53,11 @@ MODULE Overlays;
       weight*: INTEGER; (* TODO: Make this a Byte? *)
     END;
 
+    (* procedure in overlay *)
     ProcedureDesc* = RECORD
       addr*: INTEGER; (* relative address within overlay; i.e. proc address assuming overlay starts at address 0 *)
+      filepos*: INTEGER; (* position within module file *)
+      size*: INTEGER; (* pos size; needed to load into overlay *)
       mod*: Module; (* module this proc belongs to *)
       index*: INTEGER; (* toc index of proc for module *)
       next*: Procedure;
@@ -63,7 +74,9 @@ MODULE Overlays;
 
   VAR regions: ARRAY numRegions OF INTEGER; (*reserved addresses to map overlays onto*)
     overlays: ARRAY numOverlays OF Overlay;
-    numGeneratedOverlays, mappedIndex, stackLoc: INTEGER; (* index into table of overlay that is currently mapped *)
+    numGeneratedOverlays, lastMapped, numMapped,
+      stackLoc: INTEGER;
+    mappedIndices: ARRAY numIndices OF INTEGER;  (* index into table of overlay that is currently mapped *)
 
   PROCEDURE ThisFile(proc: Procedure): Files.File;
     VAR i: INTEGER;
@@ -80,7 +93,8 @@ MODULE Overlays;
   END ThisFile;
 
   PROCEDURE OverlayManager(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
-    VAR k, ovindex, pno, addr, oldmapped, oldIndex: INTEGER;
+    VAR k, ovindex, pno, addr, size, oldmapped, oldIndex: INTEGER;
+      found: BOOLEAN;
       ov, old: Overlay;
       proc: Procedure; body: Func;
 
@@ -118,6 +132,21 @@ MODULE Overlays;
       END
     END LoadOverlay;
 
+    (* shift the indices array one to the right depending on *)
+    (* where an entry was inserted; index specifies the entered index *)
+    (* also kills the last entry, if there is one *)
+    (* used for inserting into the middle of the array *)
+    PROCEDURE ShiftArray(index: INTEGER);
+      VAR i: INTEGER;
+    BEGIN
+      IF mappedIndices[numIndices-1] >= 0 THEN
+        overlays[mappedIndices[numIndices-1]].mapped := 0;
+      END;
+      FOR i := numIndices - 2 TO index+1 BY -1 DO
+        mappedIndices[i] := mappedIndices[i-1];
+      END;
+    END ShiftArray;
+
   BEGIN
     ovindex := SYSTEM.REG(30) DIV 2 MOD 200H;
     pno := SYSTEM.REG(30) DIV C24 MOD C8;
@@ -128,13 +157,37 @@ MODULE Overlays;
     ov := overlays[ovindex];
     pno := (ov.proc.mod.procs - ov.proc.mod.data) + pno * 4;
     IF ov.mapped = 0 THEN
-      IF (mappedIndex >= 0) & (mappedIndex # ovindex) THEN
-        old := overlays[mappedIndex];
+      (* search for open space *)
+      found := FALSE;
+      (* don't do this if an overlay has never been loaded before *)
+      IF (mappedIndices[0] >= 0) (*OR (mappedIndices[numIndices] >= 0)*) THEN
+        k := 1;
+        size := overlays[mappedIndices[k-1]].mapped - regions[0] + overlays[mappedIndices[k-1]].size;
+        (* assume mappedIndices is sorted according to where the overlays are positioned *)
+        WHILE (~found) & (regionSize - size < ov.size) & (k < numIndices) & (mappedIndices[k] >= 0) DO
+          IF regionSize - size < ov.size THEN
+            lastMapped := k;
+            mappedIndices[k] := ovindex;
+
+            ov.mapped := size + regions[0];
+            found := TRUE;
+          END;
+          INC(k);
+          size := overlays[mappedIndices[k-1]].mapped - regions[0] + overlays[mappedIndices[k-1]].size;
+        END;
+      END;
+      (* no empty hole found *)
+      IF ~found THEN
+        (* evict an overlay *)
+      END;
+
+      IF (mappedIndices[0] >= 0) & (mappedIndices[0] # ovindex) THEN
+        old := overlays[mappedIndices[0]];
         oldmapped := old.mapped;
       ELSE old := NIL; oldmapped := -1024;
       END;
-      oldIndex := mappedIndex;
-      mappedIndex := ovindex;
+      oldIndex := mappedIndices[0];
+      mappedIndices[0] := ovindex;
       (*
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
@@ -148,6 +201,7 @@ MODULE Overlays;
         IF proc.index = pno THEN
           body := SYSTEM.VAL(Func, proc.addr + ov.mapped);
           ASSERT(SYSTEM.VAL(INTEGER, body) >= regions[0]);
+          SYSTEM.PUT(-60, 0FE57H);
           k := body(a,b,c,d,e,f,g,h,i,j,l,m);
         END;
         proc := proc.next;
@@ -155,7 +209,7 @@ MODULE Overlays;
 
       IF (old # NIL) & (oldmapped = ov.mapped) THEN
         LoadOverlay(old, ov);
-        mappedIndex := oldIndex;
+        mappedIndices[0] := oldIndex;
       END;
     ELSE
       (* probably indirect function call within same module *)
@@ -174,7 +228,7 @@ MODULE Overlays;
   END OverlayManager;
 
   (* Return the overlay index corresponding to entry point (mno, pno) *)
-  (* Currently only checks mno*)
+  (* Currently only checks mno, TODO *)
   PROCEDURE FindOverlayIndex*(mno, pno: INTEGER): INTEGER;
     VAR index: INTEGER;
   BEGIN
@@ -186,7 +240,7 @@ MODULE Overlays;
   (* generate overlay for an array of function nodes*)
   (* returns index in overlay table *)
   PROCEDURE NewOverlay*(nodes: ARRAY OF Node; numnodes: INTEGER);
-    VAR index, i, u, tocoffset, adr, inst, mno, disp, op: INTEGER;
+    VAR index, i, u, tocoffset, addr, inst, mno, disp, op: INTEGER;
       root, proc: Procedure; impmod: Module;
       F: Files.File; R: Files.Rider;
       ov: Overlay;
@@ -200,19 +254,28 @@ MODULE Overlays;
     (*this is later used to fill in the TOC.*)
     impmod := nodes[0].mod;
     tocoffset := impmod.procs - nodes[0].mod.data;
-    NEW(root); root.mod := impmod; root.index := tocoffset + nodes[0].pno * 4; SYSTEM.GET(impmod.procs + nodes[0].pno * 4, root.addr);
+    NEW(root); root.mod := impmod; root.index := tocoffset + nodes[0].pno * 4;
+    (* assume that if this procedure is being loaded into an overlay, all calls to it have *)
+    (* to go through the overlay manager *)
+    (* this is a bit of a flawed assumption - but it works for now. *)
     SYSTEM.PUT(impmod.procs + nodes[0].pno * 4, SYSTEM.ADR(OverlayManager));
-    i := 1;
-    WHILE i < numnodes DO
+    FOR i := 1 TO numnodes-1 DO
       impmod := nodes[i].mod;
       tocoffset := impmod.procs - nodes[i].mod.data;
-      NEW(proc); proc.mod := impmod; proc.index := tocoffset + nodes[i].pno * 4; SYSTEM.GET(impmod.procs + nodes[i].pno * 4, proc.addr);
+      NEW(proc); proc.mod := impmod; proc.index := tocoffset + nodes[i].pno * 4;
       SYSTEM.PUT(impmod.procs + nodes[i].pno * 4, SYSTEM.ADR(OverlayManager));
       proc.next := root; root := proc;
-      INC(i);
+    END;
+    ov.proc := root; (* store which proc is the root *)
+    (* fixup sizes and addresses of each procedure in the overlay *)
+    proc := root; proc.addr := 0; proc.size := nodes[numnodes-1].size;
+    FOR i := numnodes-2 TO 0 BY -1 DO
+      root := proc.next;
+      root.addr := proc.addr + proc.size;
+      root.size := nodes[i].size;
+      proc := root;
     END;
 
-    ov.proc := root;
     ov.entryMno := nodes[0].mod.num;
     ov.entryPno := nodes[0].pno;
     ov.mapped := 0;
@@ -277,8 +340,11 @@ MODULE Overlays;
   BEGIN
     SYSTEM.GET(24, regions[0]);
     DEC(regions[0], 0D000H);
-    mappedIndex := -1;
+    FOR i := 0 TO LEN(mappedIndices)-1 DO
+      mappedIndices[i] := -1;
+    END;
     numGeneratedOverlays := 0;
+    lastMapped := -1;
     stackLoc := 0;
     (* load location of the overlay manager to predetermined reg *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
