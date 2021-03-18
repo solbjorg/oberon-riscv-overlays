@@ -28,6 +28,26 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END;
   END error;
 
+  (* writes a file Module.fix from fixed-up memory *)
+  PROCEDURE WriteFixedModule*(mod: Overlays.Module);
+    VAR i, u: INTEGER;
+      F: Files.File; R: Files.Rider;
+      filename: Overlays.FileName;
+  BEGIN
+    i := 0;
+    WHILE mod.name[i] # 0X DO filename[i] := mod.name[i]; INC(i) END;
+    filename[i] := "."; filename[i+1] := "f"; filename[i+2] := "i"; filename[i+3] := "x";
+    filename[i+4] := 0X;
+    (*copy contents of module in memory into an overlay file*)
+    F := Files.New(filename);
+    Files.Set(R, F, 0);
+    i := mod.code;
+    WHILE i < mod.data + mod.size DO
+      SYSTEM.GET(i, u); Files.WriteInt(R, u); INC(i, 4)
+    END;
+    Files.Register(F);
+  END WriteFixedModule;
+
   (* ---------- Linker helper functions ----------*)
   (* Returns a `jal ra, imm` instruction. *)
   PROCEDURE Jal(imm: INTEGER) : INTEGER;
@@ -51,7 +71,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   PROCEDURE Addi(reg, imm: INTEGER) : INTEGER;
   BEGIN
     (*addi reg, reg, imm*)
-    RETURN ((((imm) * 20H + reg) * 8H + 0) * 20H + reg) * 80H + addi
+    RETURN (((imm * 20H + reg) * 8H + 0) * 20H + reg) * 80H + addi
   END Addi;
 
   PROCEDURE Lw(imm: INTEGER) : INTEGER;
@@ -233,22 +253,28 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n, 4) END ;  (*type descriptors*)
       Files.ReadInt(R, n);
       WHILE n > 0 DO SYSTEM.PUT(p, 0); INC(p, 4); DEC(n, 4) END ;  (*variable space*)
+      (*procedures*)
       mod.procs := p;
       Files.ReadInt(R, n);
       numprocs := n DIV 4;
+      (* do first iteration of reading the procedure table *)
       Files.ReadInt(R, w); SYSTEM.PUT(p, w);
-      (*procedures*)
       NEW(rootNode); rootNode.mod := mod; rootNode.pno := 0;
-      u := w;
       INC(p, 4); DEC(n, 4);
-      WHILE n > 0 DO
+      (* use u both to calculate the size of each procedure, *)
+      (* as well as to ensure that the procedure list is monotonically *)
+      (* increasing. This is necessary, because there may be certain _padding words_ *)
+      u := 0;
+      WHILE (n > 0) DO
         Files.ReadInt(R, w); SYSTEM.PUT(p, w);
-        (* set size based on position of previous proc and this one *)
-        rootNode.size := w - u;
-        u := w;
-        NEW(tempNode); tempNode.mod := mod; tempNode.pno := numprocs - n DIV 4;
-        (* set up linked list *)
-        tempNode.next := rootNode; rootNode.prev := tempNode; rootNode := tempNode;
+        IF w >= u THEN
+          (* set size based on position of previous proc and this one *)
+          rootNode.size := w - u;
+          u := w;
+          NEW(tempNode); tempNode.mod := mod; tempNode.pno := numprocs - n DIV 4;
+          (* set up linked list *)
+          tempNode.next := rootNode; rootNode.prev := tempNode; rootNode := tempNode;
+        END;
         INC(p, 4); DEC(n, 4)
       END ;
       mod.rootNode := rootNode;
@@ -326,6 +352,8 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       Overlays.GenerateOverlays(mod);
       (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
+      (* write Module.fix *)
+      WriteFixedModule(mod);
       (* after fixups are done, write overlay file *)
       Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, 0));
       (*fixup of type descriptors*)
