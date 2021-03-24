@@ -1691,20 +1691,6 @@ END PrepCall;
 PROCEDURE Call*(VAR x: Item; r: INTEGER);
   VAR i: INTEGER; found: BOOLEAN;
 BEGIN (*x.type.form = RVOB.Proc*)
-  (* Store where we call the function from to a magic IO port - for debugging purposes *)
-  IF (stacktrace) THEN
-    incR;
-    i := LSL(0AAH, 24) +
-         ORD(modid[0]) MOD C8 +
-         LSL(ORD(modid[1]) MOD C8, 8) +
-         LSL(ORD(modid[2]) MOD C8, 16);
-    LoadImm(i);
-    put(RVAssem.sw(RH, 0, -32));
-    LoadImm(LSL(0CCH, 24) + RVOS.Pos() MOD C24);
-    put(RVAssem.sw(RH, 0, -32));
-    decR;
-  END;
-
   (*i := (*GenerateStub(x.r, x.a);*) 0;*)
   (* lui/addi pair to load the overlay token *)
   (* lui will have to be fixed up wrt pno/mno *)
@@ -1761,11 +1747,6 @@ BEGIN (*x.type.form = RVOB.Proc*)
     loadToken(RH-1); decR;
   END ;
 
-  (* Store that we return from that call context - debug *)
-  IF (stacktrace) THEN
-    put(RVAssem.sw(0, 0, -32));
-  END;
-
   IF x.type.base.form = RVOB.NoTyp THEN (*procedure*) RH := firstReg
   ELSE (*function*)
     IF r > firstReg THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
@@ -1781,8 +1762,9 @@ BEGIN
 END ProcedureEntrance;
 
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int, expo: BOOLEAN);
-  VAR a, r, freereg: INTEGER;
-BEGIN invalSB; frame := 0;
+  VAR a, r, freereg, i: INTEGER;
+BEGIN
+  invalSB; frame := 0;
   (*
   IF expo THEN
     program.procs.p[RVOS.expocnt + expoprocx] := pc * 4;
@@ -1794,13 +1776,25 @@ BEGIN invalSB; frame := 0;
 *)
   IF ~int THEN (*procedure prolog*)
     a := IntegerSize; r := firstReg;
+    (* RH does not point at an empty register here, because they're currently used for parameters. *)
+    (* So we pick the one big enough to be unaffected by parameters. *)
+    (* A runtime check to see if we have too many parameters for an empty register to exist may be wise ... *)
+    (* TODO. *)
+    freereg := parblksize DIV 4 + firstReg + 1;
+    (* Store where we enter the function to a magic IO port - for debugging purposes *)
+    IF (stacktrace) THEN
+      i := LSL(0AAH, 24) +
+           ORD(modid[0]) MOD C8 +
+           LSL(ORD(modid[1]) MOD C8, 8) +
+           LSL(ORD(modid[2]) MOD C8, 16);
+      LoadImmTo(freereg,i);
+      put(RVAssem.sw(freereg, 0, -32));
+      LoadImmTo(freereg,LSL(0CCH, 24) + RVOS.Pos() MOD C24);
+      put(RVAssem.sw(freereg, 0, -32));
+    END;
+
     IF locblksize >= 10000H THEN RVOS.Mark("too many locals") END ;
     IF ~FitsIn12Bits(-locblksize) THEN
-       (* RH does not point at an empty register here, because they're currently used for parameters. *)
-       (* So we pick the one big enough to be unaffected by parameters. *)
-       (* A runtime check to see if we have too many parameters for an empty register to exist may be wise ... *)
-       (* TODO. *)
-      freereg := parblksize DIV 4 + firstReg + 1;
       LoadImmTo(freereg, locblksize);
       put(RVAssem.sub(SP, SP, freereg));
     ELSE put(RVAssem.addi(SP, SP, -locblksize));
@@ -1822,6 +1816,10 @@ END Enter;
 
 PROCEDURE Return*(form: INTEGER; VAR x: Item; size: INTEGER; int: BOOLEAN);
 BEGIN
+  (* Store that we return from that call context - debug *)
+  IF (stacktrace) THEN
+    put(RVAssem.sw(0, 0, -32));
+  END;
   IF form # RVOB.NoTyp THEN load(x) END ;
   IF ~int THEN (*procedure epilog*)
     put(RVAssem.lw(RA, SP, 0));
@@ -2027,7 +2025,9 @@ END Ord;
 
 PROCEDURE Len*(VAR x: Item);
 BEGIN
-  IF x.type.len >= 0 THEN x.mode := RVOB.Const; x.a := x.type.len
+  IF x.type.len >= 0 THEN
+    (*IF x.mode = RegI THEN DEC(RH) END ;*)
+    x.mode := RVOB.Const; x.a := x.type.len
   ELSE (*open array*)
     put(RVAssem.lw(RH, SP, x.a + frame + IntegerSize));
     x.mode := Reg; x.r := RH; incR
