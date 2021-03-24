@@ -352,7 +352,6 @@ END RoundUp;
           IF (x.type.form = RVOB.Proc) & (x.type.base.form # RVOB.NoTyp) THEN
             RVOG.PrepCall(x, rx);
 
-
             ParamList(x); RVOG.Call(x, rx); x.type := x.type.base
           ELSE RVOS.Mark("not a function"); ParamList(x)
           END
@@ -458,7 +457,7 @@ END RoundUp;
     VAR nap, npar: LONGINT; (*nof actual/formal parameters*)
       x, y, z: RVOG.Item;
   BEGIN Check(RVOS.lparen, "no (");
-    npar := pno MOD 10; pno := pno DIV 10; expression(x); nap := 1;
+    npar := pno MOD 10; pno := pno DIV 10; IF npar > 0 THEN expression(x); nap := 1 ELSE nap := 0 END;
     IF sym = RVOS.comma THEN
       RVOS.Get(sym); expression(y); nap := 2; z.type := RVOB.noType;
       WHILE sym = RVOS.comma DO RVOS.Get(sym); expression(z); INC(nap) END
@@ -486,6 +485,7 @@ END RoundUp;
       ELSIF pno = 12 THEN CheckInt(x); CheckInt(y); CheckInt(z); RVOG.Copy(x, y, z)
       ELSIF pno = 13 THEN CheckConst(x); CheckInt(x); RVOG.LDPSR(x)
       ELSIF pno = 14 THEN CheckInt(x); RVOG.LDREG(x, y)
+      ELSIF pno = 15 THEN RVOG.EBREAK;
       END
     ELSE RVOS.Mark("wrong nof parameters")
     END

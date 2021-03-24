@@ -2127,6 +2127,12 @@ BEGIN
   END
 END CSRop;
 
+PROCEDURE EBREAK*;
+BEGIN put(RVAssem.ebreak());
+END EBREAK;
+
+(* end in-line functions *)
+
 PROCEDURE Init*(VAR success: BOOLEAN);
   VAR p : Program; c : Code; s : Strings; d : TypeDescriptors; procs : Procs;
 BEGIN

@@ -220,7 +220,7 @@ PROCEDURE slt*(rd, rs1, rs2: INTEGER): INTEGER;
 BEGIN RETURN fmtR(33H, 2, 0, rd, rs1, rs2)
 END slt;
 
-PROCEDURE sltu*(    rd, rs1, rs2: INTEGER): INTEGER;
+PROCEDURE sltu*(rd, rs1, rs2: INTEGER): INTEGER;
 BEGIN RETURN fmtR(33H, 3, 0, rd, rs1, rs2)
 END sltu;
 
@@ -244,7 +244,7 @@ PROCEDURE and*(rd, rs1, rs2: INTEGER): INTEGER;
 BEGIN RETURN fmtR(33H, 7, 0, rd, rs1, rs2)
 END and;
 
-PROCEDURE fence*(    pred, succ: INTEGER): INTEGER;
+PROCEDURE fence*(pred, succ: INTEGER): INTEGER;
 BEGIN RETURN fmtI(0FH, 0, 0, 0, (succ MOD 16) + LSL(pred MOD 16, 4))
 END fence;
 
