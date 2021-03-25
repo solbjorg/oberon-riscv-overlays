@@ -47,6 +47,8 @@ MODULE Overlays;
       pno*: BYTE;
     END;
 
+    SuperNodeDesc* = RECORD
+
     EdgeDesc* = RECORD
       next*: Edge;
       node*: Node;
@@ -95,7 +97,7 @@ MODULE Overlays;
   END GetFixModFile;
 
   PROCEDURE OverlayManager(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
-    VAR k, ovindex, pno, addr, size, oldmapped, oldIndex: INTEGER;
+    VAR k, ovindex, offset, pno, addr, size, oldmapped, oldIndex: INTEGER;
       found: BOOLEAN;
       ov, old: Overlay;
       proc: Procedure; body: Func;
@@ -151,14 +153,11 @@ MODULE Overlays;
     END ShiftArray;
 
   BEGIN
-    ovindex := SYSTEM.REG(30) DIV 2 MOD 200H;
-    pno := SYSTEM.REG(30) DIV C24 MOD C8;
-    (* TODO we will later store /the actual overlay index/ in the address token *)
-    (* this is just a stopgap so we can test small parts at a time *)
-    (* this is currently ~guaranteed(!) to find a hit, hence the lack of safety *)
-    (* TODO: MAKE THIS SAFE *)
+    ovindex := SYSTEM.REG(30) DIV 2 MOD 4000H;
+    offset := (SYSTEM.REG(30) DIV 8000H) * 4;
+    SYSTEM.PUT(-60, 0EFAFH);
+    SYSTEM.PUT(-60, offset);
     ov := overlays[ovindex];
-    pno := (ov.proc.mod.procs - ov.proc.mod.data) + pno * 4;
     IF ov.mapped = 0 THEN
       (*
       (* search for open space *)
@@ -196,24 +195,14 @@ MODULE Overlays;
       (*
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
-      ASSERT(pno >= 0);
       LoadOverlay(ov, old);
 
       (* call function in loaded overlay *)
       proc := ov.proc;
-      body := NIL;
-      WHILE body = NIL DO
-        IF proc.index = pno THEN
-          SYSTEM.PUT(-60, proc.addr);
-          body := SYSTEM.VAL(Func, proc.addr + ov.mapped);
-          SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, body));
-          ASSERT(SYSTEM.VAL(INTEGER, body) >= regions[0]);
-          SYSTEM.PUT(-60, 0FE57H);
-          k := body(a,b,c,d,e,f,g,h,i,j,l,m);
-          SYSTEM.PUT(-60, 075EFH);
-        END;
-        proc := proc.next;
-      END;
+      body := SYSTEM.VAL(Func, offset + regions[0]);
+      SYSTEM.PUT(-60, 0FAE57H);
+      SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, body));
+      k := body(a,b,c,d,e,f,g,h,i,j,l,m);
 
       IF (old # NIL) & (oldmapped = ov.mapped) THEN
         LoadOverlay(old, ov);
@@ -221,16 +210,8 @@ MODULE Overlays;
       END;
     ELSE
       (* probably indirect function call within same module *)
-      proc := ov.proc;
-      body := NIL;
-      WHILE body = NIL DO
-        IF proc.index = pno THEN
-          body := SYSTEM.VAL(Func, proc.addr + ov.mapped);
-          ASSERT(SYSTEM.VAL(INTEGER, body) >= regions[0]);
-          k := body(a,b,c,d,e,f,g,h,i,j,l,m);
-        END;
-        proc := proc.next;
-      END;
+      body := SYSTEM.VAL(Func, offset + regions[0]);
+      k := body(a,b,c,d,e,f,g,h,i,j,l,m);
     END;
     RETURN k
   END OverlayManager;
@@ -244,6 +225,32 @@ MODULE Overlays;
     WHILE (overlays[index] # NIL) & (overlays[index].entryMno # mno) DO INC(index) END;
     RETURN index
   END FindOverlayIndex;
+
+  (* Return the function offset corresponding to entry point (mno, pno) in given overlay index *)
+  PROCEDURE FindProcedureOffset*(mno, pno, index: INTEGER): INTEGER;
+    VAR ov: Overlay; proc: Procedure; mod: Module;
+      procIndex, offset, addr: INTEGER;
+  BEGIN
+    ov := overlays[index];
+    addr := -1;
+    IF ov # NIL THEN
+      proc := ov.proc;
+      mod := proc.mod;
+      procIndex := (mod.procs - mod.data) + pno * 4;
+      SYSTEM.PUT(-60, 0FEFH);
+      SYSTEM.PUT(-60, proc.index);
+      SYSTEM.PUT(-60, procIndex);
+      SYSTEM.PUT(-60, mno);
+      WHILE (proc # NIL) & ((proc.index # procIndex) OR (proc.mod.num # mno)) DO
+        proc := proc.next;
+        procIndex := (proc.mod.procs - proc.mod.data) + pno * 4;
+      END;
+
+      IF proc # NIL THEN addr := proc.addr END;
+    END;
+
+    RETURN addr
+  END FindProcedureOffset;
 
   (* generate overlay for an array of function nodes*)
   (* returns index in overlay table *)
@@ -277,7 +284,6 @@ MODULE Overlays;
     FOR i := numnodes-1 TO 0 BY -1 DO
       root.addr := proc.addr + proc.size;
       root.size := nodes[i].size;
-      SYSTEM.PUT(-60, nodes[i].size);
       (* todo: will have to be changed when the overlay is not per-module *)
       root.filepos := root.addr;
       proc := root;

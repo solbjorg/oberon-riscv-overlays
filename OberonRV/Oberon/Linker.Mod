@@ -184,7 +184,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END FindProcCalls;
 
   PROCEDURE FixupOverlayTokens(mod: Overlays.Module; fixorgS: INTEGER);
-    VAR adr, mno, pno, imm, inst, reg, index, disp: INTEGER;
+    VAR adr, mno, pno, imm, inst, reg, index, offset, disp: INTEGER;
       impmod: Overlays.Module;
   BEGIN
     adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)
@@ -201,13 +201,17 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         (* TODO: too much indirection! *)
         SYSTEM.GET(impmod.ent + pno*4, pno);
       END;
-      inst := (inst - LSL(imm MOD C20, 12)) + LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12);
+      index := Overlays.FindOverlayIndex(mno, pno);
+      offset := Overlays.FindProcedureOffset(mno, pno, index);
+      SYSTEM.PUT(-60, 0FAEFH);
+      (*ASSERT(offset DIV 4 < 1000H);*)
+      inst := (inst - LSL(imm MOD C20, 12)) + LSL(offset DIV 4, 15) + LSL(index DIV 800H MOD 8H, 12);
       SYSTEM.PUT(adr-4, inst);
 
       SYSTEM.GET(adr, inst);
       disp := inst DIV 10000H;
       reg  := inst MOD 20H;
-      inst := LSL(Overlays.FindOverlayIndex(mno, pno) MOD C8, 1) + 1;
+      inst := LSL(index MOD 800H, 1) + 1;
       SYSTEM.PUT(adr, Addi(reg, inst));
       (* if MSB of the imm in the addi instruction is 1, it *)
       (* will be sign extended; so we need to change the imm*)
@@ -215,8 +219,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       IF inst >= 2048 THEN
         SYSTEM.GET(adr-4, inst);
         imm := inst DIV C12;
-        INC(imm, 1);
-        inst := (inst - LSL(imm MOD C20, 12)) + LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12);
+        inst := (inst - LSL(imm MOD C20, 12)) + LSL(imm + 1 MOD C20, 12);
         SYSTEM.PUT(adr-4, inst);
       END;
       adr := mod.code + disp*4;
