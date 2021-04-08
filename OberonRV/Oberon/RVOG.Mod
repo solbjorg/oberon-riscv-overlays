@@ -43,6 +43,7 @@ CONST
   maxStrx = 3000;   (* statically allocated strings *)
   maxTD = 512;      (* 512 words of space for type descriptors *)
   maxProcs = 512;   (* 512 words of space for procedure listing *)
+  maxNumProcs = 60;
   maxStubs = 200;
 
   Reg = 10; RegI = 11; Cond = 12;  (*internal item modes*)
@@ -1759,6 +1760,7 @@ PROCEDURE ProcedureEntrance*;
 BEGIN
   program.procs.p[procx] := pc * 4;
   INC(procx);
+  IF (procx > maxNumProcs) THEN RVOS.Mark("Too many procs!"); END;
 END ProcedureEntrance;
 
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int, expo: BOOLEAN);
@@ -2097,9 +2099,14 @@ BEGIN
   ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.Proc) THEN
     (* load the actual, physical address into x.r, as opposed to an overlay token and the like *)
     (* obviously does not play nice with overlays ! *)
-    put(RVAssem.auipc(RH, 0));
-    LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
-    put(RVAssem.sub(RH, RH, RH+1));
+    IF x.r = 0 THEN
+      put(RVAssem.auipc(RH, 0));
+      LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
+      put(RVAssem.sub(RH, RH, RH+1));
+    ELSE
+      GetSB(x.r);
+      Fetch(SB, x.a+C8);
+    END;
     x.r := RH; incR; x.mode := Reg
   ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.String) THEN
     Texts.WriteLn(W); Texts.WriteString(W, "lod"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);

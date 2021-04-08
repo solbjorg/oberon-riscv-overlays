@@ -142,11 +142,10 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       ELSE
         called := impmod.rootNode;
       END;
-      (* search through nodes for the one belonging to the function being called *)
-      WHILE (called # NIL) & (called.pno # pno) DO called := called.next END;
-      IF called = NIL THEN
+      IF (called = NIL) OR (called = mod.rootNode) THEN
         (* assume that the function does not belong to an overlay, *)
         (* i.e. it is part of core (Kernel, etc.) or entry *)
+        (* for module granularity, we also ignore intramodule calls *)
         (* No more to be done, we can ignore this in our graph (for now) *)
       ELSE
         (* called procedure was found in graph *)
@@ -156,14 +155,18 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           (* find node of calling function as indicated by index*)
           (* find node of callee *)
           caller := mod.rootNode;
-          WHILE (caller # NIL) & (caller.pno # index) DO caller := caller.next END;
           outgoing := caller.dsc;
+          SYSTEM.PUT(-60, 0ABCDEFH);
           IF outgoing # NIL THEN
             (* search through edges for one leading to the function being called *)
-            WHILE (outgoing.next # NIL) & (outgoing.node # called) DO outgoing := outgoing.next END;
+            WHILE (outgoing.node # called) & (outgoing.next # NIL) DO outgoing := outgoing.next END;
           ELSE
-            (* this is the first function call in the module *)
-            NEW(tempOut); caller.dsc := tempOut; tempOut.node := called; tempOut.weight := 0; outgoing := tempOut;
+            (* this is the first inter-module function call in the module *)
+            NEW(tempOut);
+            caller.dsc := tempOut;
+            SYSTEM.PUT(-60, 0AFEFEFH);
+            tempOut.node := called;
+            tempOut.weight := 0; outgoing := caller.dsc;
           END;
 
           IF outgoing.node = called THEN
@@ -201,9 +204,13 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         (* TODO: too much indirection! *)
         SYSTEM.GET(impmod.ent + pno*4, pno);
       END;
-      index := Overlays.FindOverlayIndex(mno, pno);
-      offset := Overlays.FindProcedureOffset(mno, pno, index);
-      SYSTEM.PUT(-60, 0FAEFH);
+      IF mno > 6 THEN
+        index := Overlays.FindOverlayIndex(mno, pno);
+        offset := Overlays.FindProcedureOffset(mno, pno, index);
+      ELSE
+        index := 0; offset := 0;
+      END;
+      SYSTEM.PUT(-60, offset);
       (*ASSERT(offset DIV 4 < 1000H);*)
       inst := (inst - LSL(imm MOD C20, 12)) + LSL(offset DIV 4, 15) + LSL(index DIV 800H MOD 8H, 12);
       SYSTEM.PUT(adr-4, inst);
@@ -240,7 +247,9 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       op, imm, disp, adr, inst, pno, vno, dest, offset, index: INTEGER;
       impname: Overlays.ModuleName;
       (* used for constructing call graph *)
-      rootNode, tempNode: Overlays.Node;
+      procs: ARRAY Overlays.maxNumProcs OF Overlays.Procedure;
+      tempProc: Overlays.Procedure;
+      nodes: ARRAY 1 OF Overlays.Node;
   BEGIN
     error(0, name); SYSTEM.PUT(-60, 0F0ADH);
     IF res = 0 THEN (*search for a hole in the list allocate and link*)
@@ -271,40 +280,35 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       mod.procs := p;
       Files.ReadInt(R, n);
       numprocs := n DIV 4;
-      (* do first iteration of reading the procedure table *)
-      Files.ReadInt(R, w); SYSTEM.PUT(p, w);
-      NEW(rootNode); rootNode.mod := mod; rootNode.pno := 0;
-      INC(p, 4); DEC(n, 4);
       (* use u both to calculate the size of each procedure, *)
       (* as well as to ensure that the procedure list is monotonically *)
       (* increasing. This is necessary, because there may be certain _padding words_ *)
-      u := 0;
+      i := 0; u := 0;
       WHILE (n > 0) DO
-        Files.ReadInt(R, w); SYSTEM.PUT(p, w);
-        IF w >= u THEN
-          (* set size based on position of previous proc and this one *)
-          rootNode.size := w - u;
-          u := w;
-          NEW(tempNode); tempNode.mod := mod; tempNode.pno := numprocs - n DIV 4;
-          (* set up linked list *)
-          tempNode.next := rootNode; rootNode.prev := tempNode; rootNode := tempNode;
+        Files.ReadInt(R, w);
+        SYSTEM.PUT(p, SYSTEM.ADR(Overlays.OverlayManager)); INC(p, 4);
+        IF (w >= u) THEN
+          (* until a proc is in a loaded overlay, all calls should go *)
+          (* through the OVM *)
+          NEW(tempProc); tempProc.addr := w; tempProc.index := (mod.procs - mod.data) + numprocs * 4 - n;
+          procs[i] := tempProc; INC(i);
+        ELSE DEC(numprocs);
         END;
-        INC(p, 4); DEC(n, 4)
+        u := w;
+        DEC(n, 4);
       END ;
-      mod.rootNode := rootNode;
-      (* we set root size later, when its value can be ascertained *)
       Files.ReadInt(R, n);
       WHILE n > 0 DO Files.Read(R, ch); SYSTEM.PUT(p, ch); INC(p); DEC(n) END ;   (*strings*)
       mod.imp := p;  (*copy imports*)
       i := 0;
       WHILE i < nofimps DO
-          SYSTEM.PUT(p, import[i]); INC(p, 4); INC(i)
+        SYSTEM.PUT(p, import[i]); INC(p, 4); INC(i)
       END ;
       mod.cmd := p;  (*commands*) Files.Read(R, ch);
       WHILE ch # 0X DO
-          REPEAT SYSTEM.PUT(p, ch); INC(p); Files.Read(R, ch) UNTIL ch = 0X;
-          REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
-          Files.ReadInt(R, n); SYSTEM.PUT(p, n); INC(p, 4); Files.Read(R, ch)
+        REPEAT SYSTEM.PUT(p, ch); INC(p); Files.Read(R, ch) UNTIL ch = 0X;
+        REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
+        Files.ReadInt(R, n); SYSTEM.PUT(p, n); INC(p, 4); Files.Read(R, ch)
       END ;
       REPEAT SYSTEM.PUT(p, 0X); INC(p) UNTIL p MOD 4 = 0;
       mod.ent := p;  (*entries*)
@@ -320,8 +324,10 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
       Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
       Files.ReadInt(R, w);
-      rootNode.size := w - u; (* size of final node = distance from start of proc to entry *)
       body := SYSTEM.VAL(Command, mod.code + w);
+      (* generate node for linked module *)
+      nodes[0] := Overlays.MakeNode(mod, procs, numprocs, w);
+      mod.rootNode := nodes[0];
       Files.Read(R, ch);
       IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
       (* set alloc ptr such that the next loaded module will overwrite this one *)
@@ -362,8 +368,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END ;
       (* iterate over procs in module *)
       FindProcCalls(mod, fixorgS);
-      (* generate overlays based on this module *)
-      Overlays.GenerateOverlays(mod);
+      Overlays.NewOverlay(nodes, 1);
       (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
       (* write Module.fix *)
@@ -424,32 +429,12 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END
   END Free;
 
-  (* Deposits a relative offset jump to `Padr` in location `at` *)
-  (* Used to install functions at places required for the operating system. *)
-  PROCEDURE Install*(Padr, at: INTEGER);
-    VAR inst: LONGINT;
-
-     (* Returns a `jal x0, imm` instruction. *)
-    PROCEDURE Jal(imm: LONGINT) : LONGINT;
-      VAR result, imm20, imm19to12, imm11, imm10to1: LONGINT;
-    BEGIN
-      imm20 := imm DIV 100000H;
-      imm19to12 := (imm - imm20 * 100000H) DIV 1000H;
-      imm11 := (imm - (imm20 * 100000H + imm19to12 * 1000H)) DIV 800H;
-      imm10to1 := (imm - (imm20 * 100000H + imm19to12 * 1000H + imm11 * 800H)) DIV 2H;
-      result := ((((imm20 * 400H + imm10to1) * 2H + imm11) * 100H + imm19to12) * 20H + 0) * 80H + 111;
-      RETURN result
-    END Jal;
-
-  BEGIN inst := Jal(Padr - at); SYSTEM.PUT(at, inst);
-  END Install;
-
   PROCEDURE Init*;
   BEGIN
     Overlays.Init;
     Files.Init;
     (*NEW(rootOverlay); rootOverlay.size := 0; rootOverlay.next := NIL;*)
-    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, 0D000H);
+    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, Overlays.regionSize);
   END Init;
 
 END Linker.

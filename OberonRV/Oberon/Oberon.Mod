@@ -191,8 +191,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR Filler: Viewers.Viewer;
   BEGIN
     Input.SetMouseLimits(Viewers.curW + UW + SW, H);
-    SYSTEM.PUT(-60, 0ACACH);
     Display.ReplConst(Display.black, Viewers.curW, 0, UW + SW, H, Display.replace);
+    SYSTEM.PUT(-60, 0ACACH);
     NEW(Filler); ASSERT(Filler # NIL); Filler.handle := HandleFiller;
     Viewers.InitTrack(UW, H, Filler); (*init user track*)
     NEW(Filler); ASSERT(Filler # NIL); Filler.handle := HandleFiller;
@@ -330,6 +330,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   
   PROCEDURE Install* (T: Task);
   BEGIN
+    SYSTEM.PUT(-60, 100H);
     IF T.state = off THEN
       T.next := CurTask.next; CurTask.next := T; T.state := idle; T.nextTime := 0; INC(NofTasks)
     END
@@ -401,7 +402,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END Reset;
 
   PROCEDURE Init;
+    VAR i: INTEGER;
   BEGIN
+    SYSTEM.PUT(-60, 70H);
     Loader.Load("System", Mod);
     Mod := NIL; Loop
   END Init;

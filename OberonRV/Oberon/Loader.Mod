@@ -20,6 +20,7 @@ MODULE Loader;
     i := 0;
     WHILE name[i] # 0X DO filename[i] := name[i]; INC(i) END ;
     filename[i] := "."; filename[i+1] := "r"; filename[i+2] := "s"; filename[i+3] := "c"; filename[i+4] := 0X;
+
     RETURN Files.Old(filename)
   END ThisFile;
 
@@ -36,7 +37,7 @@ MODULE Loader;
 
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Overlays.Module);
     VAR ov: Overlays.Overlay; entry: Linker.Command;
-        numprocs, impkey, nofimps, key, size: INTEGER;
+        i, numprocs, impkey, nofimps, key, size: INTEGER;
         name1, impname: Overlays.ModuleName;
         mod, impmod: Overlays.Module;
         F: Files.File; R: Files.Rider;
@@ -44,9 +45,11 @@ MODULE Loader;
         import: ARRAY 16 OF Overlays.Module;
   BEGIN
     mod := Linker.root; error(0, name); nofimps := 0;
+    SYSTEM.PUT(-60, 50H);
+    i := 0;
+    WHILE name[i] # 0X DO SYSTEM.PUT(-60, name[i]); INC(i) END ;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
     IF mod = NIL THEN
-      SYSTEM.PUT(-60, 0ABCDEFH);
       Check(name);
       IF res = 0 THEN F := ThisFile(name) ELSE F := NIL END ;
       IF F # NIL THEN
@@ -72,9 +75,7 @@ MODULE Loader;
         entry := Linker.Load(name, mod, numprocs, nofimps, size, import, R);
         mod.key := key;
         (*Overlays.GenerateOverlay(mod, numprocs);*)
-        SYSTEM.PUT(-60, 0FE3H);
         entry;
-        SYSTEM.PUT(-60, 03EFH);
       ELSE SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE;
       END;
     END;
@@ -85,5 +86,5 @@ MODULE Loader;
   BEGIN Linker.Init;
   END Init;
 
-BEGIN SYSTEM.PUT(-60, 86H); Init; SYSTEM.PUT(-60, 88H); Load("Oberon", M); SYSTEM.PUT(-60, 0F000H + res); REPEAT UNTIL FALSE
+BEGIN SYSTEM.EBREAK(); SYSTEM.PUT(-60, 86H); Init; SYSTEM.PUT(-60, 88H); Load("Oberon", M); SYSTEM.PUT(-60, 0F00H + res); REPEAT UNTIL FALSE
 END Loader.
