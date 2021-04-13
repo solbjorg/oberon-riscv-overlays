@@ -5,7 +5,7 @@ MODULE Overlays;
     numIndices = 2; (* maximum number of overlays possible to map at once *)
     maxNumProcs* = 60;
     maxNumMods* = 10;
-    regionSize* = 0D000H;
+    regionSize* = 0C000H;
     addi = 19; load = 3; store = 35;
 
     (* Useful constants for bit manip *)
@@ -75,7 +75,7 @@ MODULE Overlays;
       size: INTEGER; (* length of code segment; excludes footer *)
       nummods: INTEGER;
       mods*: ARRAY maxNumMods OF OverlayModule;
-      entryMno, entryPno: BYTE;
+      entryMno*: SET;
     END;
 
   VAR regions: ARRAY numRegions OF INTEGER; (*reserved addresses to map overlays onto*)
@@ -84,6 +84,96 @@ MODULE Overlays;
       stackLoc: INTEGER;
     overlayIndex: INTEGER;
     mappedIndices: ARRAY numIndices OF INTEGER;  (* index into table of overlay that is currently mapped *)
+    addressOVM*: INTEGER; (* address of the overlay manager *)
+
+    (*
+  PROCEDURE FindIncidentEdges(root, n: Node): ARRAY 10 OF Edge;
+    VAR edges: ARRAY 10 OF Edge; numedges: INTEGER;
+      m: Node;
+  BEGIN
+    numedges := 0; m := NIL;
+    WHILE
+  END FindIncidentEdges; *)
+
+  (* merges node m into node n *)
+  (* does not take care of edges! *)
+  PROCEDURE MergeNodes(VAR n: Node; m: Node);
+    VAR i, j: INTEGER; ovMod, newOvMod: OverlayModule;
+  BEGIN
+    FOR i := 0 TO m.nummods-1 DO
+      ovMod := m.mods[i];
+      (* TODO this can be made more efficient with SYSTEM.COPY, if need be *)
+      NEW(newOvMod); newOvMod.size := ovMod.size; newOvMod.mod := ovMod.mod; newOvMod.numprocs := ovMod.numprocs;
+      FOR j := 0 TO ovMod.numprocs-1 DO
+        NEW(newOvMod.proc[j]);
+        newOvMod.proc[j].addr := ovMod.proc[j].addr + n.size;
+        newOvMod.proc[j].index := ovMod.proc[j].index;
+      END;
+      n.mods[n.nummods + i] := newOvMod;
+      (* assume no duplication *)
+      m.mods[i].mod.rootNode := n;
+    END;
+    INC(n.nummods, i+1);
+    n.size := n.size + m.size;
+  END MergeNodes;
+
+  PROCEDURE RedirectEdges(VAR top, dyingnode, newnode: Node);
+    VAR e: Edge;
+  BEGIN
+    e := top.dsc;
+    WHILE e # NIL DO
+      IF e.node = dyingnode THEN
+        e.node := newnode;
+      ELSE
+        RedirectEdges(e.node, dyingnode, newnode);
+      END;
+      e := e.next;
+    END;
+  END RedirectEdges;
+
+  PROCEDURE CollapseNodes(VAR root, top: Node): BOOLEAN;
+    VAR prev, e: Edge; isLeaf, isChildLeaf: BOOLEAN;
+  BEGIN
+    e := root.dsc; isLeaf := FALSE;
+    IF e = NIL THEN
+      (* "leaf" in DAG *)
+      isLeaf := TRUE;
+    ELSE
+      prev := NIL;
+      WHILE e # NIL DO
+        isChildLeaf := CollapseNodes(e.node, top);
+        IF (isChildLeaf) & (e.node.size + root.size < regionSize) THEN
+          MergeNodes(root, e.node);
+          RedirectEdges(top, e.node, root);
+          (* remove e from linked list *)
+          IF prev # NIL THEN
+            (* this will also work if e.next is the last edge in the LL, as then *)
+            (* prev.next := NIL *)
+            prev.next := e.next;
+          ELSE
+            root.dsc := e.next;
+          END;
+        ELSE
+          prev := e;
+        END;
+        e := e.next;
+      END;
+      (* if, after collapsing all child nodes, there are none left, *)
+      (* this is now a leaf *)
+      IF root.dsc = NIL THEN
+        isLeaf := TRUE;
+      END;
+    END;
+    SYSTEM.PUT(-60, 0FFFH);
+    SYSTEM.PUT(-60, root.size);
+    RETURN isLeaf
+  END CollapseNodes;
+
+  PROCEDURE CollapseNode*(VAR root: Node);
+    VAR b: BOOLEAN;
+  BEGIN
+    b := CollapseNodes(root, root);
+  END CollapseNode;
 
   PROCEDURE GetFixModFile(ovmod: OverlayModule): Files.File;
     VAR i: INTEGER;
@@ -101,6 +191,23 @@ MODULE Overlays;
     RETURN Files.Old(filename)
   END GetFixModFile;
 
+  PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
+    VAR i, j, addr: INTEGER; modOv: OverlayModule; proc: Procedure;
+  BEGIN
+    FOR i := 0 TO ov.nummods-1 DO
+      modOv := ov.mods[i];
+      FOR j := 0 TO modOv.numprocs-1 DO
+        proc := modOv.proc[j];
+        IF evict THEN
+          addr := addressOVM;
+        ELSE
+          addr := ov.mapped + proc.addr;
+        END;
+        SYSTEM.PUT(modOv.mod.data + proc.index, addr);
+      END
+    END
+  END FillTOC;
+
   PROCEDURE OverlayManager*(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
     VAR k, ovindex, offset, pno, addr, size, oldmapped, oldIndex: INTEGER;
       found: BOOLEAN;
@@ -111,24 +218,6 @@ MODULE Overlays;
     VAR F: Files.File; R: Files.Rider; 
       i, j, addr, u: INTEGER;
       proc: Procedure;
-
-      PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
-        VAR i, j, addr: INTEGER; modOv: OverlayModule; proc: Procedure;
-      BEGIN
-        FOR i := 0 TO ov.nummods-1 DO
-          modOv := ov.mods[i];
-          FOR j := 0 TO modOv.numprocs-1 DO
-            proc := modOv.proc[j];
-            IF evict THEN
-              addr := SYSTEM.ADR(OverlayManager);
-            ELSE
-              addr := ov.mapped + proc.addr;
-            END;
-            SYSTEM.PUT(modOv.mod.data + proc.index, addr);
-          END
-        END
-      END FillTOC;
-
     BEGIN
       F := Files.Old(ov.filename);
       IF F # NIL THEN
@@ -136,18 +225,11 @@ MODULE Overlays;
         IF old # NIL THEN old.mapped := 0; END;
         Files.Set(R, F, 0);
         i := 0;
-        SYSTEM.PUT(-60, 0EBEBEH);
-        SYSTEM.PUT(-60, ov.entryMno);
-        SYSTEM.PUT(-60, ov.entryPno);
-        (* seemingly overwrites the heap ... *)
         WHILE i < ov.size DO
           ASSERT(ov.mapped + i < Kernel.heapOrg);
           Files.ReadInt(R, u); SYSTEM.PUT(ov.mapped + i, u);
           INC(i, 4);
         END;
-        SYSTEM.PUT(-60, 0EBEBEH);
-        SYSTEM.PUT(-60, ov.entryMno);
-        SYSTEM.PUT(-60, ov.entryPno);
         IF old # NIL THEN
           FillTOC(old, TRUE);
         END;
@@ -157,6 +239,7 @@ MODULE Overlays;
       END;
     END LoadOverlay;
 
+    (*
     (* shift the indices array one to the right depending on *)
     (* where an entry was inserted; index specifies the entered index *)
     (* also kills the last entry, if there is one *)
@@ -171,13 +254,23 @@ MODULE Overlays;
         mappedIndices[i] := mappedIndices[i-1];
       END;
     END ShiftArray;
-
+    *)
   BEGIN
     ovindex := SYSTEM.REG(30) DIV 2 MOD 4000H;
     offset := (SYSTEM.REG(30) DIV 8000H) * 4;
     SYSTEM.PUT(-60, 0EFAFH);
+    SYSTEM.PUT(-60, ovindex);
     SYSTEM.PUT(-60, offset);
+    FOR i := 0 TO numGeneratedOverlays-1 DO
+      SYSTEM.PUT(-60, 0EE000000H + i);
+      ov := overlays[i];
+      FOR j := 0 TO ov.nummods-1 DO
+        SYSTEM.PUT(-60, ov.mods[j].mod.num)
+      END;
+    END;
+
     ov := overlays[ovindex];
+    SYSTEM.PUT(-60, 0FAFEH);
     IF ov.mapped = 0 THEN
       (*
       (* search for open space *)
@@ -215,12 +308,7 @@ MODULE Overlays;
       (*
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
-      SYSTEM.PUT(-60, 0BDBDBDH);
-      SYSTEM.PUT(-60, 0EBEBEH);
-      SYSTEM.PUT(-60, ov.entryMno);
-      SYSTEM.PUT(-60, ov.entryPno);
       LoadOverlay(ov, old);
-      SYSTEM.PUT(-60, 0CDBDBDH);
 
       (* call function in loaded overlay *)
       body := SYSTEM.VAL(Func, offset + regions[0]);
@@ -240,14 +328,28 @@ MODULE Overlays;
     RETURN k
   END OverlayManager;
 
+  PROCEDURE EvictMappedOverlay*;
+    VAR ov: Overlay;
+  BEGIN
+    IF mappedIndices[0] >= 0 THEN
+      ov := overlays[mappedIndices[0]];
+      FillTOC(ov, TRUE);
+      ov.mapped := 0;
+      mappedIndices[0] := -1;
+    END
+  END EvictMappedOverlay;
+
   (* Return the overlay index corresponding to entry point (mno, pno) *)
   (* Currently only checks mno, TODO *)
   PROCEDURE FindOverlayIndex*(mno, pno: INTEGER): INTEGER;
     VAR index: INTEGER;
   BEGIN
-    index := 0;
-    WHILE (overlays[index] # NIL) & (overlays[index].entryMno # mno) DO INC(index) END;
+    index := numGeneratedOverlays-1;
+    SYSTEM.PUT(-60, 0FF000000H+index);
+    SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, overlays[index].entryMno));
+    WHILE (index >= 0) & ~(mno IN overlays[index].entryMno) DO DEC(index) END;
     ASSERT(overlays[index] # NIL);
+    SYSTEM.PUT(-60, index);
     RETURN index
   END FindOverlayIndex;
 
@@ -295,11 +397,12 @@ MODULE Overlays;
       node: Node;
       ov: Overlay;
   BEGIN
-    NEW(ov); ov.nummods := 0; ov.size := 0;
+    NEW(ov); ov.nummods := 0; ov.size := 0; ov.entryMno := {};
     i := 0;
     WHILE overlays[i] # NIL DO INC(i) END;
     (* add the overlay we're about to generate to the table *)
     overlays[i] := ov;
+    numGeneratedOverlays := i+1;
     (*First, initialise the list of procedures contained in the overlay.*)
     (*Create a linked list of `Procedure` filled in with pointers to procedure addresses; *)
     (*this is later used to fill in the TOC.*)
@@ -308,16 +411,18 @@ MODULE Overlays;
       FOR j := 0 TO node.nummods-1 DO
         ov.mods[j] := node.mods[j];
         INC(ov.size, node.mods[j].size);
+        INCL(ov.entryMno, node.mods[j].mod.num);
         INC(ov.nummods);
       END;
     END;
+    SYSTEM.PUT(-60, 0C1AH);
+    SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, ov.entryMno));
+    SYSTEM.PUT(-60, ov.size);
+    SYSTEM.PUT(-60, ov.nummods);
 
     ASSERT(ov.size < regionSize);
 
     SYSTEM.PUT(-60, 0FEFH);
-    ov.entryMno := nodes[0].mods[0].mod.num;
-    SYSTEM.PUT(-60, ov.entryMno);
-    ov.entryPno := nodes[0].mods[0].proc[0].index;
     ov.mapped := 0;
   END NewOverlay;
 
@@ -370,8 +475,10 @@ MODULE Overlays;
       modOv := ov.mods[i];
       fixFile := GetFixModFile(modOv);
       Files.Set(fixR, fixFile, 0);
+      Files.ReadInt(fixR, u);
       WHILE ~fixR.eof DO
-        Files.ReadInt(fixR, u); Files.WriteInt(ovlR, u);
+        Files.WriteInt(ovlR, u);
+        Files.ReadInt(fixR, u);
       END;
       INC(ov.size, modOv.size);
     END;
@@ -392,6 +499,7 @@ MODULE Overlays;
     overlayIndex := 0;
     lastMapped := -1;
     stackLoc := 0;
+    addressOVM := SYSTEM.ADR(OverlayManager);
     (* load location of the overlay manager to predetermined reg *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
     SYSTEM.PUT(-60, SYSTEM.ADR(OverlayManager));

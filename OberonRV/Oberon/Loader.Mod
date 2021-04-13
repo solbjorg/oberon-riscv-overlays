@@ -45,9 +45,9 @@ MODULE Loader;
         import: ARRAY 16 OF Overlays.Module;
   BEGIN
     mod := Linker.root; error(0, name); nofimps := 0;
-    SYSTEM.PUT(-60, 50H);
+    SYSTEM.PUT(-60, 0A50H);
     i := 0;
-    WHILE name[i] # 0X DO SYSTEM.PUT(-60, name[i]); INC(i) END ;
+    WHILE name[i] # 0X DO INC(i) END ;
     WHILE (mod # NIL) & (name # mod.name) DO mod := mod.next END ;
     IF mod = NIL THEN
       Check(name);
@@ -75,6 +75,7 @@ MODULE Loader;
         entry := Linker.Load(name, mod, numprocs, nofimps, size, import, R);
         mod.key := key;
         (*Overlays.GenerateOverlay(mod, numprocs);*)
+        Overlays.EvictMappedOverlay;
         entry;
       ELSE SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE;
       END;
@@ -86,5 +87,5 @@ MODULE Loader;
   BEGIN Linker.Init;
   END Init;
 
-BEGIN SYSTEM.EBREAK(); SYSTEM.PUT(-60, 86H); Init; SYSTEM.PUT(-60, 88H); Load("Oberon", M); SYSTEM.PUT(-60, 0F00H + res); REPEAT UNTIL FALSE
+BEGIN SYSTEM.PUT(-60, 86H); Init; SYSTEM.PUT(-60, 88H); Load("Oberon", M); SYSTEM.PUT(-60, 0F00H + res); REPEAT UNTIL FALSE
 END Loader.

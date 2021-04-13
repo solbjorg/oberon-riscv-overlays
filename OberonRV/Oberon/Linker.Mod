@@ -29,7 +29,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END error;
 
   (* writes a file Module.fix from fixed-up memory *)
-  PROCEDURE WriteFixedModule*(mod: Overlays.Module);
+  PROCEDURE WriteFixedModule*(mod: Overlays.Module; size: INTEGER);
     VAR i, u: INTEGER;
       F: Files.File; R: Files.Rider;
       filename: Overlays.FileName;
@@ -42,7 +42,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     F := Files.New(filename);
     Files.Set(R, F, 0);
     i := mod.code;
-    WHILE i < mod.data + mod.size DO
+    WHILE i < mod.code + size DO
       SYSTEM.GET(i, u); Files.WriteInt(R, u); INC(i, 4)
     END;
     Files.Register(F);
@@ -156,7 +156,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           (* find node of callee *)
           caller := mod.rootNode;
           outgoing := caller.dsc;
-          SYSTEM.PUT(-60, 0ABCDEFH);
           IF outgoing # NIL THEN
             (* search through edges for one leading to the function being called *)
             WHILE (outgoing.node # called) & (outgoing.next # NIL) DO outgoing := outgoing.next END;
@@ -164,7 +163,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
             (* this is the first inter-module function call in the module *)
             NEW(tempOut);
             caller.dsc := tempOut;
-            SYSTEM.PUT(-60, 0AFEFEFH);
             tempOut.node := called;
             tempOut.weight := 0; outgoing := caller.dsc;
           END;
@@ -210,7 +208,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       ELSE
         index := 0; offset := 0;
       END;
-      SYSTEM.PUT(-60, offset);
       (*ASSERT(offset DIV 4 < 1000H);*)
       inst := (inst - LSL(imm MOD C20, 12)) + LSL(offset DIV 4, 15) + LSL(index DIV 800H MOD 8H, 12);
       SYSTEM.PUT(adr-4, inst);
@@ -368,11 +365,12 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END ;
       (* iterate over procs in module *)
       FindProcCalls(mod, fixorgS);
+      Overlays.CollapseNode(nodes[0]);
       Overlays.NewOverlay(nodes, 1);
       (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
       (* write Module.fix *)
-      WriteFixedModule(mod);
+      WriteFixedModule(mod, w);
       (* after fixups are done, write overlay file *)
       Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, 0));
       (*fixup of type descriptors*)
