@@ -75,7 +75,7 @@ MODULE Loader;
         entry := Linker.Load(name, mod, numprocs, nofimps, size, import, R);
         mod.key := key;
         (*Overlays.GenerateOverlay(mod, numprocs);*)
-        Overlays.EvictMappedOverlay;
+        (*Overlays.EvictMappedOverlay;*)
         entry;
       ELSE SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE;
       END;
