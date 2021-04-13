@@ -636,7 +636,7 @@ BEGIN
   (* This will be replaced with a `addi` call in the linker. *)
   (* Note: This info isn't actually necessary, as the linker can figure out the index on its own. *)
   (* But I guess it's nice-to-have. *)
-  IF pc*InsnSize >= entry THEN (* special handling for caller index in entry *)
+  IF entry >= 0 THEN (* special handling for caller index in entry *)
     put(LSL(fixorgS MOD C16, 16) + LSL((-1) MOD C8, 8) + r MOD 20H); fixorgS := pc-1;
   ELSE
     put(LSL(fixorgS MOD C16, 16) + LSL((procx-1) MOD C8, 8) + r MOD 20H); fixorgS := pc-1;
@@ -1695,6 +1695,17 @@ BEGIN (*x.type.form = RVOB.Proc*)
   (*i := (*GenerateStub(x.r, x.a);*) 0;*)
   (* lui/addi pair to load the overlay token *)
   (* lui will have to be fixed up wrt pno/mno *)
+  (* Store where we call the function to a magic IO port - for debugging purposes *)
+  IF (stacktrace) THEN
+    i := LSL(0AAH, 24) +
+         ORD(modid[0]) MOD C8 +
+         LSL(ORD(modid[1]) MOD C8, 8) +
+         LSL(ORD(modid[2]) MOD C8, 16);
+    LoadImmTo(RH,i);
+    put(RVAssem.sw(RH, 0, -32));
+    LoadImmTo(RH,LSL(0CCH, 24) + RVOS.Pos() MOD C24);
+    put(RVAssem.sw(RH, 0, -32));
+  END;
 
   IF x.mode = RVOB.Const THEN
     IF x.r >= 0 THEN
@@ -1747,6 +1758,10 @@ BEGIN (*x.type.form = RVOB.Proc*)
     IF check THEN Trap(EQ, TrapNilProcedure, RH-1, 0) END ;
     loadToken(RH-1); decR;
   END ;
+  (* Store that we return from that call context - debug *)
+  IF (stacktrace) THEN
+    put(RVAssem.sw(0, 0, -32));
+  END;
 
   IF x.type.base.form = RVOB.NoTyp THEN (*procedure*) RH := firstReg
   ELSE (*function*)
@@ -1783,17 +1798,6 @@ BEGIN
     (* A runtime check to see if we have too many parameters for an empty register to exist may be wise ... *)
     (* TODO. *)
     freereg := parblksize DIV 4 + firstReg + 1;
-    (* Store where we enter the function to a magic IO port - for debugging purposes *)
-    IF (stacktrace) THEN
-      i := LSL(0AAH, 24) +
-           ORD(modid[0]) MOD C8 +
-           LSL(ORD(modid[1]) MOD C8, 8) +
-           LSL(ORD(modid[2]) MOD C8, 16);
-      LoadImmTo(freereg,i);
-      put(RVAssem.sw(freereg, 0, -32));
-      LoadImmTo(freereg,LSL(0CCH, 24) + RVOS.Pos() MOD C24);
-      put(RVAssem.sw(freereg, 0, -32));
-    END;
 
     IF locblksize >= 10000H THEN RVOS.Mark("too many locals") END ;
     IF ~FitsIn12Bits(-locblksize) THEN
@@ -1818,10 +1822,6 @@ END Enter;
 
 PROCEDURE Return*(form: INTEGER; VAR x: Item; size: INTEGER; int: BOOLEAN);
 BEGIN
-  (* Store that we return from that call context - debug *)
-  IF (stacktrace) THEN
-    put(RVAssem.sw(0, 0, -32));
-  END;
   IF form # RVOB.NoTyp THEN load(x) END ;
   IF ~int THEN (*procedure epilog*)
     put(RVAssem.lw(RA, SP, 0));
@@ -2160,6 +2160,7 @@ END Init;
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
   VAR success: BOOLEAN;
 BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; stubx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; fixorgS := 0; check := v # 0; version := v;
+  entry := -1;
   stacktrace := TRUE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
