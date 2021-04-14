@@ -75,6 +75,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (*called by NEW via MT[0]; ptr and tag are pointers*)
     VAR p, size, lim: LONGINT;
   BEGIN SYSTEM.GET(tag, size);
+    SYSTEM.PUT(-60, 0AEAH);
+    SYSTEM.PUT(-60, tag);
+    SYSTEM.PUT(-60, size);
     IF size = 32 THEN GetBlock32(p)
     ELSIF size = 64 THEN GetBlock64(p)
     ELSIF size = 128 THEN GetBlock128(p)
@@ -85,15 +88,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
     END
   END New;
-
-(* ---------- Overlay management ---------*)
-
-  (*called via MT[0] whenever a function call out of module happens*)
-  PROCEDURE Overlay*(pno, mno: INTEGER);
-  BEGIN
-
-  END Overlay;
-
 
 (* ---------- Garbage collector ----------*)
 
@@ -182,18 +176,24 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     SPI(-1); SPI(-1); SPIIdle(1)  (*flush response*)
   END SDShift;
 
-  PROCEDURE ReadSD(src, dst: INTEGER);
+  PROCEDURE ReadSDLim(src, dst, lim: INTEGER);
     VAR i: INTEGER;
   BEGIN SDShift(src); SPICmd(17, src); ASSERT(data = 0); (*CMD17 read one block*)
     i := 0; (*wait for start data marker*)
     REPEAT SPI(-1); INC(i) UNTIL data = 254;
     SYSTEM.PUT(spiCtrl, SPIFAST + CARD0);
-    FOR i := 0 TO 508 BY 4 DO
+    FOR i := 0 TO lim BY 4 DO
       SYSTEM.PUT(spiData, -1);
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
       SYSTEM.GET(spiData, data); SYSTEM.PUT(dst, data); INC(dst, 4)
     END;
     SPI(255); SPI(255); SPIIdle(1) (*may be a checksum; deselect card*)
+  END ReadSDLim;
+
+  PROCEDURE ReadSD(src, dst: INTEGER);
+    VAR i: INTEGER;
+  BEGIN
+    ReadSDLim(src, dst, 508);
   END ReadSD;
 
   PROCEDURE WriteSD(dst, src: INTEGER);
@@ -243,6 +243,20 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     src := src * 2 + FSoffset;
     ReadSD(src, SYSTEM.ADR(dst)); ReadSD(src+1, SYSTEM.ADR(dst)+512) 
   END GetSector;
+
+  (* dangerous! *)
+  PROCEDURE GetSectorToMem*(src, dst, lim: INTEGER);
+  BEGIN
+    ASSERT(src MOD 29 = 0); src := src DIV 29;
+    src := src * 2 + FSoffset;
+    IF lim <= 508 THEN
+      ReadSDLim(src, dst, 508);
+    ELSIF lim <= 1020 THEN
+      ReadSDLim(src, dst, 508); ReadSDLim(src+1, dst+512, lim);
+    ELSE
+      ReadSDLim(src, dst, 508); ReadSDLim(src+1, dst+512, 508);
+    END;
+  END GetSectorToMem;
   
   PROCEDURE PutSector*(dst: INTEGER; VAR src: Sector);
   BEGIN ASSERT(dst MOD 29 = 0); dst := dst DIV 29;

@@ -13,9 +13,11 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       XS        = FileDir.IndexSize;
 
   TYPE DiskAdr* = INTEGER;
+      WordFile = ARRAY (FileDir.SectorSize - FileDir.HeaderSize) DIV 4 OF INTEGER;
       File*    = POINTER TO FileDesc;
       Buffer  = POINTER TO BufferRecord;
       Index   = POINTER TO IndexRecord;
+      WordFileHeader = POINTER TO WordFileHeaderRecord;
 
     Rider* =
       RECORD eof*: BOOLEAN;
@@ -49,6 +51,13 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         mod: BOOLEAN;
         sec: FileDir.IndexSector
       END ;
+
+    WordFileHeaderRecord =
+      RECORD
+        header: ARRAY FileDir.HeaderSize OF BYTE;
+        file: WordFile;
+      END;
+
 
     (*aleng * SS + bleng = length (including header)
       apos * SS + bpos = current position
@@ -411,37 +420,47 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     IF n <= 4 THEN x := ROR(y + b MOD 10H, 4) ELSE x := ASR(ROR(y + b, 7), n-7) END
   END ReadNum;
 
-  (* not safe, since it's basically a naive memcpy *)
+  (* not safe, since it's basically a naive memcpy from disk *)
   PROCEDURE ReadFileToMem*(VAR r: Rider; dst: INTEGER);
-    VAR x, bpos, lim: INTEGER; buf: Buffer;
-      eof: BOOLEAN; data: FileDir.DataSector;
+    VAR i, apos, lim: INTEGER; buf: Buffer;
+      eof: BOOLEAN; firstSector: WordFileHeader;
+      f: File; sec: DiskAdr;
   BEGIN
-    x := 0; bpos := r.bpos;
-    WHILE ~r.eof DO
-      (*INC(i, 4);*)
-      IF r.apos # r.buf.apos THEN r.buf := GetBuf(r.file, r.apos) END;
-      buf := r.buf;
-      lim := buf.lim;
-      WHILE bpos < lim DO
-        x := ((buf.data[bpos+3] * 100H + buf.data[bpos+2]) * 100H + buf.data[bpos+1]) * 100H + buf.data[bpos];
-        INC(bpos, 4);
-        SYSTEM.PUT(dst, x);
-        INC(dst, 4);
-      END;
-      bpos := 0;
-      IF r.apos < r.file.aleng THEN
-        INC(r.apos); buf := Buf(r.file, r.apos);
-        IF buf = NIL THEN
-          (*
-          IF r.buf.mod THEN
-            SYSTEM.EBREAK();
-            WriteBuf(r.file, r.buf)
-          END ; *)
-          ReadBuf(r.file, r.buf, r.apos)
-        ELSE r.buf := buf
+    (* assign pointers etc. to local vars to cut down on pointer chasing*)
+    apos := r.apos; eof := FALSE; f := r.file;
+    (* get first buffer; necessary to use buffer to skip file header *)
+    IF apos # buf.apos THEN buf := GetBuf(f, apos); END;
+    firstSector := SYSTEM.VAL(WordFileHeader, SYSTEM.ADR(buf.data));
+    IF apos < f.aleng THEN
+      lim := (FileDir.SectorSize - FileDir.HeaderSize) DIV 4 - 1;
+    ELSE
+      lim := (f.bleng - FileDir.SectorSize) DIV 4 - 1;
+    END;
+    (* read out the contents of the first buffer, from the end of the file header to the end of the sector *)
+    FOR i := 0 TO lim DO
+      SYSTEM.PUT(dst, firstSector.file[i]);
+      INC(dst, 4);
+    END;
+    (* now, read directly from sectors of SD card to memory *)
+    IF apos < f.aleng THEN
+      INC(apos);
+      REPEAT
+        IF apos < STS THEN sec := f.sec[apos]
+        ELSE sec := f.ext[(apos-STS) DIV XS].sec[(apos-STS) MOD XS]
         END ;
-      ELSE r.eof := TRUE
-      END;
+        IF apos < f.aleng THEN
+          lim := SS;
+        ELSE
+          lim := f.bleng;
+        END;
+        Kernel.GetSectorToMem(sec, dst, lim);
+        IF apos < f.aleng THEN
+          INC(apos);
+          INC(dst, lim);
+        ELSE
+          eof := TRUE;
+        END;
+      UNTIL eof;
     END;
   END ReadFileToMem;
         
