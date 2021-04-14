@@ -410,6 +410,40 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     WHILE b >= 80H DO y := ROR(y + b-80H, 7); DEC(n, 7); ReadByte(R, b) END ;
     IF n <= 4 THEN x := ROR(y + b MOD 10H, 4) ELSE x := ASR(ROR(y + b, 7), n-7) END
   END ReadNum;
+
+  (* not safe, since it's basically a naive memcpy *)
+  PROCEDURE ReadFileToMem*(VAR r: Rider; dst: INTEGER);
+    VAR x, bpos, lim: INTEGER; buf: Buffer;
+      eof: BOOLEAN; data: FileDir.DataSector;
+  BEGIN
+    x := 0; bpos := r.bpos;
+    WHILE ~r.eof DO
+      (*INC(i, 4);*)
+      IF r.apos # r.buf.apos THEN r.buf := GetBuf(r.file, r.apos) END;
+      buf := r.buf;
+      lim := buf.lim;
+      WHILE bpos < lim DO
+        x := ((buf.data[bpos+3] * 100H + buf.data[bpos+2]) * 100H + buf.data[bpos+1]) * 100H + buf.data[bpos];
+        INC(bpos, 4);
+        SYSTEM.PUT(dst, x);
+        INC(dst, 4);
+      END;
+      bpos := 0;
+      IF r.apos < r.file.aleng THEN
+        INC(r.apos); buf := Buf(r.file, r.apos);
+        IF buf = NIL THEN
+          (*
+          IF r.buf.mod THEN
+            SYSTEM.EBREAK();
+            WriteBuf(r.file, r.buf)
+          END ; *)
+          ReadBuf(r.file, r.buf, r.apos)
+        ELSE r.buf := buf
+        END ;
+      ELSE r.eof := TRUE
+      END;
+    END;
+  END ReadFileToMem;
         
   (*---------------------------Write---------------------------*)
 

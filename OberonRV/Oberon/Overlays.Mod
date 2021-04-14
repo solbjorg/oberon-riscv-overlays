@@ -5,7 +5,7 @@ MODULE Overlays;
     numIndices = 2; (* maximum number of overlays possible to map at once *)
     maxNumProcs* = 60;
     maxNumMods* = 10;
-    regionSize* = 0C000H;
+    regionSize* = 0D000H;
     addi = 19; load = 3; store = 35;
 
     (* Useful constants for bit manip *)
@@ -224,12 +224,14 @@ MODULE Overlays;
         ov.mapped := regions[0];
         IF old # NIL THEN old.mapped := 0; END;
         Files.Set(R, F, 0);
-        i := 0;
-        WHILE i < ov.size DO
-          ASSERT(ov.mapped + i < Kernel.heapOrg);
+        ASSERT(ov.mapped + ov.size < Kernel.heapOrg);
+        Files.ReadFileToMem(R, ov.mapped);
+
+        (*
+        FOR i := 0 TO ov.size-4 BY 4 DO
           Files.ReadInt(R, u); SYSTEM.PUT(ov.mapped + i, u);
-          INC(i, 4);
         END;
+        *)
         IF old # NIL THEN
           FillTOC(old, TRUE);
         END;
@@ -258,6 +260,7 @@ MODULE Overlays;
   BEGIN
     ovindex := SYSTEM.REG(30) DIV 2 MOD 4000H;
     offset := (SYSTEM.REG(30) DIV 8000H) * 4;
+    (*
     SYSTEM.PUT(-60, 0EFAFH);
     SYSTEM.PUT(-60, ovindex);
     SYSTEM.PUT(-60, offset);
@@ -267,10 +270,10 @@ MODULE Overlays;
       FOR j := 0 TO ov.nummods-1 DO
         SYSTEM.PUT(-60, ov.mods[j].mod.num)
       END;
-    END;
+    END; *)
+
 
     ov := overlays[ovindex];
-    SYSTEM.PUT(-60, 0FAFEH);
     IF ov.mapped = 0 THEN
       (*
       (* search for open space *)
