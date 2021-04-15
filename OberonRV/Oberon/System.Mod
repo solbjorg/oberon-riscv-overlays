@@ -396,7 +396,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
     VAR u, v, w: INTEGER; mod: Overlays.Module;
   BEGIN u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
-    IF w = 0 THEN Kernel.New(a, b)
+    IF w = 0 THEN Kernel.NewPtr(a, b)
     ELSE (*trap*)
       SYSTEM.PUT(-32, 0BB000000H); (* emu debug; prints stack trace *)
       Texts.WriteLn(W); Texts.WriteString(W, "  pos "); Texts.WriteHex(W, v MOD 1000000H);

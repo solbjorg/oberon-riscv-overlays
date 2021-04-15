@@ -71,7 +71,25 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END
   END GetBlock32;
 
-  PROCEDURE New*(VAR ptr: LONGINT; tag: LONGINT);
+  PROCEDURE FreeOverlay*(ptr: LONGINT; size: INTEGER);
+  BEGIN
+    SYSTEM.PUT(ptr-4, 0);
+    DEC(allocated, size+8);
+  END FreeOverlay;
+
+  (* allocates a block of size to heap; meant for overlay system /only/ *)
+  PROCEDURE NewOverlay*(VAR ptr: LONGINT; size: INTEGER);
+  BEGIN
+    (* an overlay will ~never be <120B *)
+    GetBlock(ptr, size+8);
+    IF ptr = 0 THEN ASSERT(ptr # 0); (* abort *)
+    ELSE ptr := ptr+8; SYSTEM.PUT(ptr-4, 1); (* stop GC from collecting by setting mark to 1 *)
+      INC(allocated, size+8);
+      (* no need to 0 out memory like for pointers *)
+    END;
+  END NewOverlay;
+
+  PROCEDURE NewPtr*(VAR ptr: LONGINT; tag: LONGINT);
     (*called by NEW via MT[0]; ptr and tag are pointers*)
     VAR p, size, lim: LONGINT;
   BEGIN SYSTEM.GET(tag, size);
@@ -87,7 +105,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ELSE ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
       WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
     END
-  END New;
+  END NewPtr;
 
 (* ---------- Garbage collector ----------*)
 
@@ -307,7 +325,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* number _after_ the instruction instead. It can't be executed, so it will cause *)
     (* errors if jumped to (and confuse any disassembler!). *)
     u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 10000000H MOD 10H; (*trap number*)
-    IF w = 0 THEN New(a, b);
+    IF w = 0 THEN NewPtr(a, b);
       (*
     ELSIF w = 1 THEN
       u := v MOD 10H;
