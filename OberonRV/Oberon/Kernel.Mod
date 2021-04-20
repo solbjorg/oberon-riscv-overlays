@@ -28,20 +28,38 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   PROCEDURE GetBlock(VAR p: LONGINT; len: LONGINT);
     (*len is multiple of 256*)
     VAR q0, q1, q2, size: LONGINT; done: BOOLEAN;
-  BEGIN q0 := 0; q1 := list0; done := FALSE;
+  BEGIN
+    q0 := 0; q1 := list0; done := FALSE;
+    ASSERT(q1 # 0);
+    ASSERT(len MOD 256 = 0);
+    SYSTEM.PUT(-60, 0FFEFEFFH);
     WHILE ~done & (q1 # 0) DO
       SYSTEM.GET(q1, size); SYSTEM.GET(q1+8, q2);
+      SYSTEM.PUT(-60, list0);
+      SYSTEM.PUT(-60, size);
       IF size < len THEN (*no fit*) q0 := q1; q1 := q2
       ELSIF size = len THEN (*extract -> p*)
         done := TRUE; p := q1;
-        IF q0 # 0 THEN SYSTEM.PUT(q0+8, q2) ELSE list0 := q2 END
+        IF q0 # 0 THEN SYSTEM.PUT(q0+8, q2) ELSE
+          list0 := q2;
+          SYSTEM.GET(list0, size);
+          ASSERT(size > 0);
+        END
       ELSE (*reduce size*)
         done := TRUE; p := q1; q1 := q1 + len;
         SYSTEM.PUT(q1, size-len); SYSTEM.PUT(q1+4, -1); SYSTEM.PUT(q1+8, q2);
-        IF q0 # 0 THEN SYSTEM.PUT(q0+8, q1) ELSE list0 := q1 END
+        IF q0 # 0 THEN SYSTEM.PUT(q0+8, q1) ELSE
+          list0 := q1;
+          SYSTEM.GET(list0, size);
+          SYSTEM.PUT(-60, list0);
+          SYSTEM.PUT(-60, size);
+          ASSERT(size > 0);
+        END
       END
     END ;
-    IF ~done THEN p := 0 END
+    IF ~done THEN
+      p := 0
+    END
   END GetBlock;
 
   PROCEDURE GetBlock128(VAR p: LONGINT);
@@ -71,30 +89,11 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END
   END GetBlock32;
 
-  PROCEDURE FreeOverlay*(ptr: LONGINT; size: INTEGER);
-  BEGIN
-    SYSTEM.PUT(ptr-4, 0);
-    DEC(allocated, size+8);
-  END FreeOverlay;
-
-  (* allocates a block of size to heap; meant for overlay system /only/ *)
-  PROCEDURE NewOverlay*(VAR ptr: LONGINT; size: INTEGER);
-  BEGIN
-    (* an overlay will ~never be <120B *)
-    GetBlock(ptr, size+8);
-    IF ptr = 0 THEN ASSERT(ptr # 0); (* abort *)
-    ELSE ptr := ptr+8; SYSTEM.PUT(ptr-4, 1); (* stop GC from collecting by setting mark to 1 *)
-      INC(allocated, size+8);
-      (* no need to 0 out memory like for pointers *)
-    END;
-  END NewOverlay;
-
   PROCEDURE NewPtr*(VAR ptr: LONGINT; tag: LONGINT);
     (*called by NEW via MT[0]; ptr and tag are pointers*)
     VAR p, size, lim: LONGINT;
   BEGIN SYSTEM.GET(tag, size);
     SYSTEM.PUT(-60, 0AEAH);
-    SYSTEM.PUT(-60, tag);
     SYSTEM.PUT(-60, size);
     IF size = 32 THEN GetBlock32(p)
     ELSIF size = 64 THEN GetBlock64(p)
@@ -106,6 +105,28 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
     END
   END NewPtr;
+
+  (* allocates a block of size to heap; meant for overlay system /only/ *)
+  PROCEDURE NewOverlay*(VAR ptr: LONGINT; VAR size: LONGINT);
+  BEGIN
+    (* an overlay will ~never be <120B *)
+    (*GetBlock(ptr, (size+255) DIV 256 * 256);*)
+    GetBlock(ptr, size);
+    IF ptr # 0 THEN
+      SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
+      SYSTEM.PUT(ptr+4, -1); (* mark as free so the garbage collector doesn't remove it *)
+      ptr := ptr + 8;
+      INC(allocated, size);
+    END;
+  END NewOverlay;
+
+  (* deallocates overlay from heap *)
+  PROCEDURE FreeOverlay*(VAR ptr: LONGINT; size: INTEGER);
+  BEGIN
+    DEC(allocated, size);
+    SYSTEM.PUT(ptr-8, size); SYSTEM.PUT(ptr-4, -1); SYSTEM.PUT(ptr, list0);
+    list0 := ptr-8; ptr := 0;
+  END FreeOverlay;
 
 (* ---------- Garbage collector ----------*)
 
@@ -268,9 +289,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ASSERT(src MOD 29 = 0); src := src DIV 29;
     src := src * 2 + FSoffset;
     IF lim <= 508 THEN
-      ReadSDLim(src, dst, 508);
+      ReadSDLim(src, dst, lim);
     ELSIF lim <= 1020 THEN
-      ReadSDLim(src, dst, 508); ReadSDLim(src+1, dst+512, lim);
+      ReadSDLim(src, dst, 508); ReadSDLim(src+1, dst+512, lim-512);
     ELSE
       ReadSDLim(src, dst, 508); ReadSDLim(src+1, dst+512, 508);
     END;
@@ -326,10 +347,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* errors if jumped to (and confuse any disassembler!). *)
     u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 10000000H MOD 10H; (*trap number*)
     IF w = 0 THEN NewPtr(a, b);
-      (*
-    ELSIF w = 1 THEN
-      u := v MOD 10H;
-      Overlay(u DIV 100H, u MOD 100H); *)
     (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
     (* Note on the note: I currently put the whole trap in the LEDs, for easier debugging *)
     (* with my emulator that supports 32-bit LED output. *)

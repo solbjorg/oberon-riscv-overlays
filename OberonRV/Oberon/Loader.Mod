@@ -77,7 +77,7 @@ MODULE Loader;
         (*Overlays.GenerateOverlay(mod, numprocs);*)
         (*Overlays.EvictMappedOverlay;*)
         entry;
-      ELSE SYSTEM.PUT(-60, res); REPEAT UNTIL FALSE;
+      ELSE SYSTEM.PUT(-60, res);
       END;
     END;
     newmod := mod;

@@ -432,9 +432,10 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     IF apos # buf.apos THEN buf := GetBuf(f, apos); END;
     firstSector := SYSTEM.VAL(WordFileHeader, SYSTEM.ADR(buf.data));
     IF apos < f.aleng THEN
+      (* since this is the first sector, we must take the size of the header into account *)
       lim := (FileDir.SectorSize - FileDir.HeaderSize) DIV 4 - 1;
     ELSE
-      lim := (f.bleng - FileDir.SectorSize) DIV 4 - 1;
+      lim := f.bleng DIV 4 - 1;
     END;
     (* read out the contents of the first buffer, from the end of the file header to the end of the sector *)
     FOR i := 0 TO lim DO

@@ -5,7 +5,7 @@ MODULE Overlays;
     numIndices = 2; (* maximum number of overlays possible to map at once *)
     maxNumProcs* = 60;
     maxNumMods* = 10;
-    regionSize* = 0D000H;
+    (*regionSize* = 0D000H;*)
     addi = 19; load = 3; store = 35;
 
     (* Useful constants for bit manip *)
@@ -78,8 +78,7 @@ MODULE Overlays;
       entryMno*: SET;
     END;
 
-  VAR regions: ARRAY numRegions OF INTEGER; (*reserved addresses to map overlays onto*)
-    overlays: ARRAY numOverlays OF Overlay;
+  VAR overlays: ARRAY numOverlays OF Overlay;
     numGeneratedOverlays, lastMapped, numMapped,
       stackLoc: INTEGER;
     overlayIndex: INTEGER;
@@ -95,6 +94,7 @@ MODULE Overlays;
     WHILE
   END FindIncidentEdges; *)
 
+    (*
   (* merges node m into node n *)
   (* does not take care of edges! *)
   PROCEDURE MergeNodes(VAR n: Node; m: Node);
@@ -142,7 +142,7 @@ MODULE Overlays;
       prev := NIL;
       WHILE e # NIL DO
         isChildLeaf := CollapseNodes(e.node, top);
-        IF (isChildLeaf) & (e.node.size + root.size < regionSize) THEN
+        IF (isChildLeaf) THEN
           MergeNodes(root, e.node);
           RedirectEdges(top, e.node, root);
           (* remove e from linked list *)
@@ -173,7 +173,7 @@ MODULE Overlays;
     VAR b: BOOLEAN;
   BEGIN
     b := CollapseNodes(root, root);
-  END CollapseNode;
+  END CollapseNode; *)
 
   PROCEDURE GetFixModFile(ovmod: OverlayModule): Files.File;
     VAR i: INTEGER;
@@ -221,86 +221,32 @@ MODULE Overlays;
     BEGIN
       F := Files.Old(ov.filename);
       IF F # NIL THEN
-        ov.mapped := regions[0];
-        IF old # NIL THEN old.mapped := 0; END;
-        Files.Set(R, F, 0);
-        ASSERT(ov.mapped + ov.size < Kernel.heapOrg);
-        Files.ReadFileToMem(R, ov.mapped);
-
         (*
-        FOR i := 0 TO ov.size-4 BY 4 DO
-          Files.ReadInt(R, u); SYSTEM.PUT(ov.mapped + i, u);
+        IF old # NIL THEN
+          Kernel.FreeOverlay(old.mapped, old.size);
         END;
         *)
+        IF ov.size MOD 256 # 0 THEN SYSTEM.EBREAK(); END;
+        Kernel.NewOverlay(ov.mapped, ov.size);
+        Files.Set(R, F, 0);
+        (*ASSERT(ov.mapped + ov.size < Kernel.heapOrg);*)
+        Files.ReadFileToMem(R, ov.mapped);
+        (*
         IF old # NIL THEN
           FillTOC(old, TRUE);
-        END;
+        END; *)
         FillTOC(ov, FALSE);
       ELSE
         ASSERT(F # NIL); (* should never happen! abort *)
       END;
     END LoadOverlay;
 
-    (*
-    (* shift the indices array one to the right depending on *)
-    (* where an entry was inserted; index specifies the entered index *)
-    (* also kills the last entry, if there is one *)
-    (* used for inserting into the middle of the array *)
-    PROCEDURE ShiftArray(index: INTEGER);
-      VAR i: INTEGER;
-    BEGIN
-      IF mappedIndices[numIndices-1] >= 0 THEN
-        overlays[mappedIndices[numIndices-1]].mapped := 0;
-      END;
-      FOR i := numIndices - 2 TO index+1 BY -1 DO
-        mappedIndices[i] := mappedIndices[i-1];
-      END;
-    END ShiftArray;
-    *)
   BEGIN
     ovindex := SYSTEM.REG(30) DIV 2 MOD 4000H;
     offset := (SYSTEM.REG(30) DIV 8000H) * 4;
-    (*
-    SYSTEM.PUT(-60, 0EFAFH);
-    SYSTEM.PUT(-60, ovindex);
-    SYSTEM.PUT(-60, offset);
-    FOR i := 0 TO numGeneratedOverlays-1 DO
-      SYSTEM.PUT(-60, 0EE000000H + i);
-      ov := overlays[i];
-      FOR j := 0 TO ov.nummods-1 DO
-        SYSTEM.PUT(-60, ov.mods[j].mod.num)
-      END;
-    END; *)
-
 
     ov := overlays[ovindex];
     IF ov.mapped = 0 THEN
-      (*
-      (* search for open space *)
-      found := FALSE;
-      (* don't do this if an overlay has never been loaded before *)
-      IF (mappedIndices[0] >= 0) (*OR (mappedIndices[numIndices] >= 0)*) THEN
-        k := 1;
-        size := overlays[mappedIndices[k-1]].mapped - regions[0] + overlays[mappedIndices[k-1]].size;
-        (* assume mappedIndices is sorted according to where the overlays are positioned *)
-        WHILE (~found) & (regionSize - size < ov.size) & (k < numIndices) & (mappedIndices[k] >= 0) DO
-          IF regionSize - size < ov.size THEN
-            lastMapped := k;
-            mappedIndices[k] := ovindex;
-
-            ov.mapped := size + regions[0];
-            found := TRUE;
-          END;
-          INC(k);
-          size := overlays[mappedIndices[k-1]].mapped - regions[0] + overlays[mappedIndices[k-1]].size;
-        END;
-      END;
-      (* no empty hole found *)
-      IF ~found THEN
-        (* evict an overlay *)
-      END;
-      *)
-
       IF (mappedIndices[0] >= 0) & (mappedIndices[0] # ovindex) THEN
         old := overlays[mappedIndices[0]];
         oldmapped := old.mapped;
@@ -314,18 +260,17 @@ MODULE Overlays;
       LoadOverlay(ov, old);
 
       (* call function in loaded overlay *)
-      body := SYSTEM.VAL(Func, offset + regions[0]);
-      SYSTEM.PUT(-60, 0FAE57H);
-      SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, body));
+      body := SYSTEM.VAL(Func, ov.mapped + offset);
       k := body(a,b,c,d,e,f,g,h,i,j,l,m);
 
-      IF (old # NIL) & (oldmapped = ov.mapped) THEN
+      (*
+      IF (old # NIL) & (old.mapped = 0) THEN
         LoadOverlay(old, ov);
         mappedIndices[0] := oldIndex;
-      END;
+      END; *)
     ELSE
       (* probably indirect function call within same module *)
-      body := SYSTEM.VAL(Func, offset + regions[0]);
+      body := SYSTEM.VAL(Func, ov.mapped + offset);
       k := body(a,b,c,d,e,f,g,h,i,j,l,m);
     END;
     RETURN k
@@ -418,12 +363,13 @@ MODULE Overlays;
         INC(ov.nummods);
       END;
     END;
+    ov.size := (ov.size+263) DIV 256 * 256;
     SYSTEM.PUT(-60, 0C1AH);
     SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, ov.entryMno));
     SYSTEM.PUT(-60, ov.size);
     SYSTEM.PUT(-60, ov.nummods);
 
-    ASSERT(ov.size < regionSize);
+    (*ASSERT(ov.size < regionSize);*)
 
     SYSTEM.PUT(-60, 0FEFH);
     ov.mapped := 0;
@@ -433,7 +379,7 @@ MODULE Overlays;
   PROCEDURE MakeOverlayModule*(mod: Module; procs: ARRAY OF Procedure; numprocs, size: INTEGER): OverlayModule;
   VAR i: INTEGER; modOverlay: OverlayModule;
   BEGIN
-    NEW(modOverlay);
+    NEW(modOverlay); ASSERT(modOverlay # NIL);
     modOverlay.size := size;
     modOverlay.mod := mod;
     FOR i := 0 TO numprocs-1 DO
@@ -473,7 +419,7 @@ MODULE Overlays;
     (*copy contents of module in memory into an overlay file*)
     ovlFile := Files.New(filename);
     Files.Set(ovlR, ovlFile, 0);
-    ov.size := 0;
+    (*ov.size := 0;*)
     FOR i := 0 TO ov.nummods-1 DO
       modOv := ov.mods[i];
       fixFile := GetFixModFile(modOv);
@@ -483,7 +429,7 @@ MODULE Overlays;
         Files.WriteInt(ovlR, u);
         Files.ReadInt(fixR, u);
       END;
-      INC(ov.size, modOv.size);
+      (*INC(ov.size, modOv.size);*)
     END;
 
     Files.Register(ovlFile);
@@ -493,8 +439,6 @@ MODULE Overlays;
   PROCEDURE Init*;
     VAR i: INTEGER;
   BEGIN
-    SYSTEM.GET(24, regions[0]);
-    DEC(regions[0], 0D000H);
     FOR i := 0 TO LEN(mappedIndices)-1 DO
       mappedIndices[i] := -1;
     END;
@@ -505,7 +449,6 @@ MODULE Overlays;
     addressOVM := SYSTEM.ADR(OverlayManager);
     (* load location of the overlay manager to predetermined reg *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
-    SYSTEM.PUT(-60, SYSTEM.ADR(OverlayManager));
   END Init;
 
 END Overlays.

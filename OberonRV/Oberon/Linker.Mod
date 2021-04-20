@@ -1,5 +1,5 @@
 MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
-  IMPORT SYSTEM, Overlays, Files;
+  IMPORT SYSTEM, Kernel, Overlays, Files;
   CONST versionkey = 1X; MT = 4; DescSize = 88;
     addi = 19; load = 3; store = 35;
     SB = 3;
@@ -365,7 +365,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END ;
       (* iterate over procs in module *)
       FindProcCalls(mod, fixorgS);
-      Overlays.CollapseNode(nodes[0]);
+      (*Overlays.CollapseNode(nodes[0]);*)
       Overlays.NewOverlay(nodes, 1);
       (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
@@ -432,7 +432,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     Overlays.Init;
     Files.Init;
     (*NEW(rootOverlay); rootOverlay.size := 0; rootOverlay.next := NIL;*)
-    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); SYSTEM.GET(24, limit); DEC(limit, Overlays.regionSize);
+    SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); limit := Kernel.heapOrg;
   END Init;
 
 END Linker.
