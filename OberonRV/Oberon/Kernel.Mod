@@ -4,7 +4,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     timer = -64; led = -60; spiData = -48; spiCtrl = -44;
     CARD0 = 1; SPIFAST = 4;
     FSoffset = 80000H; (*256MB in 512-byte blocks*)
-    mapsize = 10000H; (*1K sectors, 64MB*)
+    filemapsize* = 08000H; (*500 sectors, 32MB*)
+    overlaymapsize = 08000H; (*500 sectors, 32MB*)
     RA = 1; (* register that holds return address *)
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
@@ -12,7 +13,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     Command*   = PROCEDURE;
 
     SectorMapDesc = RECORD
-        map: ARRAY mapsize DIV 32 OF SET;
+        map: ARRAY filemapsize DIV 32 OF SET;
     END;
 
   VAR allocated*, NofSectors*: INTEGER;
@@ -111,7 +112,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     (* an overlay will ~never be <120B *)
     (*GetBlock(ptr, (size+255) DIV 256 * 256);*)
-    GetBlock(ptr, size);
+    GetBlock(ptr, (size+255) DIV 256 * 256);
     IF ptr # 0 THEN
       SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
       SYSTEM.PUT(ptr+4, -1); (* mark as free so the garbage collector doesn't remove it *)
@@ -224,7 +225,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     FOR i := 0 TO lim BY 4 DO
       SYSTEM.PUT(spiData, -1);
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
-      SYSTEM.GET(spiData, data); SYSTEM.PUT(dst, data); INC(dst, 4)
+      SYSTEM.GET(spiData, data); SYSTEM.PUT(dst, data); INC(dst, 4);
+      SYSTEM.PUT(-60, data);
     END;
     SPI(255); SPI(255); SPIIdle(1) (*may be a checksum; deselect card*)
   END ReadSDLim;
@@ -235,24 +237,31 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ReadSDLim(src, dst, 508);
   END ReadSD;
 
-  PROCEDURE WriteSD(dst, src: INTEGER);
+  PROCEDURE WriteSDLim(dst, src, lim: INTEGER);
     VAR i, n: INTEGER; x: BYTE;
   BEGIN SDShift(dst); SPICmd(24, dst); ASSERT(data = 0); (*CMD24 write one block*)
     SPI(254); (*write start data marker*)
     SYSTEM.PUT(spiCtrl, SPIFAST + CARD0);
-    FOR i := 0 TO 508 BY 4 DO
+    FOR i := 0 TO lim BY 4 DO
       SYSTEM.GET(src, n); INC(src, 4); SYSTEM.PUT(spiData, n);
-      REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0)
+      REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
+      SYSTEM.PUT(-60, n);
     END;
     SPI(255); SPI(255); (*dummy checksum*) i := 0;
     REPEAT SPI(-1); INC(i); UNTIL (data MOD 32 = 5) OR (i = 10000);
     ASSERT(data MOD 32 = 5); SPIIdle(1) (*deselect card*)
+  END WriteSDLim;
+
+  PROCEDURE WriteSD(dst, src: INTEGER);
+    VAR i, n: INTEGER; x: BYTE;
+  BEGIN
+    WriteSDLim(dst, src, 508);
   END WriteSD;
 
   PROCEDURE InitSecMap*;
     VAR i: INTEGER;
   BEGIN NofSectors := 0; NEW(sectorMap); sectorMap.map[0] := {0 .. 31}; sectorMap.map[1] := {0 .. 31};
-    FOR i := 2 TO mapsize DIV 32 - 1 DO sectorMap.map[i] := {} END
+    FOR i := 2 TO filemapsize DIV 32 - 1 DO sectorMap.map[i] := {} END
   END InitSecMap;
 
   (* Sector numbers are always a multiple of 29 for the purpose of redundancy checks. (p. 110) *)
@@ -271,7 +280,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN (*find free sector, starting after hint*)
     ASSERT(hint MOD 29 = 0); hint := hint DIV 29; s := hint;
     REPEAT INC(s);
-      IF s = mapsize THEN s := 1 END ;
+      IF s = filemapsize THEN s := 1 END ;
     UNTIL ~(s MOD 32 IN sectorMap.map[s DIV 32]);
     INCL(sectorMap.map[s DIV 32], s MOD 32); INC(NofSectors); sec := s * 29
   END AllocSector;
@@ -280,7 +289,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     ASSERT(src MOD 29 = 0); src := src DIV 29;
     src := src * 2 + FSoffset;
-    ReadSD(src, SYSTEM.ADR(dst)); ReadSD(src+1, SYSTEM.ADR(dst)+512) 
+    ReadSD(src, SYSTEM.ADR(dst)); ReadSD(src+1, SYSTEM.ADR(dst)+512)
   END GetSector;
 
   (* dangerous! *)
@@ -288,6 +297,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     ASSERT(src MOD 29 = 0); src := src DIV 29;
     src := src * 2 + FSoffset;
+    SYSTEM.PUT(-60, src);
     IF lim <= 508 THEN
       ReadSDLim(src, dst, lim);
     ELSIF lim <= 1020 THEN
@@ -296,6 +306,22 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       ReadSDLim(src, dst, 508); ReadSDLim(src+1, dst+512, 508);
     END;
   END GetSectorToMem;
+
+  (* dangerous! *)
+  PROCEDURE PutMemToSector*(dst, src, lim: INTEGER);
+  BEGIN
+    ASSERT(dst MOD 29 = 0); dst := dst DIV 29;
+    dst := dst * 2 + FSoffset;
+    SYSTEM.PUT(-60, dst);
+    IF lim <= 508 THEN
+      WriteSDLim(dst, src, lim);
+    ELSIF lim <= 1020 THEN
+      WriteSDLim(dst, src, 508); WriteSDLim(dst+1, src+512, lim-512);
+    ELSE
+      WriteSDLim(dst, src, 508); WriteSDLim(dst+1, src+512, 508);
+    END;
+  END PutMemToSector;
+
   
   PROCEDURE PutSector*(dst: INTEGER; VAR src: Sector);
   BEGIN ASSERT(dst MOD 29 = 0); dst := dst DIV 29;

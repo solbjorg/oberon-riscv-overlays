@@ -63,6 +63,7 @@ MODULE Overlays;
     END;
 
     OverlayModuleDesc* = RECORD
+      sec*: INTEGER; (* start sector on disk *)
       size*: INTEGER; (* pos size; needed to load into overlay *)
       mod*: Module;
       numprocs: INTEGER;
@@ -70,7 +71,7 @@ MODULE Overlays;
     END;
 
     OverlayDesc* = RECORD
-      filename: FileName;
+      sector: INTEGER;
       mapped*: INTEGER; (*address: start of mapped overlay*)
       size: INTEGER; (* length of code segment; excludes footer *)
       nummods: INTEGER;
@@ -82,6 +83,7 @@ MODULE Overlays;
     numGeneratedOverlays, lastMapped, numMapped,
       stackLoc: INTEGER;
     overlayIndex: INTEGER;
+    mappedSector: INTEGER;
     mappedIndices: ARRAY numIndices OF INTEGER;  (* index into table of overlay that is currently mapped *)
     addressOVM*: INTEGER; (* address of the overlay manager *)
 
@@ -175,6 +177,17 @@ MODULE Overlays;
     b := CollapseNodes(root, root);
   END CollapseNode; *)
 
+  PROCEDURE WriteFixedModule*(mod: Module; size: INTEGER): INTEGER;
+    VAR i, sec: INTEGER;
+  BEGIN
+    sec := mappedSector;
+    FOR i := 0 TO size BY 1024 DO
+      Kernel.PutMemToSector(mappedSector*29, mod.code + i, 1024);
+      INC(mappedSector);
+    END;
+    RETURN sec * 29
+  END WriteFixedModule;
+
   PROCEDURE GetFixModFile(ovmod: OverlayModule): Files.File;
     VAR i: INTEGER;
       mod: Module;
@@ -216,29 +229,33 @@ MODULE Overlays;
 
     PROCEDURE LoadOverlay(ov, old: Overlay);
     VAR F: Files.File; R: Files.Rider; 
-      i, j, addr, u: INTEGER;
+      i, j, addr, u, seccnt, lim: INTEGER;
       proc: Procedure;
     BEGIN
-      F := Files.Old(ov.filename);
-      IF F # NIL THEN
-        (*
-        IF old # NIL THEN
+      (*F := Files.Old(ov.filename);*)
+      (*
+      IF old # NIL THEN
           Kernel.FreeOverlay(old.mapped, old.size);
-        END;
-        *)
-        IF ov.size MOD 256 # 0 THEN SYSTEM.EBREAK(); END;
-        Kernel.NewOverlay(ov.mapped, ov.size);
-        Files.Set(R, F, 0);
-        (*ASSERT(ov.mapped + ov.size < Kernel.heapOrg);*)
-        Files.ReadFileToMem(R, ov.mapped);
-        (*
-        IF old # NIL THEN
-          FillTOC(old, TRUE);
-        END; *)
-        FillTOC(ov, FALSE);
-      ELSE
-        ASSERT(F # NIL); (* should never happen! abort *)
       END;
+      *)
+      (*IF ov.size MOD 256 # 0 THEN SYSTEM.EBREAK(); END;*)
+      Kernel.NewOverlay(ov.mapped, ov.size);
+      (*ASSERT(ov.mapped + ov.size < Kernel.heapOrg);*)
+      (*Files.ReadFileToMem(R, ov.mapped);*)
+      (*
+      IF old # NIL THEN
+          FillTOC(old, TRUE);
+      END; *)
+      seccnt := ov.size DIV FileDir.SectorSize;
+      SYSTEM.PUT(-60, ov.size);
+      SYSTEM.PUT(-60, ov.mapped);
+      SYSTEM.PUT(-60, seccnt);
+      FOR i := 0 TO seccnt DO
+        lim := ov.size - i * FileDir.SectorSize;
+        SYSTEM.PUT(-60, lim);
+        Kernel.GetSectorToMem((ov.sector + i) * 29, ov.mapped + i * FileDir.SectorSize, lim);
+      END;
+      FillTOC(ov, FALSE);
     END LoadOverlay;
 
   BEGIN
@@ -363,15 +380,11 @@ MODULE Overlays;
         INC(ov.nummods);
       END;
     END;
-    ov.size := (ov.size+263) DIV 256 * 256;
+    (*ov.size := (ov.size+263) DIV 256 * 256;*)
     SYSTEM.PUT(-60, 0C1AH);
     SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, ov.entryMno));
     SYSTEM.PUT(-60, ov.size);
     SYSTEM.PUT(-60, ov.nummods);
-
-    (*ASSERT(ov.size < regionSize);*)
-
-    SYSTEM.PUT(-60, 0FEFH);
     ov.mapped := 0;
   END NewOverlay;
 
@@ -404,36 +417,40 @@ MODULE Overlays;
 
   (* Write Overlay.ovl based on index into overlay table *)
   PROCEDURE WriteOverlay*(index: INTEGER);
-    VAR i, u: INTEGER; mod: Module; ov: Overlay; modOv: OverlayModule;
+    VAR i, j, u: INTEGER; mod: Module; ov: Overlay; modOv: OverlayModule;
       ovlFile, fixFile: Files.File; ovlR, fixR: Files.Rider;
-      filename: FileName;
+      filename: FileName; sec: INTEGER;
   BEGIN
     ov := overlays[index];
     mod := ov.mods[0].mod;
     (*Create the file "mod.ovl"*)
     (* temporary until I come up with a better way to name overlays *)
+    (*
     i := 0;
     WHILE mod.name[i] # 0X DO filename[i] := mod.name[i]; INC(i) END;
     filename[i] := "."; filename[i+1] := "o"; filename[i+2] := "v"; filename[i+3] := "l";
-    filename[i+4] := 0X;
+    filename[i+4] := 0X; *)
     (*copy contents of module in memory into an overlay file*)
+    (*
     ovlFile := Files.New(filename);
-    Files.Set(ovlR, ovlFile, 0);
+    Files.Set(ovlR, ovlFile, 0); *)
     (*ov.size := 0;*)
+    sec := mappedSector;
     FOR i := 0 TO ov.nummods-1 DO
       modOv := ov.mods[i];
-      fixFile := GetFixModFile(modOv);
+      (*fixFile := GetFixModFile(modOv);
       Files.Set(fixR, fixFile, 0);
-      Files.ReadInt(fixR, u);
-      WHILE ~fixR.eof DO
-        Files.WriteInt(ovlR, u);
-        Files.ReadInt(fixR, u);
+      Files.ReadInt(fixR, u); *)
+      SYSTEM.PUT(-60, 0AEEEAAH);
+      SYSTEM.PUT(-60, modOv.size);
+      FOR j := 0 TO modOv.size-1 BY FileDir.SectorSize DO
+        Kernel.PutMemToSector(mappedSector*29, modOv.mod.code + j, modOv.size - j);
+        INC(mappedSector);
       END;
       (*INC(ov.size, modOv.size);*)
     END;
 
-    Files.Register(ovlFile);
-    ov.filename := filename;
+    ov.sector := sec;
   END WriteOverlay;
 
   PROCEDURE Init*;
@@ -446,6 +463,7 @@ MODULE Overlays;
     overlayIndex := 0;
     lastMapped := -1;
     stackLoc := 0;
+    mappedSector := Kernel.filemapsize + 1;
     addressOVM := SYSTEM.ADR(OverlayManager);
     (* load location of the overlay manager to predetermined reg *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));

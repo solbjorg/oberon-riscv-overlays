@@ -29,6 +29,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END error;
 
   (* writes a file Module.fix from fixed-up memory *)
+  (*
   PROCEDURE WriteFixedModule*(mod: Overlays.Module; size: INTEGER);
     VAR i, u: INTEGER;
       F: Files.File; R: Files.Rider;
@@ -47,6 +48,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END;
     Files.Register(F);
   END WriteFixedModule;
+  *)
 
   (* ---------- Linker helper functions ----------*)
   (* Returns a `jal ra, imm` instruction. *)
@@ -247,6 +249,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       procs: ARRAY Overlays.maxNumProcs OF Overlays.Procedure;
       tempProc: Overlays.Procedure;
       nodes: ARRAY 1 OF Overlays.Node;
+
   BEGIN
     error(0, name); SYSTEM.PUT(-60, 0F0ADH);
     IF res = 0 THEN (*search for a hole in the list allocate and link*)
@@ -370,7 +373,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
       (* write Module.fix *)
-      WriteFixedModule(mod, w);
+      (*nodes[0].mods[0].sec := Overlays.WriteFixedModule(mod, w);*)
       (* after fixups are done, write overlay file *)
       Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, 0));
       (*fixup of type descriptors*)
