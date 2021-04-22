@@ -2,10 +2,11 @@ CFLAGS = -g -O2 -flto -Wall -Wextra -Wconversion -Wno-sign-conversion -Wno-unuse
 
 norebo: Runtime/norebo.c Runtime/risc-cpu.c Runtime/risc-cpu.h
 	$(CC) -o $@ Runtime/norebo.c Runtime/risc-cpu.c $(CFLAGS)
+	./build.sh
 
 imagerv: norebo
 	make clean; make
-	./build-image.py -r OberonRV/Oberon
+	./build-image.py -r OberonRV/Oberon -m manifests/manifest_testing.csv
 
 imager5: norebo
 	make clean; make
