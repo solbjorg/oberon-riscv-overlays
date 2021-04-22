@@ -112,10 +112,9 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     RETURN p
   END FindIndex;
 
+  (*
   PROCEDURE FindProcCalls(mod: Overlays.Module; fixorgS: INTEGER);
     VAR adr, imm, mno, pno, inst, index, disp: INTEGER;
-      caller, called: Overlays.Node;
-      outgoing, tempOut: Overlays.Edge;
       impmod: Overlays.Module;
   BEGIN
     adr := mod.code + fixorgS*4;
@@ -136,55 +135,11 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
       SYSTEM.GET(adr, inst);
 
-      (* fill in call graph *)
-      (* can easily be made more effective with caching etc *)
-      (* pick list of nodes to search based on module the call is going to *)
-      IF mno = mod.num THEN
-        called := mod.rootNode;
-      ELSE
-        called := impmod.rootNode;
-      END;
-      IF (called = NIL) OR (called = mod.rootNode) THEN
-        (* assume that the function does not belong to an overlay, *)
-        (* i.e. it is part of core (Kernel, etc.) or entry *)
-        (* for module granularity, we also ignore intramodule calls *)
-        (* No more to be done, we can ignore this in our graph (for now) *)
-      ELSE
-        (* called procedure was found in graph *)
-        (* index is currently given by fixup information, but can also be found indirectly *)
-        index := inst DIV C8 MOD C8;
-        IF index # 0FFH THEN (* index = FF => caller is module entry, safely ignore *)
-          (* find node of calling function as indicated by index*)
-          (* find node of callee *)
-          caller := mod.rootNode;
-          outgoing := caller.dsc;
-          IF outgoing # NIL THEN
-            (* search through edges for one leading to the function being called *)
-            WHILE (outgoing.node # called) & (outgoing.next # NIL) DO outgoing := outgoing.next END;
-          ELSE
-            (* this is the first inter-module function call in the module *)
-            NEW(tempOut);
-            caller.dsc := tempOut;
-            tempOut.node := called;
-            tempOut.weight := 0; outgoing := caller.dsc;
-          END;
-
-          IF outgoing.node = called THEN
-            (* edge already exists; increase weight *)
-            INC(outgoing.weight);
-          ELSIF outgoing.next = NIL THEN
-            (* this edge hasn't been made yet; make it *)
-            NEW(tempOut);
-            outgoing.next := tempOut;
-            tempOut.node := called;
-            tempOut.weight := 1;
-          END;
-        END;
-      END;
       disp := inst DIV 10000H;
       adr := mod.code + disp*4;
     END ;
   END FindProcCalls;
+  *)
 
   PROCEDURE FixupOverlayTokens(mod: Overlays.Module; fixorgS: INTEGER);
     VAR adr, mno, pno, imm, inst, reg, index, offset, disp: INTEGER;
@@ -205,8 +160,8 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         SYSTEM.GET(impmod.ent + pno*4, pno);
       END;
       IF mno > 6 THEN
-        index := Overlays.FindOverlayIndex(mno, pno);
-        offset := Overlays.FindProcedureOffset(mno, pno, index);
+        index := Overlays.FindOverlayIndex(mno, pno); offset := 0;
+        (*offset := Overlays.FindProcedureOffset(mno, pno, index);*)
       ELSE
         index := 0; offset := 0;
       END;
@@ -248,7 +203,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       (* used for constructing call graph *)
       procs: ARRAY Overlays.maxNumProcs OF Overlays.Procedure;
       tempProc: Overlays.Procedure;
-      nodes: ARRAY 1 OF Overlays.Node;
 
   BEGIN
     error(0, name); SYSTEM.PUT(-60, 0F0ADH);
@@ -283,16 +237,17 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       (* use u both to calculate the size of each procedure, *)
       (* as well as to ensure that the procedure list is monotonically *)
       (* increasing. This is necessary, because there may be certain _padding words_ *)
-      i := 0; u := 0;
+      i := 0; u := -1;
       WHILE (n > 0) DO
         Files.ReadInt(R, w);
-        SYSTEM.PUT(p, SYSTEM.ADR(Overlays.OverlayManager)); INC(p, 4);
-        IF (w >= u) THEN
-          (* until a proc is in a loaded overlay, all calls should go *)
-          (* through the OVM *)
-          NEW(tempProc); tempProc.addr := w; tempProc.index := (mod.procs - mod.data) + numprocs * 4 - n;
+        (* until a proc is in a loaded overlay, all calls should go *)
+        (* through the OVM *)
+        SYSTEM.PUT(p, Overlays.addressOVM); INC(p, 4);
+        IF (w > u) THEN
+          NEW(tempProc); tempProc.addr := w; tempProc.index := i;
+          IF i > 0 THEN procs[i-1].size := w-4-u END;
           procs[i] := tempProc; INC(i);
-        ELSE DEC(numprocs);
+        ELSE DEC(numprocs); (* padding word *)
         END;
         u := w;
         DEC(n, 4);
@@ -324,10 +279,12 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
       Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
       Files.ReadInt(R, w);
+      (* can only determine size of the last procedure when we have the entry address, *)
+      (* since it's entry address - proc address (w-u) *)
+      (* TODO this breaks if a module is only one procedure *)
+      procs[numprocs-1].size := w-4-procs[numprocs-1].addr;
       body := SYSTEM.VAL(Command, mod.code + w);
       (* generate node for linked module *)
-      nodes[0] := Overlays.MakeNode(mod, procs, numprocs, w);
-      mod.rootNode := nodes[0];
       Files.Read(R, ch);
       IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
       (* set alloc ptr such that the next loaded module will overwrite this one *)
@@ -367,15 +324,17 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         adr := mod.code + disp*4
       END ;
       (* iterate over procs in module *)
-      FindProcCalls(mod, fixorgS);
+      (*FindProcCalls(mod, fixorgS);*)
       (*Overlays.CollapseNode(nodes[0]);*)
-      Overlays.NewOverlay(nodes, 1);
+      Overlays.NewOverlay(mod, procs, numprocs);
       (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
       (* write Module.fix *)
       (*nodes[0].mods[0].sec := Overlays.WriteFixedModule(mod, w);*)
       (* after fixups are done, write overlay file *)
-      Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, 0));
+      FOR i := 0 TO numprocs-1 DO
+        Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, i), procs[i].addr, mod);
+      END;
       (*fixup of type descriptors*)
       adr := mod.data + fixorgT*4;
       WHILE adr # mod.data DO
@@ -432,8 +391,8 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   PROCEDURE Init*;
   BEGIN
-    Overlays.Init;
     Files.Init;
+    Overlays.Init;
     (*NEW(rootOverlay); rootOverlay.size := 0; rootOverlay.next := NIL;*)
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); limit := Kernel.heapOrg;
   END Init;

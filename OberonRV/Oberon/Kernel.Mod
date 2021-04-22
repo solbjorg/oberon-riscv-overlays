@@ -33,7 +33,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     q0 := 0; q1 := list0; done := FALSE;
     ASSERT(q1 # 0);
     ASSERT(len MOD 256 = 0);
-    SYSTEM.PUT(-60, 0FFEFEFFH);
     WHILE ~done & (q1 # 0) DO
       SYSTEM.GET(q1, size); SYSTEM.GET(q1+8, q2);
       SYSTEM.PUT(-60, list0);
@@ -109,10 +108,10 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   (* allocates a block of size to heap; meant for overlay system /only/ *)
   PROCEDURE NewOverlay*(VAR ptr: LONGINT; VAR size: LONGINT);
+    VAR s: INTEGER;
   BEGIN
-    (* an overlay will ~never be <120B *)
     (*GetBlock(ptr, (size+255) DIV 256 * 256);*)
-    GetBlock(ptr, (size+255) DIV 256 * 256);
+    GetBlock(ptr, size);
     IF ptr # 0 THEN
       SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
       SYSTEM.PUT(ptr+4, -1); (* mark as free so the garbage collector doesn't remove it *)
@@ -313,11 +312,13 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ASSERT(dst MOD 29 = 0); dst := dst DIV 29;
     dst := dst * 2 + FSoffset;
     SYSTEM.PUT(-60, dst);
+    SYSTEM.PUT(-60, lim);
     IF lim <= 508 THEN
       WriteSDLim(dst, src, lim);
     ELSIF lim <= 1020 THEN
       WriteSDLim(dst, src, 508); WriteSDLim(dst+1, src+512, lim-512);
     ELSE
+      (*SYSTEM.EBREAK();*)
       WriteSDLim(dst, src, 508); WriteSDLim(dst+1, src+512, 508);
     END;
   END PutMemToSector;

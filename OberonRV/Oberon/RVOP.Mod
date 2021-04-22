@@ -898,12 +898,13 @@ END RoundUp;
       Check(RVOS.semicolon, "no ;"); locblksize := parblksize;
       Declarations(locblksize);
       proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next;
-      RVOG.ProcedureEntrance;
+      (*IF level = 1 THEN RVOG.ProcedureEntrance; END;*)
       IF sym = RVOS.procedure THEN
         L := 0; RVOG.FJump(L);
         REPEAT ProcedureDecl; Check(RVOS.semicolon, "no ;") UNTIL sym # RVOS.procedure;
-        RVOG.FixLink(L); (*proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next*)
+        RVOG.FixLink(L); proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next
       END ;
+      RVOG.ProcedureEntrance;
       RVOG.Enter(parblksize, locblksize, int, proc.expo);
       IF sym = RVOS.begin THEN RVOS.Get(sym); StatSequence END ;
       IF sym = RVOS.return THEN
