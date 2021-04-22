@@ -19,7 +19,6 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
     ImageModDesc = RECORD
         name: ModuleName;
         next: INTEGER;
-        rootNode: INTEGER; (* not needed for first layer *)
         key, num, size, refcnt: INTEGER;
         data, procs, stubs, code, imp, cmd, ent, ptr: INTEGER;
       END ;
