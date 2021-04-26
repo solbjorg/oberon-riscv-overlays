@@ -288,7 +288,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     WHILE (ch # ".") & (ch # 0X) DO Mname[i] := ch; INC(i); ch := name[i] END ;
     IF ch = "." THEN
       Mname[i] := 0X; INC(i);
-      Loader.Load(Mname, mod); res := Linker.res;
+      Loader.Load(Mname, mod); res := Loader.res;
       IF Linker.res = 0 THEN
         j := 0; ch := name[i]; INC(i);
         WHILE ch # 0X DO Cname[j] := ch; INC(j); ch := name[i]; INC(i) END ;
@@ -311,14 +311,15 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR mod: Overlays.Module;
   BEGIN
     IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
-      mod := Linker.root; SYSTEM.PUT(-60, 21H);
+      mod := Linker.root;
       WHILE mod # NIL DO
         IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
         mod := mod.next
       END ;
       Files.RestoreList;
       Kernel.Scan;
-      ActCnt := BasicCycle
+      ActCnt := BasicCycle;
+      Overlays.EvictCollectedOverlays;
     END
   END GC;
 
@@ -330,7 +331,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   
   PROCEDURE Install* (T: Task);
   BEGIN
-    SYSTEM.PUT(-60, 100H);
     IF T.state = off THEN
       T.next := CurTask.next; CurTask.next := T; T.state := idle; T.nextTime := 0; INC(NofTasks)
     END
@@ -365,7 +365,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR V: Viewers.Viewer; M: InputMsg; N: ControlMsg;
        prevX, prevY, X, Y, t: INTEGER; keys: SET; ch: CHAR;
   BEGIN
-    SYSTEM.PUT(-60, 0DEADBEEFH);
     REPEAT
       Input.Mouse(keys, X, Y);
       IF Input.Available() > 0 THEN Input.Read(ch);
@@ -406,6 +405,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   BEGIN
     SYSTEM.PUT(-60, 70H);
     Loader.Load("System", Mod);
+    Overlays.SetGC(GC);
     Mod := NIL; Loop
   END Init;
 

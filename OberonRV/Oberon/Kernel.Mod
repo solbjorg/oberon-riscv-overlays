@@ -114,7 +114,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     GetBlock(ptr, size);
     IF ptr # 0 THEN
       SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
-      SYSTEM.PUT(ptr+4, -1); (* mark as free so the garbage collector doesn't remove it *)
+      SYSTEM.PUT(ptr+4, 0); (* set mark to 0, will be increased upon call *)
       ptr := ptr + 8;
       INC(allocated, size);
     END;

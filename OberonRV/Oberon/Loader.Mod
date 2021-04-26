@@ -3,8 +3,8 @@ MODULE Loader;
   CONST versionkey = 1X;
 
   VAR M: Overlays.Module;
-    importing: Overlays.ModuleName;
-    res: INTEGER;
+    importing*: Overlays.ModuleName;
+    res*: INTEGER;
 
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
   BEGIN res := n; importing := name;

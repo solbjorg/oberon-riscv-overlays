@@ -58,6 +58,7 @@ MODULE Overlays;
     numGeneratedOverlays, lastMapped, numMapped, stackLoc: INTEGER;
     overlayIndex: INTEGER;
     mappedSector, addressOVM*: INTEGER;
+    GarbageCollector: PROCEDURE;
 
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER;
@@ -81,29 +82,70 @@ MODULE Overlays;
     RETURN sec * 29
   END WriteFixedModule;
 
+  PROCEDURE EvictCollectedOverlays*();
+    VAR i, mark: INTEGER; ov: Overlay;
+  BEGIN
+        SYSTEM.PUT(-60, 0CCCCCDDH);
+    FOR i := 0 TO numGeneratedOverlays-1 DO
+      ov := overlays.list[i];
+      IF ov.mapped > 0 THEN
+        SYSTEM.GET(ov.mapped-4, mark);
+        SYSTEM.PUT(-60, mark);
+        IF mark <= 0 THEN
+          ov.mapped := 0;
+          FillTOC(ov, TRUE);
+        END;
+      END;
+    END;
+  END EvictCollectedOverlays;
+
+  (* changes the mark on the overlay, to communicate with the garbage collector *)
+  PROCEDURE ChangeMark(ptr: LONGINT; increase: BOOLEAN);
+    VAR mark: INTEGER;
+  BEGIN
+    SYSTEM.GET(ptr-4, mark);
+    IF increase THEN INC(mark) ELSE DEC(mark) END;
+    SYSTEM.PUT(-60, 0CCC00000H);
+    SYSTEM.PUT(-60, mark);
+    SYSTEM.PUT(ptr-4, mark);
+  END ChangeMark;
+
+  PROCEDURE LoadOverlay(ov: Overlay);
+  VAR F: Files.File; R: Files.Rider;
+    i, j, addr, u, seccnt, lim: INTEGER;
+    proc: Procedure;
+  BEGIN
+    IF (Kernel.allocated + ov.heapsize >= Kernel.heapLim - Kernel.heapOrg) THEN
+      GarbageCollector;
+      IF (Kernel.allocated + ov.heapsize >= Kernel.heapLim - Kernel.heapOrg) THEN
+        (* panic! out of memory *)
+        SYSTEM.PUT(-60, 0AFFFFAFFH);
+        SYSTEM.EBREAK();
+      END;
+    END;
+    Kernel.NewOverlay(ov.mapped, ov.heapsize);
+    SYSTEM.PUT(-60, ov.mod.num);
+    SYSTEM.PUT(-60, ov.heapsize);
+    SYSTEM.PUT(-60, ov.size);
+    FOR i := 0 TO ov.size BY FileDir.SectorSize DO
+      Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
+    END;
+    FillTOC(ov, FALSE);
+  END LoadOverlay;
+
+  PROCEDURE LoadOverlayAndGetAddress*(index: INTEGER): LONGINT;
+    VAR ov: Overlay;
+  BEGIN
+    ov := overlays.list[index];
+    IF ov.mapped = 0 THEN LoadOverlay(ov) END;
+    RETURN ov.mapped
+  END LoadOverlayAndGetAddress;
+
   PROCEDURE OverlayManager*(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
     VAR k, ovindex, offset, pno, addr, size, oldmapped, oldIndex: INTEGER;
       found: BOOLEAN;
       ov, old: Overlay;
       proc: Procedure; body: Func;
-
-    PROCEDURE LoadOverlay(ov, old: Overlay);
-    VAR F: Files.File; R: Files.Rider; 
-      i, j, addr, u, seccnt, lim: INTEGER;
-      proc: Procedure;
-    BEGIN
-      Kernel.NewOverlay(ov.mapped, ov.heapsize);
-
-      SYSTEM.PUT(-60, ov.mod.num);
-      SYSTEM.PUT(-60, ov.heapsize);
-      SYSTEM.PUT(-60, ov.size);
-      (*SYSTEM.EBREAK();*)
-      FOR i := 0 TO ov.size BY FileDir.SectorSize DO
-        Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
-      END;
-      FillTOC(ov, FALSE);
-    END LoadOverlay;
-
   BEGIN
     ovindex := SYSTEM.REG(30) DIV 2 MOD 4000H;
     offset := (SYSTEM.REG(30) DIV 8000H) * 4;
@@ -120,11 +162,20 @@ MODULE Overlays;
       (*
       ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
       *)
-      LoadOverlay(ov, old);
+      LoadOverlay(ov);
 
       (* call function in loaded overlay *)
-      body := SYSTEM.VAL(Func, ov.mapped + offset);
+      body := SYSTEM.VAL(Func, ov.mapped);
+      SYSTEM.PUT(-60, ov.pno);
+      SYSTEM.PUT(-60, ov.mapped);
+      ChangeMark(ov.mapped, TRUE);
       k := body(a,b,c,d,e,f,g,h,i,j,l,m);
+      ChangeMark(ov.mapped, FALSE);
+      IF ov.mapped = 0 THEN
+        SYSTEM.PUT(-60, ov.mod.num);
+        SYSTEM.PUT(-60, ov.pno);
+        SYSTEM.EBREAK();
+      END;
 
       (*
       IF (old # NIL) & (old.mapped = 0) THEN
@@ -133,8 +184,10 @@ MODULE Overlays;
       END; *)
     ELSE
       (* probably indirect function call within same module *)
-      body := SYSTEM.VAL(Func, ov.mapped + offset);
+      body := SYSTEM.VAL(Func, ov.mapped);
+      ChangeMark(ov.mapped, TRUE);
       k := body(a,b,c,d,e,f,g,h,i,j,l,m);
+      ChangeMark(ov.mapped, FALSE);
     END;
     RETURN k
   END OverlayManager;
@@ -157,49 +210,17 @@ MODULE Overlays;
     VAR index: INTEGER;
   BEGIN
     index := numGeneratedOverlays-1;
-    WHILE (index >= 0) & ((mno # overlays.list[index].mod.num) OR (pno # overlays.list[index].pno)) DO DEC(index) END;
+    SYSTEM.PUT(-60, mno);
+    SYSTEM.PUT(-60, pno);
+    WHILE (index > 0) & ((mno # overlays.list[index].mod.num) OR (pno # overlays.list[index].pno)) DO
+      SYSTEM.PUT(-60, overlays.list[index].mod.num);
+      SYSTEM.PUT(-60, overlays.list[index].pno);
+      DEC(index)
+    END;
     ASSERT((overlays.list[index].mod.num = mno) & (overlays.list[index].pno = pno))
     RETURN index
   END FindOverlayIndex;
 
-  (* Return the function offset corresponding to entry point (mno, pno) in given overlay index *)
-  (*
-  PROCEDURE FindProcedureOffset*(mno, pno, index: INTEGER): INTEGER;
-    VAR ov: Overlay; proc: Procedure; mod: Module; ovMod: OverlayModule;
-      i, j, procIndex, offset, addr: INTEGER;
-  BEGIN
-    ov := overlays[index];
-    addr := -1;
-    IF ov # NIL THEN
-      i := 0; ovMod := NIL;
-      WHILE (i < ov.nummods) & ((ovMod = NIL) OR (ovMod.mod.num # mno)) DO
-        ovMod := ov.mods[i]; INC(i);
-      END;
-      mod := ovMod.mod;
-      procIndex := (mod.procs - mod.data) + pno * 4;
-      i := 0; proc := NIL;
-      (* PROC NOT FOUND HERE *)
-      WHILE (i < ovMod.numprocs) & ((proc = NIL) OR (proc.index # procIndex)) DO
-        proc := ovMod.proc[i]; INC(i);
-      END;
-
-      IF proc # NIL THEN addr := proc.addr;
-      ELSE
-        SYSTEM.PUT(-60, 0AAAEEEH);
-        SYSTEM.EBREAK();
-      END;
-    ELSE
-      SYSTEM.PUT(-60, 0BBBEEEH);
-      SYSTEM.PUT(-60, index);
-      SYSTEM.EBREAK();
-    END;
-
-    (* invariant: if module is not part of inner core, then *)
-    (* procedure offset must be discoverable *)
-    ASSERT((mno < 7) OR (addr >= 0));
-    RETURN addr
-  END FindProcedureOffset;
-  *)
   (* takes a module, generates an overlay for every proc in the module *)
   PROCEDURE NewOverlay*(mod: Module; procs: ARRAY OF Procedure; numprocs: INTEGER);
     VAR i, j: INTEGER;
@@ -258,6 +279,10 @@ MODULE Overlays;
 
     ov.sector := sec;
   END WriteOverlay;
+
+  PROCEDURE SetGC*(gc: PROCEDURE);
+  BEGIN GarbageCollector := gc;
+  END SetGC;
 
   PROCEDURE Init*;
     VAR i: INTEGER;

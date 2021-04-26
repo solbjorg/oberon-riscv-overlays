@@ -420,6 +420,7 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
     IF n <= 4 THEN x := ROR(y + b MOD 10H, 4) ELSE x := ASR(ROR(y + b, 7), n-7) END
   END ReadNum;
 
+  (*
   (* not safe, since it's basically a naive memcpy from disk *)
   PROCEDURE ReadFileToMem*(VAR r: Rider; dst: INTEGER);
     VAR i, apos, lim: INTEGER; buf: Buffer;
@@ -463,8 +464,8 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         END;
       UNTIL eof;
     END;
-  END ReadFileToMem;
-        
+  END ReadFileToMem; *)
+
   (*---------------------------Write---------------------------*)
 
   PROCEDURE NewExt(f: File);
