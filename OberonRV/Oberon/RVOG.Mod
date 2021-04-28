@@ -112,7 +112,8 @@ TYPE
   END;
 
   ProceduresDesc* = RECORD
-    p: ARRAY maxProcs OF INTEGER;
+    addr: ARRAY maxProcs OF INTEGER;
+    size: ARRAY maxProcs OF INTEGER;
   END;
 
   TypeDescriptorsDesc* = RECORD
@@ -224,7 +225,7 @@ PROCEDURE FindProcIndexGivenAddress(addr: INTEGER): INTEGER;
 BEGIN
   found := FALSE; i := 0;
   WHILE (~found) & (i < RVOS.proccnt) DO
-    IF (program.procs.p[i] = addr) THEN
+    IF (program.procs.addr[i] = addr) THEN
       result := i;
       found := TRUE;
     END;
@@ -1771,26 +1772,32 @@ BEGIN (*x.type.form = RVOB.Proc*)
   invalSB
 END Call;
 
-PROCEDURE ProcedureEntrance*;
+PROCEDURE ProcedureEntrance*(): INTEGER;
 BEGIN
-  program.procs.p[procx] := pc * 4;
+  program.procs.addr[procx] := pc * 4;
   INC(procx);
   IF (procx > maxNumProcs) THEN RVOS.Mark("Too many procs!"); END;
+  RETURN procx-1
 END ProcedureEntrance;
 
-PROCEDURE Enter*(parblksize, locblksize: INTEGER; int, expo: BOOLEAN);
+PROCEDURE UpdateProc*(procnum, pos: INTEGER);
+BEGIN program.procs.addr[procnum] := pos;
+END UpdateProc;
+
+PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
   VAR a, r, freereg, i: INTEGER;
 BEGIN
   invalSB; frame := 0;
   (*
   IF expo THEN
-    program.procs.p[RVOS.expocnt + expoprocx] := pc * 4;
+    program.procs.addr[RVOS.expocnt + expoprocx] := pc * 4;
     INC(expoprocx);
   ELSE
-    program.procs.p[procx] := pc * 4;
+    program.procs.addr[procx] := pc * 4;
     INC(procx);
   END;
 *)
+
   IF ~int THEN (*procedure prolog*)
     a := IntegerSize; r := firstReg;
     (* RH does not point at an empty register here, because they're currently used for parameters. *)
@@ -1820,7 +1827,7 @@ BEGIN
   END
 END Enter;
 
-PROCEDURE Return*(form: INTEGER; VAR x: Item; size: INTEGER; int: BOOLEAN);
+PROCEDURE Return*(form: INTEGER; VAR x: Item; size, procnum: INTEGER; int: BOOLEAN);
 BEGIN
   IF form # RVOB.NoTyp THEN load(x) END ;
   IF ~int THEN (*procedure epilog*)
@@ -1836,6 +1843,8 @@ BEGIN
     Put2(Ldr, SB, SP, 8); Put2(Ldr, 1, SP, 4); Put2(Ldr, 0, SP, 0); Put1(Add, SP, SP, 12); Put3(BR, 7, 10H)
   *)  RVOS.Mark("Interrupt procedures not yet supported")
   END ;
+  program.procs.size[procnum] := pc * 4 - program.procs.addr[procnum] - 4;
+
   RH := firstReg
 END Return;
 
@@ -2283,9 +2292,11 @@ BEGIN
   (*procedures*)
   Files.WriteInt(R, RVOS.proccnt*4);
   WHILE i < procx + expoprocx DO
-    Files.WriteInt(R, program.procs.p[i]); INC(i);
+    Files.WriteInt(R, program.procs.addr[i]);
+    Files.WriteInt(R, program.procs.size[i]);
+    INC(i);
   END ;
-  WHILE i < RVOS.proccnt DO Files.WriteInt(R, 0); INC(i); END;
+  WHILE i < RVOS.proccnt DO Files.WriteInt(R, -1); Files.WriteInt(R, -1); INC(i); END;
 
   Files.WriteInt(R, strx);
   FOR i := 0 TO strx-1 DO Files.Write(R, program.strings.s[i]) END ;  (*strings*)
@@ -2296,7 +2307,16 @@ BEGIN
   WHILE obj # NIL DO  (*commands*)
     IF (obj.exno # 0) & (obj.class = RVOB.Const) & (obj.type.form = RVOB.Proc) &
         (obj.type.nofpar = 0) & (obj.type.base = RVOB.noType) THEN
-      Files.WriteString(R, obj.name); Files.WriteInt(R, obj.val)
+      Files.WriteString(R, obj.name); (*Files.WriteInt(R, obj.val)*)
+      (* temporary solution until I make obj.val = proc index in toc *)
+      found := FALSE; i := 0;
+      WHILE (~found) & (i < RVOS.proccnt) DO
+        IF (program.procs.addr[i] = obj.val) THEN
+          Files.WriteInt(R, i);
+          found := TRUE;
+        END;
+        INC(i);
+      END;
     END ;
     obj := obj.next
   END ;
@@ -2309,7 +2329,7 @@ BEGIN
         (* temporary solution until I make obj.val = proc index in toc *)
         found := FALSE; i := 0;
         WHILE (~found) & (i < RVOS.proccnt) DO
-          IF (program.procs.p[i] = obj.val) THEN
+          IF (program.procs.addr[i] = obj.val) THEN
             Files.WriteInt(R, i);
             found := TRUE;
           END;

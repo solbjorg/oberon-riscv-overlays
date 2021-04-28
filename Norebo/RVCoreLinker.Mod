@@ -176,14 +176,10 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         Files.ReadInt(R, n);
         u := p;
         m := n;
-        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;   (*procedures*)
+        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; Files.ReadInt(R, w); INC(p); DEC(n, 4) END; (*procedures*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
         mod.desc.stubs := p * 4;
-        (*
-        Files.ReadInt(R, n);
-        Texts.WriteLn(W); Texts.WriteString(W, "Stub size: "); Texts.WriteInt(W, n, 5); Texts.Append(Oberon.Log, W.buf);
-        WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*stubs*) *)
         mod.desc.imp := p * 4;  (*copy imports*)
         i := 0;
         WHILE i < nofimps DO

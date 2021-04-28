@@ -99,6 +99,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   (* Linearly search through procs (assumed sorted) to find the index of *)
   (* the proc that PC is currently at. *)
   (* procs is an address *)
+  (*
   PROCEDURE FindIndex(pc, procs, numprocs: INTEGER): INTEGER;
     VAR i, p: INTEGER; found: BOOLEAN;
   BEGIN
@@ -112,7 +113,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     RETURN p
   END FindIndex;
 
-  (*
   PROCEDURE FindProcCalls(mod: Overlays.Module; fixorgS: INTEGER);
     VAR adr, imm, mno, pno, inst, index, disp: INTEGER;
       impmod: Overlays.Module;
@@ -243,11 +243,15 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         (* until a proc is in a loaded overlay, all calls should go *)
         (* through the OVM *)
         SYSTEM.PUT(p, Overlays.addressOVM); INC(p, 4);
-        IF (w > u) THEN
+        IF w # -1 THEN
           NEW(tempProc); tempProc.addr := w; tempProc.index := i;
-          IF i > 0 THEN procs[i-1].size := w-4-u END;
+          Files.ReadInt(R, disp); (* size *)
+          SYSTEM.PUT(-60, 0EEEAEAEH);
+          tempProc.size := disp;
+          SYSTEM.PUT(-60, disp);
           procs[i] := tempProc; INC(i);
         ELSE DEC(numprocs); (* padding word *)
+          Files.ReadInt(R, w); (* throwaway result in disp *)
         END;
         u := w;
         DEC(n, 4);
@@ -326,6 +330,10 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       (* iterate over procs in module *)
       (*FindProcCalls(mod, fixorgS);*)
       (*Overlays.CollapseNode(nodes[0]);*)
+      SYSTEM.PUT(-60, numprocs);
+      FOR i := 0 TO numprocs-1 DO
+        SYSTEM.PUT(-60, procs[i].size)
+      END;
       Overlays.NewOverlay(mod, procs, numprocs);
       (* fixup overlay tokens with overlay indices *)
       FixupOverlayTokens(mod, fixorgS);
@@ -364,13 +372,18 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       s: ARRAY 32 OF CHAR;
   BEGIN res := 5; w := 0;
     IF mod # NIL THEN
+      SYSTEM.EBREAK();
       adr := mod.cmd; SYSTEM.GET(adr, ch);
       WHILE (ch # 0X) & (res # 0) DO k := 0; (*read command name*)
         REPEAT s[k] := ch; INC(k); INC(adr); SYSTEM.GET(adr, ch) UNTIL ch = 0X;
         s[k] := 0X;
         REPEAT INC(adr) UNTIL adr MOD 4 = 0;
         SYSTEM.GET(adr, k); INC(adr, 4);
-        IF s = name THEN res := 0; w := mod.code + k ELSE SYSTEM.GET(adr, ch) END
+        IF s = name THEN
+          res := 0;
+          w := Overlays.FindOverlayIndex(mod.num, k);
+          w := Overlays.LoadOverlayAndGetAddress(w);
+        ELSE SYSTEM.GET(adr, ch) END
       END
     END
     RETURN SYSTEM.VAL(Command, w)

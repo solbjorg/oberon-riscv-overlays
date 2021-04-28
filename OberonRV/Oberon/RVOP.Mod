@@ -883,6 +883,7 @@ END RoundUp;
       type: RVOB.Type;
       procid: RVOS.Ident;
       x: RVOG.Item;
+      procnum: INTEGER;
       locblksize, parblksize, L: LONGINT;
       int: BOOLEAN;
   BEGIN (* ProcedureDecl *) int := FALSE; RVOS.Get(sym);
@@ -899,13 +900,14 @@ END RoundUp;
       Declarations(locblksize);
       proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next;
       (*IF level = 1 THEN RVOG.ProcedureEntrance; END;*)
+      procnum := RVOG.ProcedureEntrance();
       IF sym = RVOS.procedure THEN
         L := 0; RVOG.FJump(L);
         REPEAT ProcedureDecl; Check(RVOS.semicolon, "no ;") UNTIL sym # RVOS.procedure;
-        RVOG.FixLink(L); proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next
+        RVOG.FixLink(L); proc.val := RVOG.Here() * InsnSize; proc.type.dsc := RVOB.topScope.next;
+        RVOG.UpdateProc(procnum, proc.val);
       END ;
-      RVOG.ProcedureEntrance;
-      RVOG.Enter(parblksize, locblksize, int, proc.expo);
+      RVOG.Enter(parblksize, locblksize, int);
       IF sym = RVOS.begin THEN RVOS.Get(sym); StatSequence END ;
       IF sym = RVOS.return THEN
         RVOS.Get(sym); expression(x);
@@ -915,7 +917,7 @@ END RoundUp;
       ELSIF type.base.form # RVOB.NoTyp THEN
         RVOS.Mark("function without result"); type.base := RVOB.noType
       END ;
-      RVOG.Return(type.base.form, x, locblksize, int);
+      RVOG.Return(type.base.form, x, locblksize, procnum, int);
       RVOB.CloseScope; DEC(level); Check(RVOS.end, "no END");
       IF sym = RVOS.ident THEN
         IF RVOS.id # procid THEN RVOS.Mark("no match") END ;
