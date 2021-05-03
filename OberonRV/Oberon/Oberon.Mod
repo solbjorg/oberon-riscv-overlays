@@ -192,7 +192,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   BEGIN
     Input.SetMouseLimits(Viewers.curW + UW + SW, H);
     Display.ReplConst(Display.black, Viewers.curW, 0, UW + SW, H, Display.replace);
-    SYSTEM.PUT(-60, 0ACACH);
     NEW(Filler); ASSERT(Filler # NIL); Filler.handle := HandleFiller;
     Viewers.InitTrack(UW, H, Filler); (*init user track*)
     NEW(Filler); ASSERT(Filler # NIL); Filler.handle := HandleFiller;
@@ -317,10 +316,11 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
         mod := mod.next
       END ;
       Files.RestoreList;
-      Kernel.Scan;
-      ActCnt := BasicCycle;
       Overlays.EvictCollectedOverlays;
-    END
+      Kernel.Scan;
+      Overlays.CheckMarks;
+      ActCnt := BasicCycle;
+    END;
   END GC;
 
   PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
