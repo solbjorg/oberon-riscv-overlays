@@ -3,7 +3,7 @@ MODULE Overlays;
   CONST numRegions = 1;
     numOverlays = 300;
     numIndices = 1; (* maximum number of overlays possible to map at once *)
-    maxNumProcs* = 60;
+    maxNumProcs* = 200;
     maxNumMods* = 10;
     (*regionSize* = 0D000H;*)
     addi = 19; load = 3; store = 35;
@@ -55,7 +55,7 @@ MODULE Overlays;
 
   VAR overlays: OverlayList;
     mappedIndices: ARRAY numIndices OF INTEGER;  (* index into table of overlay that is currently mapped *)
-    numGeneratedOverlays, lastMapped, numMapped, stackLoc: INTEGER;
+    numGeneratedOverlays*, lastMapped, numMapped, stackLoc: INTEGER;
     overlayIndex: INTEGER;
     mappedSector, addressOVM*: INTEGER;
     GarbageCollector: PROCEDURE;
@@ -84,20 +84,49 @@ MODULE Overlays;
 
   PROCEDURE EvictCollectedOverlays*();
     VAR i, mark: INTEGER; ov: Overlay;
+      evictedSize: INTEGER;
   BEGIN
-        SYSTEM.PUT(-60, 0CCCCCDDH);
+    evictedSize := 0;
     FOR i := 0 TO numGeneratedOverlays-1 DO
       ov := overlays.list[i];
       IF ov.mapped > 0 THEN
         SYSTEM.GET(ov.mapped-4, mark);
         SYSTEM.PUT(-60, mark);
-        IF mark <= 0 THEN
+        IF mark = 0 THEN
           ov.mapped := 0;
           FillTOC(ov, TRUE);
+          INC(evictedSize, ov.heapsize);
         END;
       END;
     END;
+    SYSTEM.PUT(-60, 0CAFEBABEH);
+    SYSTEM.PUT(-60, evictedSize);
   END EvictCollectedOverlays;
+
+  PROCEDURE CheckMarks*();
+    VAR ov: Overlay; i, mark: INTEGER;
+  BEGIN
+          SYSTEM.PUT(-60, 0CAFECAFEH);
+    FOR i := 0 TO numGeneratedOverlays-1 DO
+      ov := overlays.list[i];
+      IF ov.mapped > 0 THEN
+        SYSTEM.GET(ov.mapped-4, mark);
+        IF mark # 0 THEN
+          SYSTEM.PUT(-60, mark);
+        END;
+      END;
+    END;
+  END CheckMarks;
+
+  PROCEDURE FreeModule*(mno: INTEGER);
+    VAR i: INTEGER; ov: Overlay;
+  BEGIN
+    FOR i := numGeneratedOverlays-1 TO 0 DO
+      IF overlays.list[i].mod.num = mno THEN
+        overlays.list[i] := NIL;
+      END;
+    END;
+  END FreeModule;
 
   (* changes the mark on the overlay, to communicate with the garbage collector *)
   PROCEDURE ChangeMark(ptr: LONGINT; increase: BOOLEAN);
@@ -124,70 +153,64 @@ MODULE Overlays;
       END;
     END;
     Kernel.NewOverlay(ov.mapped, ov.heapsize);
-    SYSTEM.PUT(-60, ov.mod.num);
-    SYSTEM.PUT(-60, ov.heapsize);
-    SYSTEM.PUT(-60, ov.size);
+    IF ov.mapped = 0 THEN
+      SYSTEM.PUT(-60, 0AAEEEH);
+      SYSTEM.EBREAK();
+    END;
     FOR i := 0 TO ov.size BY FileDir.SectorSize DO
       Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
     END;
     FillTOC(ov, FALSE);
   END LoadOverlay;
 
-  PROCEDURE LoadOverlayAndGetAddress*(index: INTEGER): LONGINT;
-    VAR ov: Overlay;
+  PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
   BEGIN
-    ov := overlays.list[index];
-    IF ov.mapped = 0 THEN LoadOverlay(ov) END;
-    RETURN ov.mapped
-  END LoadOverlayAndGetAddress;
+    RETURN LSL(-1, 15) + LSL(index MOD 8000H, 1) + 1
+  END GetOverlayToken;
 
   PROCEDURE OverlayManager*(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
-    VAR k, ovindex, offset, pno, addr, size, oldmapped, oldIndex: INTEGER;
+    VAR k, ra, ovindex, callerindex, pno, addr, size, oldmapped, oldIndex: INTEGER;
       found: BOOLEAN;
-      ov, old: Overlay;
+      ov, old, temp: Overlay;
       proc: Procedure; body: Func;
   BEGIN
-    ovindex := SYSTEM.REG(30) DIV 2 MOD 4000H;
-    offset := (SYSTEM.REG(30) DIV 8000H) * 4;
+    ra := SYSTEM.REG(1);
+    ovindex     := SYSTEM.REG(30) DIV 2 MOD 4000H;
+    callerindex := SYSTEM.REG(30) DIV 8000H;
 
+    old := NIL;
     ov := overlays.list[ovindex];
+    IF callerindex < 0 THEN
+      IF ra >= Kernel.heapOrg THEN
+        i := 0; found := FALSE;
+        WHILE (i < numGeneratedOverlays) & (old = NIL) DO
+          temp := overlays.list[i];
+          oldmapped := temp.mapped;
+          IF (ra > oldmapped) & (ra < oldmapped + temp.size)  THEN
+            old := temp;
+          END;
+          INC(i);
+        END;
+      END;
+    END;
+
     IF ov.mapped = 0 THEN
-      IF (mappedIndices[0] >= 0) & (mappedIndices[0] # ovindex) THEN
-        old := overlays.list[mappedIndices[0]];
-        oldmapped := old.mapped;
-      ELSE old := NIL; oldmapped := -1024;
-      END;
-      oldIndex := mappedIndices[0];
-      mappedIndices[0] := ovindex;
-      (*
-      ovindex := word DIV 1 MOD 400000H; ov := overlays[ovindex];
-      *)
       LoadOverlay(ov);
-
-      (* call function in loaded overlay *)
-      body := SYSTEM.VAL(Func, ov.mapped);
-      SYSTEM.PUT(-60, ov.pno);
-      SYSTEM.PUT(-60, ov.mapped);
-      ChangeMark(ov.mapped, TRUE);
-      k := body(a,b,c,d,e,f,g,h,i,j,l,m);
-      ChangeMark(ov.mapped, FALSE);
-      IF ov.mapped = 0 THEN
-        SYSTEM.PUT(-60, ov.mod.num);
-        SYSTEM.PUT(-60, ov.pno);
-        SYSTEM.EBREAK();
-      END;
-
-      (*
-      IF (old # NIL) & (old.mapped = 0) THEN
-        LoadOverlay(old, ov);
-        mappedIndices[0] := oldIndex;
-      END; *)
     ELSE
-      (* probably indirect function call within same module *)
-      body := SYSTEM.VAL(Func, ov.mapped);
-      ChangeMark(ov.mapped, TRUE);
-      k := body(a,b,c,d,e,f,g,h,i,j,l,m);
-      ChangeMark(ov.mapped, FALSE);
+      (* need a more accurate way of knowing whether the information we have is accurate or not ! *)
+      (* in indirect function calls, we don't have accurate information on the overlay index of *)
+      (* the calling procedure. so we brute force it *)
+    END;
+    body := SYSTEM.VAL(Func, ov.mapped);
+    ChangeMark(ov.mapped, FALSE);
+    k := body(a,b,c,d,e,f,g,h,i,j,l,m);
+    ChangeMark(ov.mapped, TRUE);
+    IF (old # NIL) & (old.mapped = 0) THEN
+      SYSTEM.GET(SYSTEM.REG(2), old.mapped);
+      LoadOverlay(old);
+      SYSTEM.PUT(-60, old.mapped);
+      SYSTEM.EBREAK();
+      SYSTEM.PUT(SYSTEM.REG(2), old.mapped);
     END;
     RETURN k
   END OverlayManager;
@@ -229,9 +252,15 @@ MODULE Overlays;
     FOR i := 0 TO numprocs-1 DO
       NEW(ov); ov.mapped := 0;
       ov.mod := mod; ov.pno := procs[i].index;
-      ov.heapsize := (procs[i].size+271) DIV 256 * 256;
       ov.size := procs[i].size;
+      (*
+      IF ov.size <= 20 THEN ov.heapsize := 32;
+      ELSIF ov.size <= 52 THEN ov.heapsize := 64
+      ELSIF ov.size <= 116 THEN ov.heapsize := 128
+      ELSE ov.heapsize := (ov.size+271) DIV 256 * 256
+      END ; *)
 
+      ov.heapsize := (ov.size+271) DIV 256 * 256;
       overlays.list[numGeneratedOverlays] := ov;
       INC(numGeneratedOverlays);
     END;

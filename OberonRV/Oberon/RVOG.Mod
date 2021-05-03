@@ -43,7 +43,7 @@ CONST
   maxStrx = 3000;   (* statically allocated strings *)
   maxTD = 512;      (* 512 words of space for type descriptors *)
   maxProcs = 512;   (* 512 words of space for procedure listing *)
-  maxNumProcs = 60;
+  maxNumProcs = 200;
   maxStubs = 200;
 
   Reg = 10; RegI = 11; Cond = 12;  (*internal item modes*)
@@ -154,7 +154,7 @@ TYPE
 VAR
   W: Texts.Writer;
   pc*, varsize: INTEGER;  (* program counter, data indices *)
-  tdx, strx, stubx, procx*, expoprocx*: INTEGER;     (* Type descriptor, string array, proc list indices, expo proc list indices *)
+  tdx, strx, stubx, procx*, expoprocx*, currentproc: INTEGER;     (* Type descriptor, string array, proc list indices, expo proc list indices *)
   entry: INTEGER;         (* module body entrypoint *)
   RH: INTEGER;            (* available registers R[firstReg] ... R[H-1]*)
   curSB: INTEGER;         (* current static base in SB (module table index) *)
@@ -628,25 +628,26 @@ BEGIN
   RETURN LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12)
 END GenerateOverlayToken;
 
-PROCEDURE PutOverlayToken(r, pno, mno: INTEGER);
+PROCEDURE PutOverlayToken(r, pno, mno: INTEGER; generating: BOOLEAN);
+  VAR a: INTEGER;
 BEGIN
   put(RVAssem.lui(r, GenerateOverlayToken(pno, mno)));
   (* To construct a call graph, let the linker know the index of the function we're calling from. *)
   (* Note that the linker will already know what module this call is coming from; so that information *)
   (* is useless (and impossible to know compile-time anyway). *)
   (* This will be replaced with a `addi` call in the linker. *)
-  (* Note: This info isn't actually necessary, as the linker can figure out the index on its own. *)
-  (* But I guess it's nice-to-have. *)
+  IF generating THEN a := 1 ELSE a := 0 END;
   IF entry >= 0 THEN (* special handling for caller index in entry *)
-    put(LSL(fixorgS MOD C16, 16) + LSL((-1) MOD C8, 8) + r MOD 20H); fixorgS := pc-1;
+    put(LSL(fixorgS MOD C16, 16) + LSL((-1) MOD C8, 8) + LSL(r MOD 20H, 1) + a);
   ELSE
-    put(LSL(fixorgS MOD C16, 16) + LSL((procx-1) MOD C8, 8) + r MOD 20H); fixorgS := pc-1;
+    put(LSL(fixorgS MOD C16, 16) + LSL(currentproc MOD C8, 8) + LSL(r MOD 20H, 1) + a);
   END;
+  fixorgS := pc-1;
 END PutOverlayToken;
 
 PROCEDURE LoadOverlayRegister(pno, mno: INTEGER);
 BEGIN
-  PutOverlayToken(30, pno, mno);
+  PutOverlayToken(30, pno, mno, FALSE);
 END LoadOverlayRegister;
 
 PROCEDURE load(VAR x: Item);
@@ -659,15 +660,14 @@ BEGIN
       IF x.type.form = RVOB.Proc THEN
         IF x.r > 0 THEN RVOS.Mark("not allowed")
         ELSIF x.r = 0 THEN  (* Answer address of procedure in current module *)
-          PutOverlayToken(RH, FindProcIndexGivenAddress(x.a), -x.r);
-          Texts.WriteLn(W); Texts.WriteString(W, "overlay token generated"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.WriteInt(W, x.a, 5); Texts.Append(Oberon.Log, W.buf);
+          PutOverlayToken(RH, FindProcIndexGivenAddress(x.a), 0, TRUE);
 
           (* GetSB(0); AddImm(SB, x.a+C8); *)
           (* put(RVAssem.auipc(RH, 0));
           LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
           put(RVAssem.sub(RH, RH, RH+1)); *)
         ELSE  (* Answer address of procedure in a different module *)
-          PutOverlayToken(RH, x.a, -x.r);
+          PutOverlayToken(RH, x.a, -x.r, TRUE);
           (* GetSB(x.r); AddImm(SB, x.a+C8); *)
         END;
       ELSE LoadImm(x.a)
@@ -1775,13 +1775,14 @@ END Call;
 PROCEDURE ProcedureEntrance*(): INTEGER;
 BEGIN
   program.procs.addr[procx] := pc * 4;
+  currentproc := procx;
   INC(procx);
   IF (procx > maxNumProcs) THEN RVOS.Mark("Too many procs!"); END;
   RETURN procx-1
 END ProcedureEntrance;
 
 PROCEDURE UpdateProc*(procnum, pos: INTEGER);
-BEGIN program.procs.addr[procnum] := pos;
+BEGIN program.procs.addr[procnum] := pos; currentproc := procnum;
 END UpdateProc;
 
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);

@@ -141,12 +141,18 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END FindProcCalls;
   *)
 
-  PROCEDURE FixupOverlayTokens(mod: Overlays.Module; fixorgS: INTEGER);
-    VAR adr, mno, pno, imm, inst, reg, index, offset, disp: INTEGER;
+  PROCEDURE FixupOverlayTokens(mod: Overlays.Module; fixorgS, numprocs: INTEGER);
+    VAR adr, mno, pno, imm, inst, reg, callerIndex, index, callerPno, disp: INTEGER;
+      generating: BOOLEAN;
       impmod: Overlays.Module;
   BEGIN
     adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)
     WHILE adr # mod.code DO
+      SYSTEM.GET(adr, inst);
+      disp := inst DIV 10000H;
+      callerPno := inst DIV 100H MOD 100H;
+      generating := SYSTEM.VAL(BOOLEAN, inst MOD 2);
+      reg  := inst DIV 2 MOD 20H;
       (* fixup LUI *)
       SYSTEM.GET(adr-4, inst);
       imm := inst DIV C12;
@@ -160,18 +166,25 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         SYSTEM.GET(impmod.ent + pno*4, pno);
       END;
       IF mno > 6 THEN
-        index := Overlays.FindOverlayIndex(mno, pno); offset := 0;
+        index := Overlays.FindOverlayIndex(mno, pno);
+        SYSTEM.PUT(-60, 0FE7AH);
+        SYSTEM.PUT(-60, mod.num);
+        SYSTEM.PUT(-60, callerPno);
+        IF ~generating THEN
+          IF callerPno # 0FFH THEN callerIndex := Overlays.FindOverlayIndex(mod.num, callerPno)
+          ELSE callerIndex := -1;
+          END;
+        ELSE callerIndex := -1;
+        END;
         (*offset := Overlays.FindProcedureOffset(mno, pno, index);*)
       ELSE
-        index := 0; offset := 0;
+        (* in inner core; no overlays exist *)
+        index := 0; callerIndex := 0;
       END;
       (*ASSERT(offset DIV 4 < 1000H);*)
-      inst := (inst - LSL(imm MOD C20, 12)) + LSL(offset DIV 4, 15) + LSL(index DIV 800H MOD 8H, 12);
+      inst := (inst - LSL(imm MOD C20, 12)) + LSL(callerIndex, 15) + LSL(index DIV 800H MOD 8H, 12);
       SYSTEM.PUT(adr-4, inst);
 
-      SYSTEM.GET(adr, inst);
-      disp := inst DIV 10000H;
-      reg  := inst MOD 20H;
       inst := LSL(index MOD 800H, 1) + 1;
       SYSTEM.PUT(adr, Addi(reg, inst));
       (* if MSB of the imm in the addi instruction is 1, it *)
@@ -336,7 +349,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END;
       Overlays.NewOverlay(mod, procs, numprocs);
       (* fixup overlay tokens with overlay indices *)
-      FixupOverlayTokens(mod, fixorgS);
+      FixupOverlayTokens(mod, fixorgS, numprocs);
       (* write Module.fix *)
       (*nodes[0].mods[0].sec := Overlays.WriteFixedModule(mod, w);*)
       (* after fixups are done, write overlay file *)
@@ -372,7 +385,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       s: ARRAY 32 OF CHAR;
   BEGIN res := 5; w := 0;
     IF mod # NIL THEN
-      SYSTEM.EBREAK();
       adr := mod.cmd; SYSTEM.GET(adr, ch);
       WHILE (ch # 0X) & (res # 0) DO k := 0; (*read command name*)
         REPEAT s[k] := ch; INC(k); INC(adr); SYSTEM.GET(adr, ch) UNTIL ch = 0X;
@@ -382,7 +394,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         IF s = name THEN
           res := 0;
           w := Overlays.FindOverlayIndex(mod.num, k);
-          w := Overlays.LoadOverlayAndGetAddress(w);
+          w := Overlays.GetOverlayToken(w);
         ELSE SYSTEM.GET(adr, ch) END
       END
     END
@@ -396,6 +408,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     IF mod # NIL THEN
       IF mod.refcnt = 0 THEN
         mod.name[0] := 0X; p := mod.imp; q := mod.cmd;
+        Overlays.FreeModule(mod.num);
         WHILE p < q DO SYSTEM.GET(p, imp); DEC(imp.refcnt); INC(p, 4) END ;
       ELSE res := 1
       END
