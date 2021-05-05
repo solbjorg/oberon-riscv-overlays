@@ -58,7 +58,7 @@ MODULE Overlays;
     numGeneratedOverlays*, lastMapped, numMapped, stackLoc: INTEGER;
     overlayIndex: INTEGER;
     mappedSector, addressOVM*: INTEGER;
-    GarbageCollector: PROCEDURE;
+    GarbageCollector, Reset: PROCEDURE;
 
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER;
@@ -82,11 +82,21 @@ MODULE Overlays;
     RETURN sec * 29
   END WriteFixedModule;
 
+  PROCEDURE EvictAllOverlays();
+    VAR i: INTEGER; ov: Overlay;
+  BEGIN
+    FOR i := 0 TO numGeneratedOverlays-1 DO
+      ov := overlays.list[i];
+      IF ov.mapped > 0 THEN
+        SYSTEM.PUT(ov.mapped-4, 0);
+        SYSTEM.PUT(-60, 0DEADDEADH);
+      END;
+    END;
+  END EvictAllOverlays;
+
   PROCEDURE EvictCollectedOverlays*();
     VAR i, mark: INTEGER; ov: Overlay;
-      evictedSize: INTEGER;
   BEGIN
-    evictedSize := 0;
     FOR i := 0 TO numGeneratedOverlays-1 DO
       ov := overlays.list[i];
       IF ov.mapped > 0 THEN
@@ -95,29 +105,12 @@ MODULE Overlays;
         IF mark = 0 THEN
           ov.mapped := 0;
           FillTOC(ov, TRUE);
-          INC(evictedSize, ov.heapsize);
         END;
       END;
     END;
-    SYSTEM.PUT(-60, 0CAFEBABEH);
-    SYSTEM.PUT(-60, evictedSize);
   END EvictCollectedOverlays;
 
-  PROCEDURE CheckMarks*();
-    VAR ov: Overlay; i, mark: INTEGER;
-  BEGIN
-          SYSTEM.PUT(-60, 0CAFECAFEH);
-    FOR i := 0 TO numGeneratedOverlays-1 DO
-      ov := overlays.list[i];
-      IF ov.mapped > 0 THEN
-        SYSTEM.GET(ov.mapped-4, mark);
-        IF mark # 0 THEN
-          SYSTEM.PUT(-60, mark);
-        END;
-      END;
-    END;
-  END CheckMarks;
-
+  (* TODO remove this procedure, it is just for debugging *)
   PROCEDURE FreeModule*(mno: INTEGER);
     VAR i: INTEGER; ov: Overlay;
   BEGIN
@@ -133,7 +126,9 @@ MODULE Overlays;
     VAR mark: INTEGER;
   BEGIN
     SYSTEM.GET(ptr-4, mark);
-    IF increase THEN INC(mark) ELSE DEC(mark) END;
+    IF increase THEN
+      IF mark < 0 THEN INC(mark) END;
+    ELSE DEC(mark) END;
     SYSTEM.PUT(-60, 0CCC00000H);
     SYSTEM.PUT(-60, mark);
     SYSTEM.PUT(ptr-4, mark);
@@ -144,23 +139,24 @@ MODULE Overlays;
     i, j, addr, u, seccnt, lim: INTEGER;
     proc: Procedure;
   BEGIN
-    IF (Kernel.allocated + ov.heapsize >= Kernel.heapLim - Kernel.heapOrg) THEN
-      GarbageCollector;
-      IF (Kernel.allocated + ov.heapsize >= Kernel.heapLim - Kernel.heapOrg) THEN
-        (* panic! out of memory *)
-        SYSTEM.PUT(-60, 0AFFFFAFFH);
-        SYSTEM.EBREAK();
-      END;
-    END;
     Kernel.NewOverlay(ov.mapped, ov.heapsize);
     IF ov.mapped = 0 THEN
-      SYSTEM.PUT(-60, 0AAEEEH);
-      SYSTEM.EBREAK();
+      (* allocation failed - run garbage collection and try again *)
+      GarbageCollector;
+      Kernel.NewOverlay(ov.mapped, ov.heapsize);
+      IF ov.mapped = 0 THEN
+        (* allocation failed again - no contiguous memory can be allocated. panic. *)
+        EvictAllOverlays();
+        GarbageCollector;
+        Reset;
+      END;
     END;
-    FOR i := 0 TO ov.size BY FileDir.SectorSize DO
-      Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
+    IF ov.mapped # 0 THEN
+      FOR i := 0 TO ov.size BY FileDir.SectorSize DO
+        Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
+      END;
+      FillTOC(ov, FALSE);
     END;
-    FillTOC(ov, FALSE);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -177,9 +173,11 @@ MODULE Overlays;
     ra := SYSTEM.REG(1);
     ovindex     := SYSTEM.REG(30) DIV 2 MOD 4000H;
     callerindex := SYSTEM.REG(30) DIV 8000H;
+    ov := overlays.list[ovindex];
 
     old := NIL;
-    ov := overlays.list[ovindex];
+    (* if an indirect function call, we can't easily determine what function it was called from *)
+    (* shouldn't be necessary with a "call tree" approach! *)
     IF callerindex < 0 THEN
       IF ra >= Kernel.heapOrg THEN
         i := 0; found := FALSE;
@@ -196,11 +194,9 @@ MODULE Overlays;
 
     IF ov.mapped = 0 THEN
       LoadOverlay(ov);
-    ELSE
-      (* need a more accurate way of knowing whether the information we have is accurate or not ! *)
-      (* in indirect function calls, we don't have accurate information on the overlay index of *)
-      (* the calling procedure. so we brute force it *)
     END;
+    SYSTEM.PUT(-60, ov.mod.num);
+    SYSTEM.PUT(-60, ov.pno);
     body := SYSTEM.VAL(Func, ov.mapped);
     ChangeMark(ov.mapped, FALSE);
     k := body(a,b,c,d,e,f,g,h,i,j,l,m);
@@ -312,6 +308,10 @@ MODULE Overlays;
   PROCEDURE SetGC*(gc: PROCEDURE);
   BEGIN GarbageCollector := gc;
   END SetGC;
+
+  PROCEDURE SetReset*(reset: PROCEDURE);
+  BEGIN Reset := reset;
+  END SetReset;
 
   PROCEDURE Init*;
     VAR i: INTEGER;

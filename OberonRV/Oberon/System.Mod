@@ -413,9 +413,19 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   BEGIN n := SYSTEM.REG(RA); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, n);
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf); Oberon.Reset
   END Abort;
-  
+
+  PROCEDURE ResetOVM;
+    VAR n: INTEGER;
+  BEGIN
+    SYSTEM.EBREAK();
+    Oberon.Reset;
+    (*Texts.WriteString(W, "Ran out of heap space for overlays!");
+    Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf); *)
+  END ResetOVM;
+
 BEGIN
   Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
+  Overlays.SetReset(ResetOVM);
   (*Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);*)
 END System.
