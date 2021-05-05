@@ -58,7 +58,8 @@ MODULE Overlays;
     numGeneratedOverlays*, lastMapped, numMapped, stackLoc: INTEGER;
     overlayIndex: INTEGER;
     mappedSector, addressOVM*: INTEGER;
-    GarbageCollector, Reset: PROCEDURE;
+    root: Module;
+    Reset: PROCEDURE;
 
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER;
@@ -82,7 +83,7 @@ MODULE Overlays;
     RETURN sec * 29
   END WriteFixedModule;
 
-  PROCEDURE EvictAllOverlays();
+  PROCEDURE EvictAllOverlays*();
     VAR i: INTEGER; ov: Overlay;
   BEGIN
     FOR i := 0 TO numGeneratedOverlays-1 DO
@@ -109,6 +110,21 @@ MODULE Overlays;
       END;
     END;
   END EvictCollectedOverlays;
+
+  PROCEDURE GC*;
+    VAR mod: Module;
+  BEGIN
+    IF (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
+      mod := root;
+      WHILE mod # NIL DO
+        IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
+        mod := mod.next
+      END ;
+      Files.RestoreList;
+      EvictCollectedOverlays;
+      Kernel.Scan;
+    END;
+  END GC;
 
   (* TODO remove this procedure, it is just for debugging *)
   PROCEDURE FreeModule*(mno: INTEGER);
@@ -142,12 +158,12 @@ MODULE Overlays;
     Kernel.NewOverlay(ov.mapped, ov.heapsize);
     IF ov.mapped = 0 THEN
       (* allocation failed - run garbage collection and try again *)
-      GarbageCollector;
+      GC;
       Kernel.NewOverlay(ov.mapped, ov.heapsize);
       IF ov.mapped = 0 THEN
         (* allocation failed again - no contiguous memory can be allocated. panic. *)
         EvictAllOverlays();
-        GarbageCollector;
+        GC;
         Reset;
       END;
     END;
@@ -177,7 +193,7 @@ MODULE Overlays;
 
     old := NIL;
     (* if an indirect function call, we can't easily determine what function it was called from *)
-    (* shouldn't be necessary with a "call tree" approach! *)
+    (* note: this shouldn't be necessary with a "call tree" approach! *)
     IF callerindex < 0 THEN
       IF ra >= Kernel.heapOrg THEN
         i := 0; found := FALSE;
@@ -205,6 +221,7 @@ MODULE Overlays;
       SYSTEM.GET(SYSTEM.REG(2), old.mapped);
       LoadOverlay(old);
       SYSTEM.PUT(-60, old.mapped);
+      SYSTEM.PUT(-60, 0DEADBEEFH);
       SYSTEM.EBREAK();
       SYSTEM.PUT(SYSTEM.REG(2), old.mapped);
     END;
@@ -262,34 +279,6 @@ MODULE Overlays;
     END;
   END NewOverlay;
 
-  (* generates overlays for a given module's entry points *)
-  (*
-  PROCEDURE MakeOverlayModule*(mod: Module; procs: ARRAY OF Procedure; numprocs, size: INTEGER): OverlayModule;
-  VAR i: INTEGER; modOverlay: OverlayModule;
-  BEGIN
-    NEW(modOverlay); ASSERT(modOverlay # NIL);
-    modOverlay.size := size;
-    modOverlay.mod := mod;
-    FOR i := 0 TO numprocs-1 DO
-      modOverlay.proc[i] := procs[i];
-    END;
-    modOverlay.numprocs := numprocs;
-
-    (*NewOverlay(nodes, i);*)
-    RETURN modOverlay
-  END MakeOverlayModule;
-
-  PROCEDURE MakeNode*(mod: Module; procs: ARRAY OF Procedure; numprocs, size: INTEGER): Node;
-    VAR node: Node; modOverlay: OverlayModule;
-  BEGIN
-    modOverlay := MakeOverlayModule(mod, procs, numprocs, size);
-    NEW(node); node.size := size;
-    node.nummods := 1;
-    node.index := overlayIndex; INC(overlayIndex);
-    node.mods[0] := modOverlay;
-    RETURN node
-  END MakeNode; *)
-
   (* Write Overlay.ovl based on index into overlay table *)
   (* index: index into ov table; addr: relative address within module; mod: relevant module *)
   PROCEDURE WriteOverlay*(index, addr: INTEGER; mod: Module);
@@ -305,13 +294,13 @@ MODULE Overlays;
     ov.sector := sec;
   END WriteOverlay;
 
-  PROCEDURE SetGC*(gc: PROCEDURE);
-  BEGIN GarbageCollector := gc;
-  END SetGC;
-
   PROCEDURE SetReset*(reset: PROCEDURE);
   BEGIN Reset := reset;
   END SetReset;
+
+  PROCEDURE SetRoot*(r: Module);
+  BEGIN root := r;
+  END SetRoot;
 
   PROCEDURE Init*;
     VAR i: INTEGER;

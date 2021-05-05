@@ -200,6 +200,11 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END ;
   END FixupOverlayTokens;
 
+  PROCEDURE SetRoot(r: Overlays.Module);
+  BEGIN root := r;
+    Overlays.SetRoot(r);
+  END SetRoot;
+
 
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Overlays.Module; VAR numprocs, nofimps, size: INTEGER; VAR import: ARRAY OF Overlays.Module; VAR R: Files.Rider): Command;
     (*search module in list; if not found, load module.
@@ -226,7 +231,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         IF AllocPtr + size < limit THEN (*allocate*)
           p := AllocPtr; mod := SYSTEM.VAL(Overlays.Module, p);
           AllocPtr := (p + size) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
-          mod.next := root; root := mod
+          mod.next := root; SetRoot(mod);
         ELSE error(7, name)
         END
       ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
@@ -421,6 +426,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     Overlays.Init;
     (*NEW(rootOverlay); rootOverlay.size := 0; rootOverlay.next := NIL;*)
     SYSTEM.GET(16, AllocPtr); SYSTEM.GET(20, root); limit := Kernel.heapOrg;
+    Overlays.SetRoot(root);
   END Init;
 
 END Linker.

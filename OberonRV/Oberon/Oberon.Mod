@@ -309,22 +309,15 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE GC;
     VAR mod: Overlays.Module;
   BEGIN
-    IF (ActCnt <= 0) OR (Kernel.allocated >= Kernel.heapLim - Kernel.heapOrg - 10000H) THEN
-      mod := Linker.root;
-      WHILE mod # NIL DO
-        IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
-        mod := mod.next
-      END ;
-      Files.RestoreList;
-      Overlays.EvictCollectedOverlays;
-      Kernel.Scan;
+    IF (ActCnt <= 0) THEN
+      Overlays.GC;
       ActCnt := BasicCycle;
     END;
   END GC;
 
   PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
     VAR t: Task;
-  BEGIN SYSTEM.PUT(-60, 0AB01234H);
+  BEGIN
     NEW(t); ASSERT(t # NIL); t.state := off; t.next := t; t.handle := h; t.period := period; RETURN t
   END NewTask;
   
@@ -396,6 +389,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE Reset*;
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
+    Overlays.EvictAllOverlays();
+    Overlays.GC;
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 
@@ -404,7 +399,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   BEGIN
     SYSTEM.PUT(-60, 70H);
     Loader.Load("System", Mod);
-    Overlays.SetGC(GC);
+    Overlays.SetReset(Reset);
+    Kernel.SetReset(Reset);
     Mod := NIL; Loop
   END Init;
 
@@ -416,9 +412,7 @@ BEGIN
   OpenCursor(Mouse); OpenCursor(Pointer);
 
   DW := Display.Width; DH := Display.Height; CL := DW;
-  SYSTEM.PUT(-60, 0ABABH);
   OpenDisplay(DW DIV 8 * 5, DW DIV 8 * 3, DH);
-  SYSTEM.PUT(-60, 0ACACH);
   FocusViewer := Viewers.This(0, 0);
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 

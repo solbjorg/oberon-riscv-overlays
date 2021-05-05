@@ -23,6 +23,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     list0, list1, list2, list3: INTEGER;  (*lists of free blocks of size n*256, 128, 64, 32 bytes*)
     data: INTEGER; (*SPI data in*)
     sectorMap: SectorMap;
+    Reset: PROCEDURE;
     
 (* ---------- New: heap allocation ----------*)
 
@@ -172,6 +173,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       END
     UNTIL p >= heapLim;
   END Scan;
+
+
 
 (* ---------- Disk storage management ----------*)
 
@@ -333,6 +336,10 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN clock := dt
   END SetClock;
 
+  PROCEDURE SetReset*(reset: PROCEDURE);
+  BEGIN Reset := reset;
+  END SetReset;
+
   (* Deposits a relative offset jump to `Padr` in location `at` *)
   (* Used to install functions at places required for the operating system. *)
   PROCEDURE Install*(Padr, at: INTEGER);
@@ -353,6 +360,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN inst := Jal(Padr - at); SYSTEM.PUT(at, inst);
   END Install;
 
+  PROCEDURE Abort;
+  BEGIN
+    (*REPEAT UNTIL FALSE;*)
+
+    (* this is meant to "gracefully" reset, but currently isn't very graceful... *)
+    IF Reset # NIL THEN Reset ELSE REPEAT UNTIL FALSE END;
+  END Abort;
+
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
     VAR u, v, w: INTEGER;
   BEGIN
@@ -365,7 +380,11 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
     (* Note on the note: I currently put the whole trap in the LEDs, for easier debugging *)
     (* with my emulator that supports 32-bit LED output. *)
-    ELSE (*stop*) SYSTEM.PUT(led, v); REPEAT UNTIL FALSE
+    ELSE (*stop*) SYSTEM.PUT(led, v);
+      (*IF Reset # NIL THEN Reset ELSE*)
+        (* freeze system *)
+      Abort;
+        (*END*)
     END;
     (* Ok, more explanation of some of the low-level hacks in use here. *)
     (* We had to deposit the trap number _after_ the instruction, which means if we *)
@@ -383,6 +402,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   PROCEDURE Init*;
   BEGIN
     Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap; replaced later by System.Mod*)
+    Install(SYSTEM.ADR(Abort), 0);
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     INC(heapOrg, 040000H);
     stackOrg := heapOrg; stackSize := 8000H; heapLim := MemLim;

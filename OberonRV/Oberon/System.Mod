@@ -2,8 +2,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   IMPORT SYSTEM, Kernel, FileDir, Files, Overlays, Linker, Loader, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
   CONST
-    StandardMenu = "";
-    LogMenu = "";
+    StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store";
+    LogMenu = "Edit.Locate Edit.Search System.Copy System.Grow System.Clear";
     RA = 1;
 
   VAR W: Texts.Writer;
@@ -417,10 +417,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   PROCEDURE ResetOVM;
     VAR n: INTEGER;
   BEGIN
-    SYSTEM.EBREAK();
+    Texts.WriteString(W, "Ran out of heap space for overlays!");
+    Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
     Oberon.Reset;
-    (*Texts.WriteString(W, "Ran out of heap space for overlays!");
-    Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf); *)
   END ResetOVM;
 
 BEGIN
