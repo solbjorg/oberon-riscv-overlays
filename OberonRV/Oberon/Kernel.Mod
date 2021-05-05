@@ -35,26 +35,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ASSERT(len MOD 256 = 0);
     WHILE ~done & (q1 # 0) DO
       SYSTEM.GET(q1, size); SYSTEM.GET(q1+8, q2);
-      SYSTEM.PUT(-60, list0);
-      SYSTEM.PUT(-60, size);
       IF size < len THEN (*no fit*) q0 := q1; q1 := q2
       ELSIF size = len THEN (*extract -> p*)
         done := TRUE; p := q1;
-        IF q0 # 0 THEN SYSTEM.PUT(q0+8, q2) ELSE
-          list0 := q2;
-          SYSTEM.GET(list0, size);
-          ASSERT(size > 0);
-        END
+        IF q0 # 0 THEN SYSTEM.PUT(q0+8, q2) ELSE list0 := q2; END
       ELSE (*reduce size*)
         done := TRUE; p := q1; q1 := q1 + len;
         SYSTEM.PUT(q1, size-len); SYSTEM.PUT(q1+4, -1); SYSTEM.PUT(q1+8, q2);
-        IF q0 # 0 THEN SYSTEM.PUT(q0+8, q1) ELSE
-          list0 := q1;
-          SYSTEM.GET(list0, size);
-          SYSTEM.PUT(-60, list0);
-          SYSTEM.PUT(-60, size);
-          ASSERT(size > 0);
-        END
+        IF q0 # 0 THEN SYSTEM.PUT(q0+8, q1) ELSE list0 := q1; SYSTEM.GET(list0, size); END
       END
     END ;
     IF ~done THEN
@@ -106,15 +94,21 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END
   END NewPtr;
 
-  (* allocates a block of size to heap; meant for overlay system /only/ *)
+  (* allocates a block of `size` to heap and writes this address to `ptr` *)
   PROCEDURE NewOverlay*(VAR ptr: LONGINT; VAR size: LONGINT);
     VAR s: INTEGER;
   BEGIN
-    (*GetBlock(ptr, (size+255) DIV 256 * 256);*)
-    GetBlock(ptr, size);
+    (*
+    IF size = 32 THEN GetBlock32(ptr)
+    ELSIF size = 64 THEN GetBlock64(ptr)
+    ELSIF size = 128 THEN GetBlock128(ptr)
+    ELSE GetBlock(ptr, (size+255) DIV 256 * 256)
+    END ; *)
+    GetBlock(ptr, (size+255) DIV 256 * 256);
+    (* if ptr = 0, then allocation failed. *)
     IF ptr # 0 THEN
       SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
-      SYSTEM.PUT(ptr+4, 0); (* set mark to 0, will be increased upon call *)
+      SYSTEM.PUT(ptr+4, 0); (* set mark to 0, will be decreased upon call *)
       ptr := ptr + 8;
       INC(allocated, size);
     END;
@@ -176,7 +170,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       IF mark > 0 THEN SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); SYSTEM.PUT(p+4, 0); INC(p, size)
       ELSE (*free*) SYSTEM.GET(p, size); INC(p, size)
       END
-    UNTIL p >= heapLim
+    UNTIL p >= heapLim;
   END Scan;
 
 (* ---------- Disk storage management ----------*)
@@ -225,7 +219,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       SYSTEM.PUT(spiData, -1);
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
       SYSTEM.GET(spiData, data); SYSTEM.PUT(dst, data); INC(dst, 4);
-      SYSTEM.PUT(-60, data);
     END;
     SPI(255); SPI(255); SPIIdle(1) (*may be a checksum; deselect card*)
   END ReadSDLim;
@@ -244,7 +237,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     FOR i := 0 TO lim BY 4 DO
       SYSTEM.GET(src, n); INC(src, 4); SYSTEM.PUT(spiData, n);
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
-      SYSTEM.PUT(-60, n);
     END;
     SPI(255); SPI(255); (*dummy checksum*) i := 0;
     REPEAT SPI(-1); INC(i); UNTIL (data MOD 32 = 5) OR (i = 10000);
@@ -296,7 +288,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     ASSERT(src MOD 29 = 0); src := src DIV 29;
     src := src * 2 + FSoffset;
-    SYSTEM.PUT(-60, src);
     IF lim <= 508 THEN
       ReadSDLim(src, dst, lim);
     ELSIF lim <= 1020 THEN
@@ -311,14 +302,11 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     ASSERT(dst MOD 29 = 0); dst := dst DIV 29;
     dst := dst * 2 + FSoffset;
-    SYSTEM.PUT(-60, dst);
-    SYSTEM.PUT(-60, lim);
     IF lim <= 508 THEN
       WriteSDLim(dst, src, lim);
     ELSIF lim <= 1020 THEN
       WriteSDLim(dst, src, 508); WriteSDLim(dst+1, src+512, lim-512);
     ELSE
-      (*SYSTEM.EBREAK();*)
       WriteSDLim(dst, src, 508); WriteSDLim(dst+1, src+512, 508);
     END;
   END PutMemToSector;
@@ -396,6 +384,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap; replaced later by System.Mod*)
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
+    INC(heapOrg, 040000H);
     stackOrg := heapOrg; stackSize := 8000H; heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
