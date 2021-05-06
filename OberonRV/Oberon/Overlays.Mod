@@ -55,7 +55,7 @@ MODULE Overlays;
 
   VAR overlays: OverlayList;
     mappedIndices: ARRAY numIndices OF INTEGER;  (* index into table of overlay that is currently mapped *)
-    numGeneratedOverlays*, lastMapped, numMapped, stackLoc: INTEGER;
+    numGeneratedOverlays*, allocated*, numMapped, stackLoc: INTEGER;
     overlayIndex: INTEGER;
     mappedSector, addressOVM*: INTEGER;
     root: Module;
@@ -106,6 +106,7 @@ MODULE Overlays;
         IF mark = 0 THEN
           ov.mapped := 0;
           FillTOC(ov, TRUE);
+          DEC(allocated, ov.heapsize);
         END;
       END;
     END;
@@ -167,12 +168,11 @@ MODULE Overlays;
         Reset;
       END;
     END;
-    IF ov.mapped # 0 THEN
-      FOR i := 0 TO ov.size BY FileDir.SectorSize DO
-        Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
-      END;
-      FillTOC(ov, FALSE);
+    FOR i := 0 TO ov.size BY FileDir.SectorSize DO
+      Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
     END;
+    FillTOC(ov, FALSE);
+    INC(allocated, ov.heapsize);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -311,8 +311,8 @@ MODULE Overlays;
     END;
     numGeneratedOverlays := 0;
     overlayIndex := 0;
-    lastMapped := -1;
     stackLoc := 0;
+    allocated := 0;
     mappedSector := Kernel.filemapsize + 1;
     addressOVM := SYSTEM.ADR(OverlayManager);
     NEW(l); overlays := l;

@@ -298,7 +298,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
   BEGIN Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
     Texts.WriteString(W, "  Linker space (bytes)"); Texts.WriteInt(W, Linker.AllocPtr, 8);
     Texts.WriteInt(W, Linker.AllocPtr * 100 DIV Kernel.heapOrg, 4); Texts.Write(W, "%"); EndLine;
-    Texts.WriteString(W, "  Heap speace"); Texts.WriteInt(W, Kernel.allocated, 8);
+    Texts.WriteString(W, "  Heap space (total, overlays)"); Texts.WriteInt(W, Kernel.allocated, 8); Texts.WriteInt(W, Overlays.allocated, 8);
     Texts.WriteInt(W, Kernel.allocated * 100 DIV (Kernel.heapLim - Kernel.heapOrg), 4); Texts.Write(W, "%"); EndLine;
     Texts.WriteString(W, "  Disk sectors "); Texts.WriteInt(W, Kernel.NofSectors, 4);
     Texts.WriteInt(W, Kernel.NofSectors * 100 DIV 10000H, 4); Texts.Write(W, "%"); EndLine;
