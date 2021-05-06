@@ -81,18 +81,20 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   PROCEDURE NewPtr*(VAR ptr: LONGINT; tag: LONGINT);
     (*called by NEW via MT[0]; ptr and tag are pointers*)
     VAR p, size, lim: LONGINT;
-  BEGIN SYSTEM.GET(tag, size);
-    SYSTEM.PUT(-60, 0AEAH);
-    SYSTEM.PUT(-60, size);
-    IF size = 32 THEN GetBlock32(p)
-    ELSIF size = 64 THEN GetBlock64(p)
-    ELSIF size = 128 THEN GetBlock128(p)
-    ELSE GetBlock(p, (size+255) DIV 256 * 256)
-    END ;
-    IF p = 0 THEN ptr := 0
-    ELSE ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
-      WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
-    END
+  BEGIN
+    SYSTEM.GET(tag, size);
+    IF allocated < heapLim - heapOrg - size - 5000H THEN
+      IF size = 32 THEN GetBlock32(p)
+      ELSIF size = 64 THEN GetBlock64(p)
+      ELSIF size = 128 THEN GetBlock128(p)
+      ELSE GetBlock(p, (size+255) DIV 256 * 256)
+      END ;
+      IF p = 0 THEN ptr := 0
+      ELSE ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
+        WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
+      END;
+    ELSE ptr := 0;
+    END;
   END NewPtr;
 
   (* allocates a block of `size` to heap and writes this address to `ptr` *)
