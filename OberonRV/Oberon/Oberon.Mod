@@ -309,10 +309,11 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE GC;
     VAR mod: Overlays.Module;
   BEGIN
+    (*
     IF (ActCnt <= 0) THEN
       Overlays.GC;
       ActCnt := BasicCycle;
-    END;
+    END; *)
   END GC;
 
   PROCEDURE NewTask*(h: Handler; period: INTEGER): Task;
