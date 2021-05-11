@@ -1,5 +1,5 @@
 MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
-  IMPORT Files, Linker, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers;
+  IMPORT SYSTEM, Files, Linker, Loader, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers;
 
   CONST replace* = 0; insert* = 1; delete* = 2; unmark* = 3; (*message id*)
     BS = 8X; TAB = 9X; CR = 0DX; DEL = 7FX;
@@ -600,7 +600,7 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
     IF (S.class = Texts.Name) & (S.line = 0) THEN
       Oberon.SetPar(F, F.text, pos + S.len); Oberon.Call(S.s, res);
       IF res > 0 THEN
-        Texts.WriteString(W, "Call error: "); Texts.WriteString(W, Linker.importing);
+        Texts.WriteString(W, "Call error: "); Texts.WriteString(W, Loader.importing);
         IF res = 1 THEN Texts.WriteString(W, " module not found")
         ELSIF res = 2 THEN  Texts.WriteString(W, " bad version")
         ELSIF res = 3 THEN Texts.WriteString(W, " imports ");
@@ -663,11 +663,12 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   PROCEDURE Open* (F: Frame; H: Display.Handler; T: Texts.Text; org: LONGINT;
         col, left, right, top, bot, lsp: INTEGER);
     VAR L: Line;
-  BEGIN NEW(L); ASSERT(L # NIL);
+  BEGIN
+    NEW(L); ASSERT(L # NIL);
     L.len := 0; L.wid := 0; L.eot := FALSE; L.next := L;
     F.handle := H; F.text := T; F.org := org; F.trailer := L;
     F.left := left; F.right := right; F.top := top; F.bot := bot;
-    F.lsp := lsp; F.col := col; F.hasMark := FALSE; F.hasCar := FALSE; F.hasSel := FALSE
+    F.lsp := lsp; F.col := col; F.hasMark := FALSE; F.hasCar := FALSE; F.hasSel := FALSE;
   END Open;
 
   PROCEDURE Copy* (F: Frame; VAR F1: Frame);
@@ -832,7 +833,8 @@ MODULE TextFrames; (*JG 8.10.90 / NW 10.5.2013 / 11.2.2017*)
   PROCEDURE NewMenu* (name, commands: ARRAY OF CHAR): Frame;
     VAR F: Frame; T: Texts.Text;
   BEGIN NEW(F); ASSERT(F # NIL); T := Menu(name, commands);
-    Open(F, Handle, T, 0, Display.white, left DIV 4, 0, 0, 0, lsp); RETURN F
+    Open(F, Handle, T, 0, Display.white, left DIV 4, 0, 0, 0, lsp);
+    RETURN F
   END NewMenu;
 
   PROCEDURE NewText* (text: Texts.Text; pos: LONGINT): Frame;
