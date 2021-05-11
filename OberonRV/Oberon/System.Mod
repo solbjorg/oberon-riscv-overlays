@@ -393,6 +393,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     END
   END ExtendDisplay;
 
+  (*
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
     VAR u, v, w: INTEGER; mod: Overlays.Module;
   BEGIN u := SYSTEM.REG(RA); SYSTEM.GET(u + 4, v); w := v DIV 1000000H MOD 10H; (*trap number*)
@@ -407,24 +408,31 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
       Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf); Oberon.Reset
     END
   END Trap;
-
+ *)
+  (*
   PROCEDURE Abort;
     VAR n: INTEGER;
   BEGIN n := SYSTEM.REG(RA); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, n);
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf); Oberon.Reset
   END Abort;
+  *)
 
-  PROCEDURE ResetOVM;
+  PROCEDURE ResetMessage(trap: INTEGER; mod: Overlays.Module);
     VAR n: INTEGER;
   BEGIN
-    Texts.WriteString(W, "Ran out of heap space for overlays!");
+    IF trap = 0 THEN
+      Texts.WriteString(W, "Ran out of heap space for overlays");
+    ELSE
+      Texts.WriteString(W, "TRAP "); Texts.WriteHex(W, trap);
+    END;
+    IF mod # NIL THEN Texts.WriteString(W, " in "); Texts.WriteString(W, mod.name) END ;
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-    Oberon.Reset;
-  END ResetOVM;
+  END ResetMessage;
 
 BEGIN
   Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
-  Overlays.SetReset(ResetOVM);
+  (*Overlays.SetReset(ResetOVM);*)
+  Oberon.SetResetMessage(ResetMessage);
   (*Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);*)
 END System.

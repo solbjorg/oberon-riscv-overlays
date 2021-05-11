@@ -11,6 +11,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   TYPE Sector* = ARRAY SectorLength OF BYTE;
     SectorMap* = POINTER TO SectorMapDesc;
     Command*   = PROCEDURE;
+    ResetFunc* = PROCEDURE(trap, loc: INTEGER);
 
     SectorMapDesc = RECORD
         map: ARRAY filemapsize DIV 32 OF SET;
@@ -23,7 +24,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     list0, list1, list2, list3: INTEGER;  (*lists of free blocks of size n*256, 128, 64, 32 bytes*)
     data: INTEGER; (*SPI data in*)
     sectorMap: SectorMap;
-    Reset: PROCEDURE;
+    GC: PROCEDURE;
+    Reset: ResetFunc;
     
 (* ---------- New: heap allocation ----------*)
 
@@ -83,7 +85,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     VAR p, size, lim: LONGINT;
   BEGIN
     SYSTEM.GET(tag, size);
-    IF allocated < heapLim - heapOrg - size - 5000H THEN
+    lim := heapLim - heapOrg - size - 5000H;
+    (*IF allocated > lim THEN GC END; (* run garbage collection if not enough space *)*)
+    IF allocated < lim THEN
       IF size = 32 THEN GetBlock32(p)
       ELSIF size = 64 THEN GetBlock64(p)
       ELSIF size = 128 THEN GetBlock128(p)
@@ -338,9 +342,13 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN clock := dt
   END SetClock;
 
-  PROCEDURE SetReset*(reset: PROCEDURE);
+  PROCEDURE SetReset*(reset: ResetFunc);
   BEGIN Reset := reset;
   END SetReset;
+
+  PROCEDURE SetGC*(gc: LONGINT);
+  BEGIN GC := SYSTEM.VAL(Command, gc);
+  END SetGC;
 
   (* Deposits a relative offset jump to `Padr` in location `at` *)
   (* Used to install functions at places required for the operating system. *)
@@ -362,12 +370,16 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN inst := Jal(Padr - at); SYSTEM.PUT(at, inst);
   END Install;
 
-  PROCEDURE Abort;
+  PROCEDURE AbortTrap(trap, loc: INTEGER);
   BEGIN
     (*REPEAT UNTIL FALSE;*)
 
     (* this is meant to "gracefully" reset, but currently isn't very graceful... *)
-    IF Reset # NIL THEN Reset ELSE REPEAT UNTIL FALSE END;
+    IF Reset # NIL THEN Reset(trap, loc) ELSE REPEAT UNTIL FALSE END;
+  END AbortTrap;
+
+  PROCEDURE Abort;
+  BEGIN Reset(0, 0);
   END Abort;
 
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
@@ -382,11 +394,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
     (* Note on the note: I currently put the whole trap in the LEDs, for easier debugging *)
     (* with my emulator that supports 32-bit LED output. *)
-    ELSE (*stop*) SYSTEM.PUT(led, v);
-      (*IF Reset # NIL THEN Reset ELSE*)
-        (* freeze system *)
-      Abort;
-        (*END*)
+    ELSE (*stop*) SYSTEM.PUT(led, heapLim - heapOrg); SYSTEM.PUT(led, allocated); SYSTEM.PUT(led, v);
+      (* freeze system *)
+      AbortTrap(v, u);
     END;
     (* Ok, more explanation of some of the low-level hacks in use here. *)
     (* We had to deposit the trap number _after_ the instruction, which means if we *)

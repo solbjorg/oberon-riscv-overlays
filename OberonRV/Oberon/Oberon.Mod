@@ -69,6 +69,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     DW, DH, CL: INTEGER;
     ActCnt: INTEGER; (*action count for GC*)
     Mod: Overlays.Module;
+    ResetMessage: PROCEDURE(trap: INTEGER; mod: Overlays.Module);
 
   (*user identification*)
 
@@ -387,13 +388,24 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     UNTIL FALSE
   END Loop;
 
-  PROCEDURE Reset*;
+  PROCEDURE Reset*(trap, loc: INTEGER);
+    VAR mod: Overlays.Module;
   BEGIN
-    IF CurTask.state = active THEN Remove(CurTask) END ;
+    (* panic, forcibly evict all overlays to make space *)
+    mod := Overlays.LocateMod(loc);
     Overlays.EvictAllOverlays();
     Overlays.GC;
+
+    IF CurTask.state = active THEN Remove(CurTask) END ;
+    IF (ResetMessage # NIL) THEN
+      ResetMessage(trap, mod);
+    END;
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
+
+  PROCEDURE SetResetMessage*(msg: PROCEDURE(trap: INTEGER; mod: Overlays.Module));
+  BEGIN ResetMessage := msg;
+  END SetResetMessage;
 
   PROCEDURE Init;
     VAR i: INTEGER;
