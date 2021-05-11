@@ -1774,7 +1774,7 @@ END Call;
 
 PROCEDURE ProcedureEntrance*(): INTEGER;
 BEGIN
-  program.procs.addr[procx] := pc * 4;
+  program.procs.addr[procx] := (pc + 1) * 4;
   currentproc := procx;
   INC(procx);
   IF (procx > maxNumProcs) THEN RVOS.Mark("Too many procs!"); END;
@@ -1788,6 +1788,7 @@ END UpdateProc;
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
   VAR a, r, freereg, i: INTEGER;
 BEGIN
+  put(RVAssem.addi(0, 0, 0));
   invalSB; frame := 0;
   (*
   IF expo THEN
