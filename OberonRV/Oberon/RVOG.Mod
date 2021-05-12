@@ -44,7 +44,6 @@ CONST
   maxTD = 512;      (* 512 words of space for type descriptors *)
   maxProcs = 512;   (* 512 words of space for procedure listing *)
   maxNumProcs = 200;
-  maxStubs = 200;
 
   Reg = 10; RegI = 11; Cond = 12;  (*internal item modes*)
 
@@ -166,7 +165,6 @@ VAR
 
   sym2rel: ARRAY 6 OF INTEGER;
   sym2uRel: ARRAY 6 OF INTEGER;
-  stubs: ARRAY maxStubs OF StubDesc;
 
   program: Program;
 
@@ -728,7 +726,7 @@ BEGIN
   (* move the token to the token register *)
   put(RVAssem.addi(30, reg, 0));
   put(RVAssem.jalr(RA, 31, 0));
-  put(RVAssem.beq(0, 0, 8));
+  put(RVAssem.beq(0, 0, 16));
   (*
   (* load data pointer from module table... *)
   put(RVAssem.srai(RH, x.r, 12));
@@ -738,6 +736,8 @@ BEGIN
   put(RVAssem.srai(RH+1, x.r, 24));
   *)
   (* it is a normal address; jump right to it *)
+  put(RVAssem.csrrs(RH+1, 0, 0C00H)); (* get CYCLERD(L) into RH *)
+  put(RVAssem.sw(RH+1, reg, -4)); (* write timestamp into mark *)
   put(RVAssem.jalr(RA, reg, 0));
 END loadToken;
 
@@ -1557,51 +1557,6 @@ END For2;
 
 (* Branches, procedure calls, procedure prolog and epilog *)
 
-(*TODO document this format in source code*)
-PROCEDURE GenerateOutgoing(mno, pno: INTEGER): INTEGER;
-BEGIN
-  RETURN LSL(pno MOD C10, 22) + LSL(mno MOD C10, 12) + 1
-END GenerateOutgoing;
-
-(*return index into stub table*)
-PROCEDURE GenerateStub(mno, pno: INTEGER): INTEGER;
-  VAR i, index: INTEGER;
-  s: StubDesc;
-BEGIN
-  index := -1; i := 0;
-  WHILE (i < stubx) & (index = -1) DO
-    Texts.WriteLn(W); Texts.WriteHex(W, stubx); Texts.Append(Oberon.Log, W.buf);
-
-    IF (stubs[i].mno = mno) & (stubs[i].pno = pno) THEN
-      index := i;
-    END;
-    INC(i);
-  END;
-  IF index = -1 THEN
-    IF stubx >= maxStubs THEN
-      RVOS.Mark("too many function call candidates");
-    ELSE
-      stubs[stubx].mno := mno; stubs[stubx].pno := pno;
-      stubs[stubx].word := GenerateOutgoing(mno, pno);
-      index := stubx;
-      INC(stubx);
-    END;
-  END;
-  RETURN index
-END GenerateStub;
-
-PROCEDURE FixStubs;
-  VAR fix, word, index: INTEGER;
-BEGIN
-  fix := fixorgS;
-  WHILE fix # 0 DO
-    SYSTEM.GET(fix, word);
-    index := word MOD C16;
-    SYSTEM.PUT(fix, RVAssem.lw(30, SB, index + varsize + RVOS.proccnt + strx));
-    fix := word DIV C16;
-  END;
-END FixStubs;
-
 PROCEDURE Here*(): INTEGER;
 BEGIN invalSB; RETURN pc
 END Here;
@@ -1715,32 +1670,14 @@ BEGIN (*x.type.form = RVOB.Proc*)
       LoadOverlayRegister(i, -x.r);
       GetSB(0);
       Fetch(SB, varsize + i * 4);
-      put(RVAssem.jalr(RA, RH, 0));
-      (*
-      GetSB(x.r);
-      Fetch(SB, varsize + x.a * 4);
-      put(RVAssem.jalr(RA, RH, 0));
-      *)
-      (*put(RVAssem.jal(RA, x.a - (pc*InsnSize)))*)
     ELSE (*imported*)
       LoadOverlayRegister(x.a, -x.r);
       GetSB(x.r);
       Fetch(SB, x.a+C8);
-      put(RVAssem.jalr(RA, RH, 0));
-
-      (*
-      IF (fixorgP < 10000H) & (x.a < 100H) & (-x.r < 80H) THEN
-        (* x.a = procedureID, -x.r = moduleID *)
-        put(x.a MOD 100H + LSL(-x.r, 8) + LSL(fixorgP MOD 10000H, 16)); fixorgP := pc-1
-      ELSE RVOS.Mark("fixup impossible")
-      END
-       *)
-      (*
-      GetSB(x.r);
-      Fetch(SB, varsize + x.a * 4);
-      put(RVAssem.jalr(RA, RH, 0));
-     *)
-      END
+    END;
+    put(RVAssem.csrrs(RH+1, 0, 0C00H)); (* get CYCLERD(L) into RH *)
+    put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *)
+    put(RVAssem.jalr(RA, RH, 0));
   ELSE
     IF x.mode <= RVOB.Par THEN
       Texts.WriteLn(W); Texts.WriteString(W, "indirect function call at "); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
@@ -2120,7 +2057,6 @@ BEGIN
     END;
     x.r := RH; incR; x.mode := Reg
   ELSIF (x.mode = RVOB.Const) & (x.type.form = RVOB.String) THEN
-    Texts.WriteLn(W); Texts.WriteString(W, "lod"); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
     loadStringAdr(x)
   ELSE RVOS.Mark("not addressable")
   END
