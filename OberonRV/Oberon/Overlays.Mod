@@ -369,6 +369,9 @@ MODULE Overlays;
         END;
         INC(i);
       END;
+    ELSE
+      result := root;
+      WHILE (result # NIL) & ((loc < result.code) OR (loc >= result.imp)) DO result := result.next END ;
     END;
     RETURN result
   END LocateMod;
