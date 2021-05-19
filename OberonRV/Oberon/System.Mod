@@ -318,7 +318,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     WHILE M # NIL DO
       IF M.name[0] # 0X THEN
         Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));
-        Texts.WriteHex(W, M.code); Texts.WriteInt(W, M.refcnt, 4)
+        Texts.WriteInt(W, M.refcnt, 4)
       ELSE Texts.WriteString(W, "---")
       END ;
       Texts.WriteLn(W); M := M.next
@@ -427,6 +427,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     END;
     IF mod # NIL THEN Texts.WriteString(W, " in "); Texts.WriteString(W, mod.name) END ;
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
+    SYSTEM.PUT(-60, 0FAEAH);
   END ResetMessage;
 
 BEGIN
