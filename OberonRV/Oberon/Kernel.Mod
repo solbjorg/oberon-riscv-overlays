@@ -115,8 +115,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* if ptr = 0, then allocation failed. *)
     IF ptr # 0 THEN
       SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
-      SYSTEM.PUT(ptr+4, 0); (* set mark to 0, will be decreased upon call *)
-      ptr := ptr + 8;
+      SYSTEM.PUT(ptr+4, -1); (* set mark to -1, will be handled within overlay system *)
+      SYSTEM.PUT(ptr+8, 0); (* set timestamp to 0; will automatically be set upon calling *)
+      ptr := ptr + 12;
       INC(allocated, size);
     END;
   END NewOverlay;
