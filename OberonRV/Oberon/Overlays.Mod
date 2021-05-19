@@ -156,6 +156,7 @@ MODULE Overlays;
     END;
   END EvictAllOverlays;
 
+  (*
   PROCEDURE EvictCollectedOverlays*();
     VAR i, mark: INTEGER; ov: Overlay;
   BEGIN
@@ -170,18 +171,29 @@ MODULE Overlays;
         END;
       END;
     END;
-  END EvictCollectedOverlays;
+  END EvictCollectedOverlays; *)
 
   PROCEDURE GC*;
     VAR mod: Module;
   BEGIN
+    SYSTEM.PUT(-60, 06CH);
     mod := root;
     WHILE mod # NIL DO
-      IF mod.name[0] # 0X THEN Kernel.Mark(mod.ptr) END ;
+      IF mod.name[0] # 0X THEN
+        IF mod.ptr < Kernel.heapOrg THEN
+          Kernel.MarkMod(mod.ptr)
+        ELSE
+          SYSTEM.PUT(-60, Kernel.heapOrg);
+          SYSTEM.PUT(-60, Kernel.heapLim);
+          SYSTEM.PUT(-60, mod.ptr);
+          SYSTEM.PUT(-60, 0EEAAAEEEH);
+          SYSTEM.EBREAK();
+        END;
+      END ;
       mod := mod.next
     END ;
+    Kernel.MarkStack;
     Files.RestoreList;
-    EvictCollectedOverlays;
     Kernel.Scan;
   END GC;
 

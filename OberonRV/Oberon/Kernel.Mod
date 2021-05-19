@@ -3,10 +3,11 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   CONST SectorLength* = 1024;
     timer = -64; led = -60; spiData = -48; spiCtrl = -44;
     CARD0 = 1; SPIFAST = 4;
+    dataAllocationLimit = 5000H; (* how much space on the heap is reserved for code *)
     FSoffset = 80000H; (*256MB in 512-byte blocks*)
     filemapsize* = 08000H; (*500 sectors, 32MB*)
     overlaymapsize = 08000H; (*500 sectors, 32MB*)
-    RA = 1; (* register that holds return address *)
+    RA = 1; SP = 2;
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
     SectorMap* = POINTER TO SectorMapDesc;
@@ -19,8 +20,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   VAR allocated*, NofSectors*: INTEGER;
     heapOrg*, heapLim*: INTEGER; 
-    stackOrg* ,  stackSize*, MemLim*: INTEGER;
-    clock: INTEGER;
+    stackOrg*, stackSize*, MemLim*: INTEGER;
+    clock, AllocPtr: INTEGER;
     list0, list1, list2, list3: INTEGER;  (*lists of free blocks of size n*256, 128, 64, 32 bytes*)
     data: INTEGER; (*SPI data in*)
     sectorMap: SectorMap;
@@ -84,20 +85,22 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (*called by NEW via MT[0]; ptr and tag are pointers*)
     VAR p, size, lim: LONGINT;
   BEGIN
+    ptr := 0;
     SYSTEM.GET(tag, size);
-    lim := heapLim - heapOrg - size - 5000H;
-    (*IF allocated > lim THEN GC END; (* run garbage collection if not enough space *)*)
+    lim := heapLim - heapOrg - size - dataAllocationLimit;
+    (* run garbage collection if not enough space *)
+    (* note that this doesn't take into account the required contiguous space; it is a heuristic *)
+    IF allocated > lim THEN GC END;
     IF allocated < lim THEN
       IF size = 32 THEN GetBlock32(p)
       ELSIF size = 64 THEN GetBlock64(p)
       ELSIF size = 128 THEN GetBlock128(p)
       ELSE GetBlock(p, (size+255) DIV 256 * 256)
       END ;
-      IF p = 0 THEN ptr := 0
-      ELSE ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
+      IF p # 0 THEN
+        ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
         WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
       END;
-    ELSE ptr := 0;
     END;
   END NewPtr;
 
@@ -133,26 +136,60 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 *)
 (* ---------- Garbage collector ----------*)
 
-  PROCEDURE Mark*(pref: LONGINT);
-    VAR pvadr, offadr, offset, tag, p, q, r: LONGINT;
+  PROCEDURE Mark*(p: LONGINT);
+    VAR offadr, offset, tag, q, r: LONGINT;
+  BEGIN
+    SYSTEM.GET(p-4, offadr);
+    IF (p >= heapOrg) & (offadr = 0) THEN q := p;   (*mark elements in data structure with root p*)
+      REPEAT SYSTEM.GET(p-4, offadr);
+        IF offadr = 0 THEN SYSTEM.GET(p-8, tag); offadr := tag + 16 ELSE INC(offadr, 4) END ;
+        SYSTEM.PUT(p-4, offadr); SYSTEM.GET(offadr, offset);
+        IF offset # -1 THEN (*down*)
+          SYSTEM.GET(p+offset, r); SYSTEM.GET(r-4, offadr);
+          IF (r >= heapOrg) & (offadr = 0) THEN SYSTEM.PUT(p+offset, q); q := p; p := r END
+        ELSE (*up*) SYSTEM.GET(q-4, offadr); SYSTEM.GET(offadr, offset);
+          IF p # q THEN SYSTEM.GET(q+offset, r); SYSTEM.PUT(q+offset, p); p := q; q := r END
+        END
+      UNTIL (p = q) & (offset = -1)
+    END ;
+  END Mark;
+
+  PROCEDURE MarkMod*(pref: LONGINT);
+    VAR pvadr, p: LONGINT;
   BEGIN SYSTEM.GET(pref, pvadr); (*pointers < heapOrg considered NIL*)
     WHILE pvadr # 0 DO
-      SYSTEM.GET(pvadr, p); SYSTEM.GET(p-4, offadr);
-      IF (p >= heapOrg) & (offadr = 0) THEN q := p;   (*mark elements in data structure with root p*)
-        REPEAT SYSTEM.GET(p-4, offadr);
-          IF offadr = 0 THEN SYSTEM.GET(p-8, tag); offadr := tag + 16 ELSE INC(offadr, 4) END ;
-          SYSTEM.PUT(p-4, offadr); SYSTEM.GET(offadr, offset);
-          IF offset # -1 THEN (*down*)
-            SYSTEM.GET(p+offset, r); SYSTEM.GET(r-4, offadr);
-            IF (r >= heapOrg) & (offadr = 0) THEN SYSTEM.PUT(p+offset, q); q := p; p := r END
-          ELSE (*up*) SYSTEM.GET(q-4, offadr); SYSTEM.GET(offadr, offset);
-            IF p # q THEN SYSTEM.GET(q+offset, r); SYSTEM.PUT(q+offset, p); p := q; q := r END
-          END
-        UNTIL (p = q) & (offset = -1)
-      END ;
+      SYSTEM.GET(pvadr, p); Mark(p);
       INC(pref, 4); SYSTEM.GET(pref, pvadr)
     END
-  END Mark;
+  END MarkMod;
+
+  (* mark what looks like pointers on the stack *)
+  PROCEDURE MarkStack*;
+    VAR i, lim, tag, word, p: LONGINT;
+  BEGIN
+    (*SYSTEM.EBREAK();*)
+    (* look through the whole stack, except for this procedure *)
+    lim := SYSTEM.REG(SP)+20;
+    SYSTEM.PUT(-60, 0F07DH);
+    FOR i := stackOrg TO lim BY -4 DO
+      SYSTEM.GET(i, word);
+      IF (word >= heapOrg) & (word < heapLim) THEN
+        SYSTEM.GET(word-4, tag);
+        IF tag = 0 THEN (* can't be a dynamically allocated var if it isn't currently unmarked *)
+          SYSTEM.GET(word-8, tag); (* check tag to ascertain whether it's actually allocated on the heap *)
+          IF (tag >= 100H) & (tag < AllocPtr) THEN
+            p := heapOrg;
+            WHILE (p+8 < word) & (tag > 0) DO
+              SYSTEM.GET(p, tag); SYSTEM.GET(tag, tag); INC(p, tag);
+            END ;
+            IF p+8 = word THEN Mark(word) END;
+          END;
+        END;
+      END;
+    END;
+    SYSTEM.PUT(-60, 0F17DH);
+    (*SYSTEM.EBREAK();*)
+  END MarkStack;
 
   PROCEDURE Scan*;
     VAR p, q, mark, tag, size: LONGINT;
@@ -352,6 +389,12 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN GC := SYSTEM.VAL(Command, gc);
   END SetGC;
 
+  PROCEDURE SetAllocPtr*(ap: INTEGER);
+  BEGIN AllocPtr := ap;
+    SYSTEM.PUT(-60, 0BEA7H);
+    SYSTEM.PUT(-60, ap);
+  END SetAllocPtr;
+
   (* Deposits a relative offset jump to `Padr` in location `at` *)
   (* Used to install functions at places required for the operating system. *)
   PROCEDURE Install*(Padr, at: INTEGER);
@@ -418,10 +461,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap; replaced later by System.Mod*)
     Install(SYSTEM.ADR(Abort), 0);
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
+    stackOrg := heapOrg; stackSize := 8000H;
+    (*INC(heapOrg, 060D00H);*)
     INC(heapOrg, 040000H);
-    stackOrg := heapOrg; stackSize := 8000H; heapLim := MemLim;
+    heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
+    SYSTEM.PUT(-60, 0AH);
+    SYSTEM.PUT(-60, heapLim - heapOrg);
     allocated := 0; clock := 0; InitSecMap
   END Init;
 
