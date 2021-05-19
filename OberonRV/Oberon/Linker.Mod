@@ -167,9 +167,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END;
       IF mno > 6 THEN
         index := Overlays.FindOverlayIndex(mno, pno);
-        SYSTEM.PUT(-60, 0FE7AH);
-        SYSTEM.PUT(-60, mod.num);
-        SYSTEM.PUT(-60, callerPno);
         IF ~generating THEN
           IF callerPno # 0FFH THEN callerIndex := Overlays.FindOverlayIndex(mod.num, callerPno)
           ELSE callerIndex := -1;
@@ -204,7 +201,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   BEGIN root := r;
     Overlays.SetRoot(r);
   END SetRoot;
-
 
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Overlays.Module; VAR numprocs, nofimps, size: INTEGER; VAR import: ARRAY OF Overlays.Module; VAR R: Files.Rider): Command;
     (*search module in list; if not found, load module.
@@ -311,6 +307,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
       (* set alloc ptr such that the next loaded module will overwrite this one *)
       AllocPtr := mod.code;
+      Kernel.SetAllocPtr(AllocPtr);
     END ;
     IF res = 0 THEN
       (*fixup of LDR/STR/ADD*)
@@ -413,7 +410,7 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     IF mod # NIL THEN
       IF mod.refcnt = 0 THEN
         mod.name[0] := 0X; p := mod.imp; q := mod.cmd;
-        Overlays.FreeModule(mod.num);
+        (*Overlays.FreeModule(mod.num);*)
         WHILE p < q DO SYSTEM.GET(p, imp); DEC(imp.refcnt); INC(p, 4) END ;
       ELSE res := 1
       END

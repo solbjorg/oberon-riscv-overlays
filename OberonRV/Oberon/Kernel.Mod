@@ -123,13 +123,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   END NewOverlay;
 
   (* deallocates overlay from heap *)
+(*
   PROCEDURE FreeOverlay*(VAR ptr: LONGINT; size: INTEGER);
   BEGIN
     DEC(allocated, size);
     SYSTEM.PUT(ptr-8, size); SYSTEM.PUT(ptr-4, -1); SYSTEM.PUT(ptr, list0);
     list0 := ptr-8; ptr := 0;
   END FreeOverlay;
-
+*)
 (* ---------- Garbage collector ----------*)
 
   PROCEDURE Mark*(pref: LONGINT);

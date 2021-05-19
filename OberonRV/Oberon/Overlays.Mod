@@ -186,6 +186,7 @@ MODULE Overlays;
   END GC;
 
   (* TODO remove this procedure, it is just for debugging *)
+  (*
   PROCEDURE FreeModule*(mno: INTEGER);
     VAR i: INTEGER; ov: Overlay;
   BEGIN
@@ -195,17 +196,7 @@ MODULE Overlays;
       END;
     END;
   END FreeModule;
-
-  (* changes the mark on the overlay, to communicate with the garbage collector *)
-  PROCEDURE ChangeMark(ptr: LONGINT; increase: BOOLEAN);
-    VAR mark: INTEGER;
-  BEGIN
-    SYSTEM.GET(ptr-4, mark);
-    IF increase THEN
-      IF mark < 0 THEN INC(mark) END;
-    ELSE DEC(mark) END;
-    SYSTEM.PUT(ptr-4, mark);
-  END ChangeMark;
+ *)
 
   PROCEDURE LoadOverlay(ov: Overlay);
   VAR i: INTEGER;
