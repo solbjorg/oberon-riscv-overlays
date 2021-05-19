@@ -388,19 +388,32 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     UNTIL FALSE
   END Loop;
 
-  PROCEDURE Reset*(trap, loc: INTEGER);
-    VAR mod: Overlays.Module;
+  PROCEDURE InitLoop(trap: INTEGER; mod: Overlays.Module);
   BEGIN
-    (* panic, forcibly evict all overlays to make space *)
-    mod := Overlays.LocateMod(loc);
-    Overlays.EvictAllOverlays();
-    Overlays.GC;
-
     IF CurTask.state = active THEN Remove(CurTask) END ;
     IF (ResetMessage # NIL) THEN
       ResetMessage(trap, mod);
     END;
+
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
+  END InitLoop;
+
+  PROCEDURE Reset*(trap, loc: INTEGER);
+    VAR mod: Overlays.Module;
+  BEGIN
+    (* panic, forcibly evict all overlays to make space *)
+    mod := NIL;
+    mod := Overlays.LocateMod(loc);
+    Overlays.EvictAllOverlays;
+    Overlays.GC;
+    (* EvictAllOverlays evicted this overlay, meaning that upon any heap allocation, *)
+    (* there is a very decent chance that the Reset overlay will be overwritten. *)
+    (* Thus, technically, when returning from GC, we are running in an unallocated block *)
+    (* that just happens to not be overwriten; we can be certain that it will never be  *)
+    (* overwritten at this point, as there are no heap allocations between GC and InitLoop. *)
+    (* If we didn't have InitLoop, i.e. we placed the body of InitLoop here, that certainty *)
+    (* would disappear. *)
+    InitLoop(trap, mod);
   END Reset;
 
   PROCEDURE SetResetMessage*(msg: PROCEDURE(trap: INTEGER; mod: Overlays.Module));
@@ -418,7 +431,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END Init;
 
 BEGIN
-  SYSTEM.PUT(-60, 0AEAEH);
   User[0] := 0X;
   Arrow.Fade := FlipArrow; Arrow.Draw := FlipArrow;
   Star.Fade := FlipStar; Star.Draw := FlipStar;
@@ -430,6 +442,5 @@ BEGIN
   CurFnt := Fonts.Default; CurCol := Display.white; CurOff := 0;
 
   ActCnt := 0; CurTask := NewTask(GC, 1000); Install(CurTask);
-  SYSTEM.PUT(-60, 0ADADH);
   Init;
 END Oberon.
