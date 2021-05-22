@@ -243,31 +243,29 @@ MODULE Overlays;
   END GetOverlayToken;
 
   PROCEDURE OverlayManager*(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
-    VAR k, ra, ovindex, callerindex, offset: INTEGER;
+    VAR k, offset: INTEGER;
       ov, old, temp: Overlay; body: Func;
   BEGIN
-    ra := SYSTEM.REG(1);
-    ovindex     := SYSTEM.REG(30) DIV 2 MOD 4000H;
-    callerindex := SYSTEM.REG(30) DIV 8000H;
-    ov := overlays.list[ovindex];
+    k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)
+    ov := overlays.list[SYSTEM.REG(30) DIV 2 MOD 4000H];
 
     old := NIL;
     (* if an indirect function call, we can't easily determine what function it was called from *)
     (* note: this shouldn't be necessary with a "call tree" approach! *)
-    IF callerindex < 0 THEN
-      IF ra >= Kernel.heapOrg THEN
+    IF k < 0 THEN
+      IF SYSTEM.REG(1) >= Kernel.heapOrg THEN
         i := 0;
         WHILE (i < numGeneratedOverlays) & (old = NIL) DO
           temp := overlays.list[i];
-          IF (ra > temp.mapped) & (ra < temp.mapped + temp.size)  THEN
+          IF (SYSTEM.REG(1) > temp.mapped) & (SYSTEM.REG(1) < temp.mapped + temp.size)  THEN
             old := temp;
           END;
           INC(i);
         END;
       END;
-    ELSE old := overlays.list[callerindex];
+    ELSE old := overlays.list[k];
     END;
-    IF old # NIL THEN offset := ra - old.mapped END;
+    IF old # NIL THEN offset := SYSTEM.REG(1) - old.mapped END;
 
     IF ov.mapped = 0 THEN
       LoadOverlay(ov);
@@ -330,7 +328,8 @@ MODULE Overlays;
       ELSIF ov.size <= 52 THEN ov.heapsize := 64
       ELSIF ov.size <= 116 THEN ov.heapsize := 128
       ELSE ov.heapsize := (ov.size+271) DIV 256 * 256
-      END ; *)
+      END ;
+      *)
 
       ov.heapsize := (ov.size+275) DIV 256 * 256;
       overlays.list[numGeneratedOverlays] := ov;
