@@ -1,5 +1,5 @@
 MODULE Graphics;   (*NW 21.12.89 / 18.11.201 / 8.4.2016*)
-  IMPORT SYSTEM, Files, Modules, Loader, Fonts, (*Printer,*) Texts, Oberon;
+  IMPORT SYSTEM, Files, Overlays, Linker, Loader, Fonts, (*Printer,*) Texts, Oberon;
 
   CONST NameLen* = 32; GraphFileId = 0FAX; LibFileId = 0FBX;
 
@@ -57,12 +57,12 @@ MODULE Graphics;   (*NW 21.12.89 / 18.11.201 / 8.4.2016*)
         nofonts, noflibs, nofclasses: INTEGER;
         font: ARRAY 10 OF Fonts.Font;
         lib: ARRAY 4 OF Library;
-        class: ARRAY 6 OF Modules.Command
+        class: ARRAY 6 OF Linker.Command
       END;
 
     MethodDesc* = RECORD
         module*, allocator*: Name;
-        new*: Modules.Command;
+        new*: Linker.Command;
         copy*: PROCEDURE (from, to: Object);
         draw*, change*: PROCEDURE (obj: Object; VAR msg: Msg);
         selectable*: PROCEDURE (obj: Object; x, y: INTEGER): BOOLEAN;
@@ -302,11 +302,11 @@ MODULE Graphics;   (*NW 21.12.89 / 18.11.201 / 8.4.2016*)
 
   (* ---------------------- Loading ------------------------ *)
 
-  PROCEDURE GetClass*(module, allocator: ARRAY OF CHAR; VAR com: Modules.Command);
-    VAR mod: Modules.Module;
+  PROCEDURE GetClass*(module, allocator: ARRAY OF CHAR; VAR com: Linker.Command);
+    VAR mod: Overlays.Module;
   BEGIN Loader.Load(module, mod);
     IF mod # NIL THEN
-      com := Modules.ThisCommand(mod, allocator);
+      com := Linker.ThisCommand(mod, allocator);
       IF com = NIL THEN WMsg(allocator, " unknown") END
     ELSE WMsg(module, " not available"); com := NIL
     END
