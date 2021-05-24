@@ -486,6 +486,8 @@ END RoundUp;
       ELSIF pno = 13 THEN CheckConst(x); CheckInt(x); RVOG.LDPSR(x)
       ELSIF pno = 14 THEN CheckInt(x); RVOG.LDREG(x, y)
       ELSIF pno = 15 THEN RVOG.EBREAK;
+      ELSIF pno = 16 THEN CheckConst(x); CheckInt(x); RVOG.REGSTACK(x);
+      ELSIF pno = 17 THEN RVOG.VIRTUALARGS;
       END
     ELSE RVOS.Mark("wrong nof parameters")
     END
@@ -541,13 +543,9 @@ END RoundUp;
           ELSIF sym = RVOS.lparen THEN (*procedure call*)
             RVOS.Get(sym);
             IF (x.type.form = RVOB.Proc) & (x.type.base.form = RVOB.NoTyp) THEN
-              (* have to make changes here *)
-              IF (x.mode # RVOB.Const) THEN
-                (* blahhhh *)
-              ELSE
-              END;
               RVOG.PrepCall(x, rx);
-              ParamList(x); RVOG.Call(x, rx)
+
+              ParamList(x); RVOG.Call(x, rx);
             ELSE RVOS.Mark("not a procedure"); ParamList(x)
             END
           ELSIF x.type.form = RVOB.Proc THEN (*procedure call without parameters*)

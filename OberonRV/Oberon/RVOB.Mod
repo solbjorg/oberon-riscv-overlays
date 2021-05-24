@@ -450,7 +450,9 @@ BEGIN
   enter("VAL", SFunc, intType, 162);
   enter("REG", SFunc, intType, 151);
   enter("BIT", SFunc, boolType, 142);
-  enter("EBREAK", SProc, noType, 150); (*procedures*)
+  enter("VIRTUALARGS", SProc, noType, 170); (*procedures*)
+  enter("REGSTACK", SProc, noType, 161);
+  enter("EBREAK", SProc, noType, 150);
   enter("LDREG", SProc, noType, 142);
   enter("LDPSR", SProc, noType, 132);
   enter("COPY", SProc, noType, 123);

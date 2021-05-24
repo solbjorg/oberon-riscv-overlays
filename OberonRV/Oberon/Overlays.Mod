@@ -20,7 +20,7 @@ MODULE Overlays;
 
   TYPE Module* = POINTER TO ModDesc;
     Procedure* = POINTER TO ProcedureDesc;
-    Func = PROCEDURE(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
+    Func = PROCEDURE(): INTEGER;
     Overlay* = POINTER TO OverlayDesc;
     OverlayList* = POINTER TO OverlayListDesc;
     ModuleName* = ARRAY 32 OF CHAR;
@@ -86,7 +86,7 @@ MODULE Overlays;
   BEGIN
     SYSTEM.PUT(ov.mapped-8, 0);
     ov.mapped := 0;
-    FillTOC(ov, TRUE);
+    (*FillTOC(ov, TRUE);*)
     DEC(allocated, ov.heapsize);
   END Evict;
 
@@ -180,21 +180,14 @@ MODULE Overlays;
     mod := root;
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN
-        IF mod.ptr < Kernel.heapOrg THEN
-          Kernel.MarkMod(mod.ptr)
-        ELSE
-          SYSTEM.PUT(-60, Kernel.heapOrg);
-          SYSTEM.PUT(-60, Kernel.heapLim);
-          SYSTEM.PUT(-60, mod.ptr);
-          SYSTEM.PUT(-60, 0EEAAAEEEH);
-          SYSTEM.EBREAK();
-        END;
+        Kernel.MarkMod(mod.ptr)
       END ;
       mod := mod.next
     END ;
     Kernel.MarkStack;
     Files.RestoreList;
     Kernel.Scan;
+    SYSTEM.PUT(-60, 0C6H);
   END GC;
 
   (* TODO remove this procedure, it is just for debugging *)
@@ -233,8 +226,9 @@ MODULE Overlays;
     FOR i := 0 TO ov.size BY FileDir.SectorSize DO
       Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
     END;
-    FillTOC(ov, FALSE);
+    (*FillTOC(ov, FALSE);*)
     INC(allocated, ov.heapsize);
+    SYSTEM.PUT(-60, 0CC417H);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -242,49 +236,43 @@ MODULE Overlays;
     RETURN LSL(-1, 15) + LSL(index MOD 8000H, 1) + 1
   END GetOverlayToken;
 
-  PROCEDURE OverlayManager*(a,b,c,d,e,f,g,h,i,j,l,m: INTEGER): INTEGER;
+  PROCEDURE OverlayManager*(): INTEGER;
     VAR k, offset: INTEGER;
-      ov, old, temp: Overlay; body: Func;
+      ov, old: Overlay; body: Func;
   BEGIN
-    k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)
-    ov := overlays.list[SYSTEM.REG(30) DIV 2 MOD 4000H];
+    SYSTEM.REGSTACK(20);
 
+    k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)
     old := NIL;
     (* if an indirect function call, we can't easily determine what function it was called from *)
     (* note: this shouldn't be necessary with a "call tree" approach! *)
     IF k < 0 THEN
       IF SYSTEM.REG(1) >= Kernel.heapOrg THEN
-        i := 0;
-        WHILE (i < numGeneratedOverlays) & (old = NIL) DO
-          temp := overlays.list[i];
-          IF (SYSTEM.REG(1) > temp.mapped) & (SYSTEM.REG(1) < temp.mapped + temp.size)  THEN
-            old := temp;
+        k := 0;
+        WHILE (k < numGeneratedOverlays) & (old = NIL) DO
+          ov := overlays.list[k];
+          IF (SYSTEM.REG(1) > ov.mapped) & (SYSTEM.REG(1) < ov.mapped + ov.size)  THEN
+            old := ov;
           END;
-          INC(i);
+          INC(k);
         END;
       END;
     ELSE old := overlays.list[k];
     END;
     IF old # NIL THEN offset := SYSTEM.REG(1) - old.mapped END;
 
-    IF ov.mapped = 0 THEN
-      LoadOverlay(ov);
-    END;
+    ov := overlays.list[SYSTEM.REG(30) DIV 2 MOD 4000H];
+    IF ov.mapped = 0 THEN LoadOverlay(ov) END;
 
     body := SYSTEM.VAL(Func, ov.mapped);
-    SYSTEM.PUT(-60, 0112H);
-    SYSTEM.PUT(-60, ov.mapped);
-    k := body(a,b,c,d,e,f,g,h,i,j,l,m);
+    SYSTEM.VIRTUALARGS(); k := body();
+    (* discard the saved registers now that they are no longer needed *)
+    SYSTEM.REGSTACK(8);
     IF (old # NIL) & (old.mapped = 0) THEN
       LoadOverlay(old);
-      SYSTEM.PUT(-60, old.mod.num);
-      SYSTEM.PUT(-60, old.pno);
+      (* replace RA on the stack with the correct position in the relocated function *)
       SYSTEM.PUT(SYSTEM.REG(2), old.mapped + offset);
-    END;
-    IF Kernel.stackOrg-SYSTEM.REG(2) > Kernel.stackSize THEN
-      SYSTEM.PUT(-60, 0DEADBEEFH);
-      SYSTEM.PUT(-60, Kernel.stackOrg-SYSTEM.REG(2));
-      SYSTEM.EBREAK();
+      SYSTEM.PUT(-60, 0113H);
     END;
     RETURN k
   END OverlayManager;
@@ -327,7 +315,7 @@ MODULE Overlays;
       IF ov.size <= 20 THEN ov.heapsize := 32;
       ELSIF ov.size <= 52 THEN ov.heapsize := 64
       ELSIF ov.size <= 116 THEN ov.heapsize := 128
-      ELSE ov.heapsize := (ov.size+271) DIV 256 * 256
+      ELSE ov.heapsize := (ov.size+275) DIV 256 * 256
       END ;
       *)
 

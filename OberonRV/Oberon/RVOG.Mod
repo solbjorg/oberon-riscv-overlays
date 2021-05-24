@@ -154,6 +154,7 @@ VAR
   W: Texts.Writer;
   pc*, varsize: INTEGER;  (* program counter, data indices *)
   tdx, strx, stubx, procx*, expoprocx*, currentproc: INTEGER;     (* Type descriptor, string array, proc list indices, expo proc list indices *)
+  regStackHack, virtualArgs: BOOLEAN;
   entry: INTEGER;         (* module body entrypoint *)
   RH: INTEGER;            (* available registers R[firstReg] ... R[H-1]*)
   curSB: INTEGER;         (* current static base in SB (module table index) *)
@@ -198,7 +199,7 @@ END decR;
 (* Compiler error if register stack is corrupt or if program is too big *)
 PROCEDURE CheckRegs*;
 BEGIN
-  IF RH # firstReg THEN RVOS.Mark("Reg Stack"); RH := firstReg END ;
+  IF (RH # firstReg) & ~regStackHack THEN RVOS.Mark("Reg Stack"); RH := firstReg END ;
   IF pc >= maxCode - 40 THEN RVOS.Mark("Program too long") END
 END CheckRegs;
 
@@ -1615,19 +1616,18 @@ BEGIN
   DEC(frame, (r-firstReg)*IntegerSize)
 END RestoreRegs;
 
-PROCEDURE Overlay(VAR x: Item);
-BEGIN
-  Trap(0, 1, x.a, -x.r);
-  RH := firstReg; invalSB
-END Overlay;
-
 PROCEDURE PrepCall*(VAR x: Item; VAR r: INTEGER);
 BEGIN (*x.type.form = RVOB.Proc*)
   IF x.mode > RVOB.Par THEN
     load(x)
   END ;
   r := RH;
-  IF RH > firstReg THEN SaveRegs(RH); RH := firstReg END
+  IF r > firstReg THEN
+    IF ~virtualArgs THEN
+      SaveRegs(r);
+      RH := firstReg;
+    END
+  END;
 END PrepCall;
 
 (*
@@ -1648,9 +1648,6 @@ END PrepCall;
 PROCEDURE Call*(VAR x: Item; r: INTEGER);
   VAR i: INTEGER; found: BOOLEAN;
 BEGIN (*x.type.form = RVOB.Proc*)
-  (*i := (*GenerateStub(x.r, x.a);*) 0;*)
-  (* lui/addi pair to load the overlay token *)
-  (* lui will have to be fixed up wrt pno/mno *)
   (* Store where we call the function to a magic IO port - for debugging purposes *)
   IF (stacktrace) THEN
     i := LSL(0AAH, 24) +
@@ -1680,14 +1677,12 @@ BEGIN (*x.type.form = RVOB.Proc*)
     put(RVAssem.jalr(RA, RH, 0));
   ELSE
     IF x.mode <= RVOB.Par THEN
-      Texts.WriteLn(W); Texts.WriteString(W, "indirect function call at "); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
       load(x);
     ELSE
       (* called when the proc is a field of a record *)
       (* I think this works because, in PrepCall, we load x, then *)
       (* do SaveRegs, pushing x.r on top of the stack. Thus, the address *)
       (* we want is at 0(SP). *)
-      Texts.WriteLn(W); Texts.WriteString(W, "field func call at "); Texts.WriteInt(W, RVOS.Pos(), 5); Texts.Append(Oberon.Log, W.buf);
       put(RVAssem.lw(RH, SP, 0)); put(RVAssem.addi(SP, SP, IntegerSize));
       DEC(r);
       DEC(frame, IntegerSize);
@@ -1701,12 +1696,21 @@ BEGIN (*x.type.form = RVOB.Proc*)
     put(RVAssem.sw(0, 0, -32));
   END;
 
-  IF x.type.base.form = RVOB.NoTyp THEN (*procedure*) RH := firstReg
+  IF x.type.base.form = RVOB.NoTyp THEN (*procedure*)
+    IF virtualArgs THEN
+      RH := firstReg; virtualArgs := FALSE;
+    ELSE
+      IF r > firstReg THEN RestoreRegs(r); RH := r; ELSE RH := firstReg END;
+    END;
   ELSE (*function*)
+    IF virtualArgs THEN
+      r := firstReg;
+      virtualArgs := FALSE;
+    END;
     IF r > firstReg THEN put(RVAssem.addi(r, firstReg, 0)); RestoreRegs(r) END;
     x.mode := Reg; x.r := r; RH := r+1
   END ;
-  invalSB
+  invalSB;
 END Call;
 
 PROCEDURE ProcedureEntrance*(): INTEGER;
@@ -1753,7 +1757,7 @@ BEGIN
     END;
     put(RVAssem.sw(RA, SP, 0));
     IF (parblksize - IntegerSize) DIV IntegerSize > 12 THEN
-      Texts.WriteLn(W); Texts.WriteString(W, "Too many arguments!"); Texts.WriteHex(W, RVOS.Pos()); Texts.Append(Oberon.Log, W.buf);
+      RVOS.Mark("Too many arguments");
     END;
     WHILE a < parblksize DO
       put(RVAssem.sw(r, SP, a)); INC(r); INC(a, IntegerSize)
@@ -1784,7 +1788,7 @@ BEGIN
   END ;
   program.procs.size[procnum] := pc * 4 - program.procs.addr[procnum] - 4;
 
-  RH := firstReg
+  RH := firstReg; regStackHack := FALSE;
 END Return;
 
 (* In-line code procedures*)
@@ -2085,6 +2089,15 @@ PROCEDURE EBREAK*;
 BEGIN put(RVAssem.ebreak());
 END EBREAK;
 
+PROCEDURE REGSTACK*(VAR x: Item);
+BEGIN RH := x.a;
+  regStackHack := TRUE;
+END REGSTACK;
+
+PROCEDURE VIRTUALARGS*;
+BEGIN virtualArgs := TRUE;
+END VIRTUALARGS;
+
 (* end in-line functions *)
 
 PROCEDURE Init*(VAR success: BOOLEAN);
@@ -2107,7 +2120,7 @@ END Init;
 PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
   VAR success: BOOLEAN;
 BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; stubx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; fixorgS := 0; check := v # 0; version := v;
-  entry := -1;
+  entry := -1; regStackHack := FALSE; virtualArgs := FALSE;
   stacktrace := TRUE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
