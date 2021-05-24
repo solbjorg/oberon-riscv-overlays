@@ -13,11 +13,9 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
       XS        = FileDir.IndexSize;
 
   TYPE DiskAdr* = INTEGER;
-      WordFile = ARRAY (FileDir.SectorSize - FileDir.HeaderSize) DIV 4 OF INTEGER;
       File*    = POINTER TO FileDesc;
       Buffer  = POINTER TO BufferRecord;
       Index   = POINTER TO IndexRecord;
-      WordFileHeader = POINTER TO WordFileHeaderRecord;
 
     Rider* =
       RECORD eof*: BOOLEAN;
@@ -51,13 +49,6 @@ MODULE Files;  (*NW 11.1.86 / 22.9.93 / 25.5.95 / 25.12.95 / 15.8.2013*)
         mod: BOOLEAN;
         sec: FileDir.IndexSector
       END ;
-
-    WordFileHeaderRecord =
-      RECORD
-        header: ARRAY FileDir.HeaderSize OF BYTE;
-        file: WordFile;
-      END;
-
 
     (*aleng * SS + bleng = length (including header)
       apos * SS + bpos = current position
