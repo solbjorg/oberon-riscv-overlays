@@ -297,10 +297,6 @@ MODULE Linker;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
       Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
       Files.ReadInt(R, w);
-      (* can only determine size of the last procedure when we have the entry address, *)
-      (* since it's entry address - proc address (w-u) *)
-      (* TODO this breaks if a module is only one procedure *)
-      procs[numprocs-1].size := w-4-procs[numprocs-1].addr;
       body := SYSTEM.VAL(Command, mod.code + w);
       (* generate node for linked module *)
       Files.Read(R, ch);
