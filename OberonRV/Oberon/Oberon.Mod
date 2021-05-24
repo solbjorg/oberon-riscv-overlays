@@ -1,5 +1,5 @@
 MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
-  IMPORT SYSTEM, Kernel, Files, Overlays, Linker, Loader, Input, Display, Viewers, Fonts, Texts;
+  IMPORT SYSTEM, Kernel, Files, Overlays, Modules, Input, Display, Viewers, Fonts, Texts;
 
   CONST (*message ids*)
     consume* = 0; track* = 1; defocus* = 0; neutralize* = 1; mark* = 2;
@@ -127,7 +127,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
 
   PROCEDURE OpenCursor(VAR c: Cursor);
   BEGIN c.on := FALSE; c.X := 0; c.Y := 0;
-    SYSTEM.PUT(-60, 0EAH);
   END OpenCursor;
  
   PROCEDURE FadeCursor(VAR c: Cursor);
@@ -281,20 +280,20 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END SetPar;
 
   PROCEDURE Call* (name: ARRAY OF CHAR; VAR res: INTEGER);
-    VAR mod: Overlays.Module; P: Linker.Command;
+    VAR mod: Overlays.Module; P: Modules.Command;
       i, j: INTEGER; ch: CHAR;
       Mname, Cname: ARRAY 32 OF CHAR;
   BEGIN i := 0; ch := name[0];
     WHILE (ch # ".") & (ch # 0X) DO Mname[i] := ch; INC(i); ch := name[i] END ;
     IF ch = "." THEN
       Mname[i] := 0X; INC(i);
-      Loader.Load(Mname, mod); res := Loader.res;
-      IF Linker.res = 0 THEN
+      Modules.Load(Mname, mod); res := Modules.res;
+      IF Modules.res = 0 THEN
         j := 0; ch := name[i]; INC(i);
         WHILE ch # 0X DO Cname[j] := ch; INC(j); ch := name[i]; INC(i) END ;
         Cname[j] := 0X;
-        P := Linker.ThisCommand(mod, Cname); res := Linker.res;
-        IF Linker.res = 0 THEN P END
+        P := Modules.ThisCommand(mod, Cname); res := Modules.res;
+        IF Modules.res = 0 THEN P END
       END
     ELSE res := 5
     END
@@ -363,7 +362,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
       Input.Mouse(keys, X, Y);
       IF Input.Available() > 0 THEN Input.Read(ch);
         IF ch = ESC THEN
-          N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer); SYSTEM.PUT(-60, 0);
+          N.id := neutralize; Viewers.Broadcast(N); FadeCursor(Pointer);
         ELSIF ch = SETSTAR THEN
           N.id := mark; N.X := X; N.Y := Y; V := Viewers.This(X, Y); V.handle(V, N)
         ELSE M.id := consume; M.ch := ch; M.fnt := CurFnt; M.col := CurCol; M.voff := CurOff;
@@ -371,7 +370,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
         END
       ELSIF keys # {} THEN
         M.id := track; M.X := X; M.Y := Y; M.keys := keys;
-        REPEAT V := Viewers.This(M.X, M.Y); V.handle(V, M); Input.Mouse(M.keys, M.X, M.Y)
+        REPEAT V := Viewers.This(M.X, M.Y); V.handle(V, M); Input.Mouse(M.keys, M.X, M.Y);
         UNTIL M.keys = {};
         DEC(ActCnt)
       ELSE
@@ -424,7 +423,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR i: INTEGER;
   BEGIN
     SYSTEM.PUT(-60, 70H);
-    Loader.Load("System", Mod);
+    Modules.Load("System", Mod);
     Overlays.SetReset(Reset);
     Kernel.SetReset(Reset);
     Mod := NIL; Loop

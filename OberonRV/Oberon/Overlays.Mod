@@ -265,6 +265,7 @@ MODULE Overlays;
     IF ov.mapped = 0 THEN LoadOverlay(ov) END;
 
     body := SYSTEM.VAL(Func, ov.mapped);
+    SYSTEM.PUT(-60, ov.mapped);
     SYSTEM.VIRTUALARGS(); k := body();
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(8);

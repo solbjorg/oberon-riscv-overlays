@@ -1,5 +1,5 @@
 MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
-  IMPORT SYSTEM, Kernel, FileDir, Files, Overlays, Linker, Loader, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
+  IMPORT SYSTEM, Kernel, FileDir, Files, Overlays, Modules, Input, Display, Viewers, Fonts, Texts, Oberon, MenuViewers, TextFrames;
 
   CONST
     StandardMenu = "System.Close System.Copy System.Grow Edit.Search Edit.Store";
@@ -142,8 +142,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   PROCEDURE Free1(VAR S: Texts.Scanner);
   BEGIN Texts.WriteString(W, S.s); Texts.WriteString(W, " unloading");
-    Linker.Free(S.s);
-    IF Linker.res # 0 THEN Texts.WriteString(W, " failed") END;
+    Modules.Free(S.s);
+    IF Modules.res # 0 THEN Texts.WriteString(W, " failed") END;
     EndLine
   END Free1;
 
@@ -296,8 +296,8 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   PROCEDURE Watch*;
   BEGIN Texts.WriteString(W, "System.Watch"); Texts.WriteLn(W);
-    Texts.WriteString(W, "  Linker space (bytes)"); Texts.WriteInt(W, Linker.AllocPtr, 8);
-    Texts.WriteInt(W, Linker.AllocPtr * 100 DIV Kernel.heapOrg, 4); Texts.Write(W, "%"); EndLine;
+    Texts.WriteString(W, "  Linker space (bytes)"); Texts.WriteInt(W, Modules.AllocPtr, 8);
+    Texts.WriteInt(W, Modules.AllocPtr * 100 DIV Kernel.heapOrg, 4); Texts.Write(W, "%"); EndLine;
     Texts.WriteString(W, "  Heap space (total, overlays)"); Texts.WriteInt(W, Kernel.allocated, 8); Texts.WriteInt(W, Overlays.allocated, 8);
     Texts.WriteInt(W, Kernel.allocated * 100 DIV (Kernel.heapLim - Kernel.heapOrg), 4); Texts.Write(W, "%"); EndLine;
     Texts.WriteString(W, "  Disk sectors "); Texts.WriteInt(W, Kernel.NofSectors, 4);
@@ -314,7 +314,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y);
     V := MenuViewers.New(TextFrames.NewMenu("System.ShowModules", StandardMenu),
         TextFrames.NewText(T, 0), TextFrames.menuH, X, Y);
-    M := Linker.root;
+    M := Modules.root;
     WHILE M # NIL DO
       IF M.name[0] # 0X THEN
         Texts.WriteString(W, M.name); Texts.Write(W, 9X); Texts.WriteHex(W, ORD(M));
@@ -335,7 +335,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
       X, Y: INTEGER;
   BEGIN GetArg(S);
     IF S.class = Texts.Name THEN
-      Loader.Load(S.s, M);
+      Modules.Load(S.s, M);
       IF M # NIL THEN
         Oberon.AllocateSystemViewer(Oberon.Par.vwr.X, X, Y); T := TextFrames.Text("");
         V := MenuViewers.New(TextFrames.NewMenu("System.Commands", StandardMenu),

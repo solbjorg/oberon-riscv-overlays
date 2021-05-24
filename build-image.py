@@ -84,7 +84,7 @@ def build_norebo(target_dir):
 def rv_build_image(sources_dir):
     global top
     if top == "":
-        top = "Loader"
+        top = "Modules"
     sources_dir  = [os.path.realpath(sources_dir), os.path.realpath(sources_dir)+'/Tests']
 
     target_dir = os.path.join(NOREBO_ROOT, 'imagebuild')
