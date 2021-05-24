@@ -70,6 +70,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     ActCnt: INTEGER; (*action count for GC*)
     Mod: Overlays.Module;
     ResetMessage: PROCEDURE(trap: INTEGER; mod: Overlays.Module);
+    failedReset: BOOLEAN; (* true when system has failed once to reset itself *)
 
   (*user identification*)
 
@@ -390,9 +391,12 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE InitLoop(trap: INTEGER; mod: Overlays.Module);
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
-    IF (ResetMessage # NIL) THEN
+    (* Only run ResetMessage if it has been set and the heap isn't incredibly stressed *)
+    IF (ResetMessage # NIL) & ~failedReset THEN
+      failedReset := TRUE;
       ResetMessage(trap, mod);
     END;
+    failedReset := FALSE;
 
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END InitLoop;
@@ -426,6 +430,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     Modules.Load("System", Mod);
     Overlays.SetReset(Reset);
     Kernel.SetReset(Reset);
+    failedReset := FALSE;
     Mod := NIL; Loop
   END Init;
 
