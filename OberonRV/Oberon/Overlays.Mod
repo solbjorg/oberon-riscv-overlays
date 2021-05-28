@@ -20,7 +20,7 @@ MODULE Overlays;
 
   TYPE Module* = POINTER TO ModDesc;
     Procedure* = POINTER TO ProcedureDesc;
-    Func = PROCEDURE(): INTEGER;
+    Func = PROCEDURE;
     Overlay* = POINTER TO OverlayDesc;
     OverlayList* = POINTER TO OverlayListDesc;
     ModuleName* = ARRAY 32 OF CHAR;
@@ -58,7 +58,7 @@ MODULE Overlays;
     overlayIndex: INTEGER;
     mappedSector, addressOVM*: INTEGER;
     root: Module;
-    Reset: Kernel.ResetFunc;
+    OberonReset: Kernel.ResetFunc;
 
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER;
@@ -84,13 +84,15 @@ MODULE Overlays;
 
   PROCEDURE Evict(ov: Overlay);
   BEGIN
-    SYSTEM.PUT(ov.mapped-8, 0);
-    ov.mapped := 0;
-    (*FillTOC(ov, TRUE);*)
-    DEC(allocated, ov.heapsize);
+    IF ov.mapped > 0 THEN
+      SYSTEM.PUT(ov.mapped-8, 0);
+      ov.mapped := 0;
+      (*FillTOC(ov, TRUE);*)
+      DEC(allocated, ov.heapsize);
+    END;
   END Evict;
 
-  PROCEDURE FindOutlier(newest: BOOLEAN): Overlay;
+  PROCEDURE FindOutlier(minSize: INTEGER; newest: BOOLEAN): Overlay;
     VAR i, timestamp, lruTime: INTEGER; ov, lruOv: Overlay;
       found: BOOLEAN;
   BEGIN
@@ -100,13 +102,10 @@ MODULE Overlays;
     SYSTEM.PUT(-60, 0FFFF4321H);
     REPEAT
       ov := overlays.list[i];
-      IF (ov # NIL) & (ov.mapped > 0) THEN
+      IF (ov # NIL) & (ov.mapped > 0) & (ov.heapsize >= minSize) THEN
         found := TRUE;
         lruOv := ov;
         SYSTEM.GET(lruOv.mapped-4, lruTime);
-        SYSTEM.PUT(-60, 4321H);
-        SYSTEM.PUT(-60, lruOv.mapped);
-        SYSTEM.PUT(-60, lruTime);
       END;
       INC(i);
     UNTIL (found) OR (i = numGeneratedOverlays);
@@ -114,21 +113,15 @@ MODULE Overlays;
     WHILE i < numGeneratedOverlays DO
       ov := overlays.list[i];
       IF ov # NIL THEN
-        IF ov.mapped > 0 THEN
+        IF (ov.mapped > 0) & (ov.heapsize >= minSize) THEN
           SYSTEM.GET(ov.mapped-4, timestamp);
           IF ((lruTime < 0) & (newest)) OR ((lruTime > 0) & (~newest)) THEN
             IF timestamp < lruTime THEN
               lruTime := timestamp;
-              SYSTEM.PUT(-60, 4321H);
-              SYSTEM.PUT(-60, ov.mapped);
-              SYSTEM.PUT(-60, timestamp);
             END;
           ELSE
             IF timestamp > lruTime THEN
               lruTime := timestamp;
-              SYSTEM.PUT(-60, 4321H);
-              SYSTEM.PUT(-60, ov.mapped);
-              SYSTEM.PUT(-60, timestamp);
             END;
           END;
         END;
@@ -138,12 +131,28 @@ MODULE Overlays;
     RETURN lruOv
   END FindOutlier;
 
-  PROCEDURE EvictLRUOverlay*;
+  PROCEDURE EvictLRUOverlay*(minSize: INTEGER);
     VAR lruOv: Overlay;
   BEGIN
-    lruOv := FindOutlier(FALSE); (* find oldest *)
+    lruOv := FindOutlier(minSize, FALSE); (* find oldest *)
     IF lruOv # NIL THEN Evict(lruOv) END;
   END EvictLRUOverlay;
+
+  PROCEDURE CollectOverlays;
+    VAR mark, i: INTEGER;
+      ov: Overlay;
+  BEGIN
+    FOR i := 0 TO numGeneratedOverlays-1 DO
+      ov := overlays.list[i];
+      IF ov.mapped > 0 THEN
+        SYSTEM.GET(ov.mapped-8, mark);
+        IF mark = 0 THEN
+          Evict(ov);
+          SYSTEM.PUT(-60, 0AEAEAH);
+        END;
+      END;
+    END;
+  END CollectOverlays;
 
   PROCEDURE EvictAllOverlays*;
     VAR i, mark: INTEGER; ov: Overlay;
@@ -173,22 +182,43 @@ MODULE Overlays;
     END;
   END EvictCollectedOverlays; *)
 
-  PROCEDURE GC*;
-    VAR mod: Module;
+  PROCEDURE GC*(blockSizeNeeded: INTEGER; isData: BOOLEAN);
+    VAR mod: Module; ov: Overlay;
   BEGIN
     SYSTEM.PUT(-60, 06CH);
+    (*SYSTEM.EBREAK();*)
     mod := root;
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN
+        SYSTEM.PUT(-60, 0ABCDEFH);
+        SYSTEM.PUT(-60, mod.num);
         Kernel.MarkMod(mod.ptr)
       END ;
       mod := mod.next
     END ;
     Kernel.MarkStack;
     Files.RestoreList;
+    CollectOverlays;
+    SYSTEM.PUT(-60, 5C43H);
     Kernel.Scan;
+    (*
+    IF Kernel.largestFreeBlock < blockSizeNeeded THEN
+      ov := FindOutlier(blockSizeNeeded, FALSE);
+      IF ov # NIL THEN
+        Evict(ov);
+        GC(blockSizeNeeded, isData);
+      END;
+    END; *)
     SYSTEM.PUT(-60, 0C6H);
   END GC;
+
+  PROCEDURE Reset*(trap, loc: INTEGER);
+  BEGIN
+    EvictAllOverlays;
+    GC(0, FALSE);
+    OberonReset(trap, loc);
+  END Reset;
+
 
   (* TODO remove this procedure, it is just for debugging *)
   (*
@@ -209,15 +239,12 @@ MODULE Overlays;
     Kernel.NewOverlay(ov.mapped, ov.heapsize);
     IF ov.mapped = 0 THEN
       (* allocation failed - run garbage collection and try again *)
-      SYSTEM.PUT(-60, 0FE7AH);
-      REPEAT
-        SYSTEM.PUT(-60, 0F417H);
-        EvictLRUOverlay;
-        GC;
-        SYSTEM.PUT(-60, 0E417H);
-        SYSTEM.PUT(-60, allocated);
-        Kernel.NewOverlay(ov.mapped, ov.heapsize);
-      UNTIL (ov.mapped # 0) OR (allocated = 0);
+      SYSTEM.PUT(-60, 0F417H);
+      (*EvictLRUOverlay(ov.heapsize);*)
+      GC(ov.heapsize, FALSE);
+      SYSTEM.PUT(-60, 0E417H);
+      SYSTEM.PUT(-60, allocated);
+      Kernel.NewOverlay(ov.mapped, ov.heapsize);
       IF ov.mapped = 0 THEN
         (* allocation failed again - no contiguous memory can be allocated. panic. *)
         Reset(0, 0);
@@ -236,12 +263,13 @@ MODULE Overlays;
     RETURN LSL(-1, 15) + LSL(index MOD 8000H, 1) + 1
   END GetOverlayToken;
 
-  PROCEDURE OverlayManager*(): INTEGER;
-    VAR k, offset: INTEGER;
+  PROCEDURE OverlayManager*();
+    VAR k, mark, offset: INTEGER;
       ov, old: Overlay; body: Func;
   BEGIN
     SYSTEM.REGSTACK(20);
 
+    (*
     k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)
     old := NIL;
     (* if an indirect function call, we can't easily determine what function it was called from *)
@@ -253,30 +281,58 @@ MODULE Overlays;
           ov := overlays.list[k];
           IF (SYSTEM.REG(1) > ov.mapped) & (SYSTEM.REG(1) < ov.mapped + ov.size)  THEN
             old := ov;
+            SYSTEM.PUT(-60, old.mod.num);
+            SYSTEM.PUT(-60, old.pno);
           END;
           INC(k);
         END;
       END;
     ELSE old := overlays.list[k];
     END;
-    IF old # NIL THEN offset := SYSTEM.REG(1) - old.mapped END;
+    IF old # NIL THEN
+      (*ASSERT(old.mapped # 0);*)
+      offset := SYSTEM.REG(1) - old.mapped;
+    END;
+    *)
 
     ov := overlays.list[SYSTEM.REG(30) DIV 2 MOD 4000H];
     IF ov.mapped = 0 THEN LoadOverlay(ov) END;
 
     body := SYSTEM.VAL(Func, ov.mapped);
-    SYSTEM.PUT(-60, ov.mapped);
-    SYSTEM.VIRTUALARGS(); k := body();
+    SYSTEM.GET(ov.mapped-8, mark);
+    SYSTEM.PUT(ov.mapped-8, mark-1);
+    SYSTEM.VIRTUALARGS(); body();
+    SYSTEM.REGSTACK(9);
     (* discard the saved registers now that they are no longer needed *)
-    SYSTEM.REGSTACK(8);
+    SYSTEM.PUT(ov.mapped-8, mark);
+    (*
     IF (old # NIL) & (old.mapped = 0) THEN
       LoadOverlay(old);
       (* replace RA on the stack with the correct position in the relocated function *)
       SYSTEM.PUT(SYSTEM.REG(2), old.mapped + offset);
       SYSTEM.PUT(-60, 0113H);
-    END;
-    RETURN k
+      SYSTEM.PUT(-60, old.mapped);
+      SYSTEM.PUT(-60, offset);
+      SYSTEM.EBREAK();
+    END; *)
   END OverlayManager;
+
+  (*
+  PROCEDURE OverlayManager*(): INTEGER;
+    VAR k: INTEGER; ov: Overlay; body: Func;
+  BEGIN
+    (* get index into the list of overlay pointers from overlay token *)
+    SYSTEM.REGSTACK(20);
+    ov := overlays.list[SYSTEM.REG(30) DIV 2 MOD 4000H];
+
+    (* if overlay is not loaded into memory, call overlay loader *)
+    IF ov.mapped = 0 THEN LoadOverlay(ov); END;
+
+    body := SYSTEM.VAL(Func, ov.mapped);
+    SYSTEM.VIRTUALARGS();
+    k := body();
+    RETURN k
+  END OverlayManager; *)
 
   (*
   PROCEDURE EvictMappedOverlay*;
@@ -348,7 +404,7 @@ MODULE Overlays;
   END WriteOverlay;
 
   PROCEDURE SetReset*(reset: Kernel.ResetFunc);
-  BEGIN Reset := reset;
+  BEGIN OberonReset := reset;
   END SetReset;
 
   PROCEDURE SetRoot*(r: Module);
@@ -358,8 +414,7 @@ MODULE Overlays;
   PROCEDURE LocateMod*(loc: INTEGER): Module;
     VAR m: Overlay; i: INTEGER;
       result: Module;
-  BEGIN
-    result := NIL;
+  BEGIN result := NIL;
     IF loc >= Kernel.heapOrg THEN
       i := 0;
       WHILE (i < numGeneratedOverlays) & (result = NIL) DO
@@ -381,6 +436,7 @@ MODULE Overlays;
       l: OverlayList;
   BEGIN
     Kernel.SetGC(SYSTEM.ADR(GC));
+    Kernel.SetReset(SYSTEM.ADR(Reset));
     numGeneratedOverlays := 0;
     allocated := 0;
     mappedSector := Kernel.filemapsize + 1;

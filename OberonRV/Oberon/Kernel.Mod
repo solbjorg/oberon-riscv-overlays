@@ -13,6 +13,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     SectorMap* = POINTER TO SectorMapDesc;
     Command*   = PROCEDURE;
     ResetFunc* = PROCEDURE(trap, loc: INTEGER);
+    GCFunc*    = PROCEDURE(blockSizeNeeded: INTEGER; isData: BOOLEAN);
 
     SectorMapDesc = RECORD
         map: ARRAY filemapsize DIV 32 OF SET;
@@ -23,12 +24,59 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     stackOrg*, stackSize*, MemLim*: INTEGER;
     clock, AllocPtr: INTEGER;
     list0, list1, list2, list3: INTEGER;  (*lists of free blocks of size n*256, 128, 64, 32 bytes*)
+    largestFreeBlock*: INTEGER;
     data: INTEGER; (*SPI data in*)
     sectorMap: SectorMap;
-    GC: PROCEDURE;
+    GC: GCFunc;
     Reset: ResetFunc;
     
 (* ---------- New: heap allocation ----------*)
+
+  (* make a block ready to be merged by removing it from the *)
+  (* free-list and fixing up the free-list to be without this block *)
+    (*
+  PROCEDURE MergeBlock(p: INTEGER);
+    VAR size, q0, q1, q2: INTEGER;
+  BEGIN
+    SYSTEM.GET(p+8, q2);
+    (* first, check to see if this is already the head of the free-list *)
+    (* if so, simply replace it *)
+    IF    p = list0 THEN list0 := q2
+    ELSIF p = list1 THEN list1 := q2
+    ELSIF p = list2 THEN list2 := q2
+    ELSIF p = list3 THEN list3 := q2
+    ELSE
+      SYSTEM.PUT(-60, 05678H);
+      (* search through corresponding free-list, and remove block from it by *)
+      (* pointing the previous block to the next block *)
+      q0 := 0;
+      SYSTEM.GET(p, size);
+      IF    size = 32  THEN q1 := list3;
+      ELSIF size = 64  THEN q1 := list2;
+      ELSIF size = 128 THEN q1 := list1;
+      ELSE                  q1 := list0;
+      END;
+      SYSTEM.GET(q1+8, q2);
+      WHILE (q1 # p) & (q2 # 0) DO
+        q0 := q1; q1 := q2;
+        SYSTEM.GET(q1+8, q2);
+      END;
+      SYSTEM.PUT(q0+8, q2);
+      SYSTEM.PUT(-60, 8765H);
+    END;
+    (* TODO just a test *)
+    IF    size = 32  THEN q1 := list3;
+    ELSIF size = 64  THEN q1 := list2;
+    ELSIF size = 128 THEN q1 := list1;
+    ELSE                  q1 := list0;
+    END;
+    SYSTEM.GET(q1+8, q2);
+    WHILE (q2 # 0) DO
+      q0 := q1; q1 := q2;
+      SYSTEM.GET(q1+8, q2);
+      SYSTEM.PUT(-60, q2);
+    END;
+  END MergeBlock; *)
 
   PROCEDURE GetBlock(VAR p: LONGINT; len: LONGINT);
     (*len is multiple of 256*)
@@ -90,7 +138,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     lim := heapLim - heapOrg - size - dataAllocationLimit;
     (* run garbage collection if not enough space *)
     (* note that this doesn't take into account the required contiguous space; it is a heuristic *)
-    IF allocated > lim THEN GC END;
+    IF allocated > lim THEN GC(size, TRUE) END;
     IF allocated < lim THEN
       IF size = 32 THEN GetBlock32(p)
       ELSIF size = 64 THEN GetBlock64(p)
@@ -118,7 +166,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* if ptr = 0, then allocation failed. *)
     IF ptr # 0 THEN
       SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
-      SYSTEM.PUT(ptr+4, -1); (* set mark to -1, will be handled within overlay system *)
+      SYSTEM.PUT(ptr+4, 0); (* set mark to -1, will be handled within overlay system *)
       SYSTEM.PUT(ptr+8, 0); (* set timestamp to 0; will automatically be set upon calling *)
       ptr := ptr + 12;
       INC(allocated, size);
@@ -141,9 +189,13 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     SYSTEM.GET(p-4, offadr);
     IF (p >= heapOrg) & (offadr = 0) THEN q := p;   (*mark elements in data structure with root p*)
-      REPEAT SYSTEM.GET(p-4, offadr);
-        IF offadr = 0 THEN SYSTEM.GET(p-8, tag); offadr := tag + 16 ELSE INC(offadr, 4) END ;
-        SYSTEM.PUT(p-4, offadr); SYSTEM.GET(offadr, offset);
+      REPEAT SYSTEM.GET(p-4, offadr); SYSTEM.PUT(-60, p);
+        IF offadr = 0 THEN SYSTEM.GET(p-8, tag); offadr := tag + 16;
+          (* note size of marked object *)
+          SYSTEM.GET(tag, offset); (*INC(marked, offset);*)
+        ELSE INC(offadr, 4) END ;
+        SYSTEM.PUT(p-4, offadr);
+        SYSTEM.GET(offadr, offset);
         IF offset # -1 THEN (*down*)
           SYSTEM.GET(p+offset, r); SYSTEM.GET(r-4, offadr);
           IF (r >= heapOrg) & (offadr = 0) THEN SYSTEM.PUT(p+offset, q); q := p; p := r END
@@ -155,11 +207,17 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   END Mark;
 
   PROCEDURE MarkMod*(pref: LONGINT);
-    VAR pvadr, p: LONGINT;
+    VAR pvadr, p, off, tag: LONGINT;
   BEGIN SYSTEM.GET(pref, pvadr); (*pointers < heapOrg considered NIL*)
+    off := 0;
     WHILE pvadr # 0 DO
-      SYSTEM.GET(pvadr, p); Mark(p);
-      INC(pref, 4); SYSTEM.GET(pref, pvadr)
+      SYSTEM.GET(pvadr, p);
+      SYSTEM.PUT(-60, off);
+      SYSTEM.GET(p-8, tag); SYSTEM.GET(tag, tag);
+      SYSTEM.PUT(-60, tag);
+      SYSTEM.PUT(-60, p);
+      Mark(p);
+      INC(off, 4); SYSTEM.GET(pref+off, pvadr)
     END
   END MarkMod;
 
@@ -194,9 +252,12 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   PROCEDURE Scan*;
     VAR p, q, mark, tag, size: LONGINT;
   BEGIN p := heapOrg;
-    REPEAT SYSTEM.GET(p+4, mark); q := p;
-      WHILE mark = 0 DO
-        SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); INC(p, size); SYSTEM.GET(p+4, mark)
+    REPEAT
+      SYSTEM.GET(p+4, mark); q := p;
+      WHILE (mark = 0) DO
+        SYSTEM.GET(p, tag); SYSTEM.GET(tag, size);
+        INC(p, size);
+        SYSTEM.GET(p+4, mark);
       END ;
       size := p - q; DEC(allocated, size);  (*size of free block*)
       IF size > 0 THEN
@@ -381,12 +442,12 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN clock := dt
   END SetClock;
 
-  PROCEDURE SetReset*(reset: ResetFunc);
-  BEGIN Reset := reset;
+  PROCEDURE SetReset*(reset: LONGINT);
+  BEGIN Reset := SYSTEM.VAL(ResetFunc, reset);
   END SetReset;
 
   PROCEDURE SetGC*(gc: LONGINT);
-  BEGIN GC := SYSTEM.VAL(Command, gc);
+  BEGIN GC := SYSTEM.VAL(GCFunc, gc);
   END SetGC;
 
   PROCEDURE SetAllocPtr*(ap: INTEGER);
@@ -463,13 +524,13 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H;
     (*INC(heapOrg, 060D00H);*)
-    INC(heapOrg, 040000H);
+    INC(heapOrg, 049000H);
     heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
     SYSTEM.PUT(-60, 0AH);
     SYSTEM.PUT(-60, heapLim - heapOrg);
-    allocated := 0; clock := 0; InitSecMap
+    largestFreeBlock := 0; allocated := 0; clock := 0; InitSecMap
   END Init;
 
 END Kernel.

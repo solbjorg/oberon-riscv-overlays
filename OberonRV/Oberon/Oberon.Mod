@@ -388,8 +388,11 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     UNTIL FALSE
   END Loop;
 
-  PROCEDURE InitLoop(trap: INTEGER; mod: Overlays.Module);
+  PROCEDURE Reset*(trap, loc: INTEGER);
+    VAR mod: Overlays.Module;
   BEGIN
+    (* panic, forcibly evict all overlays to make space *)
+    mod := Overlays.LocateMod(loc);
     IF CurTask.state = active THEN Remove(CurTask) END ;
     (* Only run ResetMessage if it has been set and the heap isn't incredibly stressed *)
     IF (ResetMessage # NIL) & ~failedReset THEN
@@ -399,24 +402,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     failedReset := FALSE;
 
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
-  END InitLoop;
-
-  PROCEDURE Reset*(trap, loc: INTEGER);
-    VAR mod: Overlays.Module;
-  BEGIN
-    (* panic, forcibly evict all overlays to make space *)
-    mod := NIL;
-    mod := Overlays.LocateMod(loc);
-    Overlays.EvictAllOverlays;
-    Overlays.GC;
-    (* EvictAllOverlays evicted this overlay, meaning that upon any heap allocation, *)
-    (* there is a very decent chance that the Reset overlay will be overwritten. *)
-    (* Thus, technically, when returning from GC, we are running in an unallocated block *)
-    (* that just happens to not be overwriten; we can be certain that it will never be  *)
-    (* overwritten at this point, as there are no heap allocations between GC and InitLoop. *)
-    (* If we didn't have InitLoop, i.e. we placed the body of InitLoop here, that certainty *)
-    (* would disappear. *)
-    InitLoop(trap, mod);
   END Reset;
 
   PROCEDURE SetResetMessage*(msg: PROCEDURE(trap: INTEGER; mod: Overlays.Module));
@@ -429,7 +414,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     SYSTEM.PUT(-60, 70H);
     Modules.Load("System", Mod);
     Overlays.SetReset(Reset);
-    Kernel.SetReset(Reset);
     failedReset := FALSE;
     Mod := NIL; Loop
   END Init;
