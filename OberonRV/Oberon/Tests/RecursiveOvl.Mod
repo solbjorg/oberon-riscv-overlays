@@ -1,0 +1,23 @@
+MODULE RecursiveOvl;  (*NW 8.1.2013  for RISC*)
+  IMPORT SYSTEM;
+
+  CONST Menu = "System.Close  System.Copy  System.Grow";
+
+  VAR A, B, C, D: PROCEDURE (i: INTEGER);
+
+  PROCEDURE HA(i: INTEGER);
+  BEGIN
+    IF i > 0 THEN SYSTEM.PUT(-60, 0DEAD0000H + i); B(i-1) END
+  END HA;
+
+  PROCEDURE HB(i: INTEGER);
+  BEGIN
+    IF i > 0 THEN SYSTEM.PUT(-60, 0DEAD0000H + i); A(i-1) END
+  END HB;
+
+BEGIN A := HA; B := HB;
+  SYSTEM.PUT(-60, 0BEEFDEADH);
+  SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, A));
+  SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, B));
+  B(10);
+END RecursiveOvl.

@@ -1,5 +1,5 @@
 MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
-  IMPORT Files, Fonts, Texts, Input, Display, Viewers, Oberon;
+  IMPORT SYSTEM, Files, Fonts, Texts, Input, Display, Viewers, Oberon;
 
   CONST extend* = 0; reduce* = 1; FrameColor = Display.white;
 
@@ -195,7 +195,12 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
         ELSIF M.id = Viewers.modify THEN Modify(V(Viewer), M.Y, M.H)
         ELSIF M.id = Viewers.suspend THEN Suspend(V(Viewer))
         END |
-      Display.FrameMsg: Menu.handle(Menu, M); Main.handle(Main, M)
+      Display.FrameMsg:
+        Menu.handle(Menu, M);
+        SYSTEM.PUT(-60, SYSTEM.ADR(Main^));
+        SYSTEM.PUT(-60, SYSTEM.ADR(Main.handle));
+        SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, Main.handle));
+        Main.handle(Main, M)
       END
   END Handle;
 

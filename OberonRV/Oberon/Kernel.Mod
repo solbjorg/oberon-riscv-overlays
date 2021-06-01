@@ -135,11 +135,11 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     ptr := 0;
     SYSTEM.GET(tag, size);
-    lim := heapLim - heapOrg - size - dataAllocationLimit;
+    lim := heapLim - heapOrg - dataAllocationLimit;
     (* run garbage collection if not enough space *)
     (* note that this doesn't take into account the required contiguous space; it is a heuristic *)
-    IF allocated > lim THEN GC(size, TRUE) END;
-    IF allocated < lim THEN
+    IF allocated + size > lim THEN GC(size, TRUE) END;
+    IF allocated + size < lim THEN
       IF size = 32 THEN GetBlock32(p)
       ELSIF size = 64 THEN GetBlock64(p)
       ELSIF size = 128 THEN GetBlock128(p)
@@ -167,8 +167,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     IF ptr # 0 THEN
       SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
       SYSTEM.PUT(ptr+4, 0); (* set mark to -1, will be handled within overlay system *)
-      SYSTEM.PUT(ptr+8, 0); (* set timestamp to 0; will automatically be set upon calling *)
-      ptr := ptr + 12;
+      (*SYSTEM.PUT(ptr+8, 0); (* set timestamp to 0; will automatically be set upon calling *)*)
+      ptr := ptr + 8;
       INC(allocated, size);
     END;
   END NewOverlay;
@@ -189,18 +189,21 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     SYSTEM.GET(p-4, offadr);
     IF (p >= heapOrg) & (offadr = 0) THEN q := p;   (*mark elements in data structure with root p*)
-      REPEAT SYSTEM.GET(p-4, offadr); SYSTEM.PUT(-60, p);
-        IF offadr = 0 THEN SYSTEM.GET(p-8, tag); offadr := tag + 16;
-          (* note size of marked object *)
-          SYSTEM.GET(tag, offset); (*INC(marked, offset);*)
-        ELSE INC(offadr, 4) END ;
+      REPEAT SYSTEM.GET(p-4, offadr);
+        IF offadr = 0 THEN SYSTEM.GET(p-8, tag); offadr := tag + 16; ELSE INC(offadr, 4) END ;
         SYSTEM.PUT(p-4, offadr);
         SYSTEM.GET(offadr, offset);
         IF offset # -1 THEN (*down*)
           SYSTEM.GET(p+offset, r); SYSTEM.GET(r-4, offadr);
-          IF (r >= heapOrg) & (offadr = 0) THEN SYSTEM.PUT(p+offset, q); q := p; p := r END
+          IF (r >= heapOrg) & (offadr = 0) THEN
+            SYSTEM.PUT(p+offset, q); q := p; p := r;
+            SYSTEM.PUT(-60, 0D0H);
+          END
         ELSE (*up*) SYSTEM.GET(q-4, offadr); SYSTEM.GET(offadr, offset);
-          IF p # q THEN SYSTEM.GET(q+offset, r); SYSTEM.PUT(q+offset, p); p := q; q := r END
+          IF p # q THEN
+            SYSTEM.GET(q+offset, r); SYSTEM.PUT(q+offset, p); p := q; q := r;
+            SYSTEM.PUT(-60, 0F00H);
+          END
         END
       UNTIL (p = q) & (offset = -1)
     END ;
@@ -274,7 +277,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
           SYSTEM.PUT(q, size); SYSTEM.PUT(q+4, -1); SYSTEM.PUT(q+8, list0); list0 := q; INC(q, size)
         END
       END ;
-      IF mark > 0 THEN SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); SYSTEM.PUT(p+4, 0); INC(p, size)
+      IF mark > 0 THEN SYSTEM.PUT(-60, 0FECCH); SYSTEM.PUT(-60, p); SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); SYSTEM.PUT(p+4, 0); INC(p, size)
       ELSE (*free*) SYSTEM.GET(p, size); INC(p, size)
       END
     UNTIL p >= heapLim;

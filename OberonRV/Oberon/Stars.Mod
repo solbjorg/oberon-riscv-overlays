@@ -61,7 +61,7 @@ MODULE Stars;   (*NW 15.1.2013, 15.11.2013*)
       | MenuViewers.ModifyMsg:
         IF (M.Y # F.Y) OR (M.H # F.H) THEN F.Y := M.Y; F.H := M.H; Restore(F) END
       END
-    END
+    END;
   END Handle;
 
   PROCEDURE Step*;

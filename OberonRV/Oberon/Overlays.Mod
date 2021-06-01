@@ -85,7 +85,12 @@ MODULE Overlays;
   PROCEDURE Evict(ov: Overlay);
   BEGIN
     IF ov.mapped > 0 THEN
-      SYSTEM.PUT(ov.mapped-8, 0);
+      (*
+      IF (ov.mod.num = 11) & (ov.pno = 40) THEN
+        SYSTEM.PUT(-60, 0FAH);
+        SYSTEM.EBREAK();
+      END; *)
+      SYSTEM.PUT(ov.mapped-4, 0);
       ov.mapped := 0;
       (*FillTOC(ov, TRUE);*)
       DEC(allocated, ov.heapsize);
@@ -145,7 +150,7 @@ MODULE Overlays;
     FOR i := 0 TO numGeneratedOverlays-1 DO
       ov := overlays.list[i];
       IF ov.mapped > 0 THEN
-        SYSTEM.GET(ov.mapped-8, mark);
+        SYSTEM.GET(ov.mapped-4, mark);
         IF mark = 0 THEN
           Evict(ov);
           SYSTEM.PUT(-60, 0AEAEAH);
@@ -269,7 +274,6 @@ MODULE Overlays;
   BEGIN
     SYSTEM.REGSTACK(20);
 
-    (*
     k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)
     old := NIL;
     (* if an indirect function call, we can't easily determine what function it was called from *)
@@ -293,18 +297,33 @@ MODULE Overlays;
       (*ASSERT(old.mapped # 0);*)
       offset := SYSTEM.REG(1) - old.mapped;
     END;
-    *)
 
     ov := overlays.list[SYSTEM.REG(30) DIV 2 MOD 4000H];
     IF ov.mapped = 0 THEN LoadOverlay(ov) END;
 
+    SYSTEM.PUT(-60, 0EAEAH);
+    SYSTEM.PUT(-60, ov.mod.num);
+    SYSTEM.PUT(-60, ov.pno);
+    SYSTEM.PUT(-60, ov.mapped);
+    IF old # NIL THEN
+      SYSTEM.PUT(-60, old.mapped);
+      SYSTEM.PUT(-60, old.mod.num);
+      SYSTEM.PUT(-60, old.pno);
+    END;
     body := SYSTEM.VAL(Func, ov.mapped);
-    SYSTEM.GET(ov.mapped-8, mark);
-    SYSTEM.PUT(ov.mapped-8, mark-1);
+    SYSTEM.GET(ov.mapped-4, mark);
+    SYSTEM.PUT(ov.mapped-4, mark-1);
     SYSTEM.VIRTUALARGS(); body();
     SYSTEM.REGSTACK(9);
+    SYSTEM.PUT(-60, 01234H);
+    IF old # NIL THEN
+      SYSTEM.PUT(-60, old.mapped);
+      SYSTEM.PUT(-60, old.mod.num);
+      SYSTEM.PUT(-60, old.pno);
+      SYSTEM.PUT(-60, mark);
+    END;
     (* discard the saved registers now that they are no longer needed *)
-    SYSTEM.PUT(ov.mapped-8, mark);
+    SYSTEM.PUT(ov.mapped-4, mark);
     (*
     IF (old # NIL) & (old.mapped = 0) THEN
       LoadOverlay(old);

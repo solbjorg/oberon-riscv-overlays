@@ -727,7 +727,7 @@ BEGIN
   (* move the token to the token register *)
   put(RVAssem.addi(30, reg, 0));
   put(RVAssem.jalr(RA, 31, 0));
-  put(RVAssem.beq(0, 0, 16));
+  put(RVAssem.beq(0, 0, 8));
   (*
   (* load data pointer from module table... *)
   put(RVAssem.srai(RH, x.r, 12));
@@ -737,8 +737,9 @@ BEGIN
   put(RVAssem.srai(RH+1, x.r, 24));
   *)
   (* it is a normal address; jump right to it *)
+  (*
   put(RVAssem.csrrs(RH+1, 0, 0C00H)); (* get CYCLERD(L) into RH *)
-  put(RVAssem.sw(RH+1, reg, -4)); (* write timestamp into mark *)
+  put(RVAssem.sw(RH+1, reg, -4)); (* write timestamp into mark *) *)
   put(RVAssem.jalr(RA, reg, 0));
 END loadToken;
 
@@ -1672,8 +1673,9 @@ BEGIN (*x.type.form = RVOB.Proc*)
       GetSB(x.r);
       Fetch(SB, x.a+C8);
     END;
+    (*
     put(RVAssem.csrrs(RH+1, 0, 0C00H)); (* get CYCLERD(L) into RH *)
-    put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *)
+    put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *) *)
     put(RVAssem.jalr(RA, RH, 0));
   ELSE
     IF x.mode <= RVOB.Par THEN
