@@ -1,8 +1,6 @@
 MODULE Overlays;
   IMPORT SYSTEM, Kernel, FileDir, Files;
-  CONST numRegions = 1;
-    numOverlays = 300;
-    numIndices = 1; (* maximum number of overlays possible to map at once *)
+  CONST numOverlays = 200;
     maxNumProcs* = 200;
     maxNumMods* = 10;
     (*regionSize* = 0D000H;*)
@@ -24,6 +22,7 @@ MODULE Overlays;
     Overlay* = POINTER TO OverlayDesc;
     OverlayList* = POINTER TO OverlayListDesc;
     ModuleName* = ARRAY 32 OF CHAR;
+    ResetFunc = PROCEDURE(trap: INTEGER; mod: Module);
 
     ModDesc* = RECORD
       name*: ModuleName;
@@ -43,7 +42,7 @@ MODULE Overlays;
       mapped*: INTEGER; (*address: start of mapped overlay*)
       sector: INTEGER;
       heapsize: INTEGER; (* size in terms of blocks in the heap (i.e. at 256B granularity)*)
-      size: INTEGER; (* length of code segment *)
+      size: INTEGER; (* size in terms of blocks in the heap (i.e. at 256B granularity)*)
       mod: Module;
       pno: INTEGER;
     END;
@@ -53,12 +52,14 @@ MODULE Overlays;
       list: ARRAY numOverlays OF Overlay;
     END;
 
-  VAR overlays: OverlayList;
+  VAR
+    overlays: ARRAY numOverlays OF Overlay;
     numGeneratedOverlays*, allocated*, numMapped, stackLoc: INTEGER;
     overlayIndex: INTEGER;
     mappedSector, addressOVM*: INTEGER;
     root: Module;
-    OberonReset: Kernel.ResetFunc;
+    OberonReset: ResetFunc;
+
 
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER;
@@ -106,7 +107,7 @@ MODULE Overlays;
     found := FALSE; i := 0; lruOv := NIL;
     SYSTEM.PUT(-60, 0FFFF4321H);
     REPEAT
-      ov := overlays.list[i];
+      ov := overlays[i];
       IF (ov # NIL) & (ov.mapped > 0) & (ov.heapsize >= minSize) THEN
         found := TRUE;
         lruOv := ov;
@@ -116,7 +117,7 @@ MODULE Overlays;
     UNTIL (found) OR (i = numGeneratedOverlays);
     (* iterate through every overlay from then on, to find the least recently used *)
     WHILE i < numGeneratedOverlays DO
-      ov := overlays.list[i];
+      ov := overlays[i];
       IF ov # NIL THEN
         IF (ov.mapped > 0) & (ov.heapsize >= minSize) THEN
           SYSTEM.GET(ov.mapped-4, timestamp);
@@ -148,7 +149,7 @@ MODULE Overlays;
       ov: Overlay;
   BEGIN
     FOR i := 0 TO numGeneratedOverlays-1 DO
-      ov := overlays.list[i];
+      ov := overlays[i];
       IF ov.mapped > 0 THEN
         SYSTEM.GET(ov.mapped-4, mark);
         IF mark = 0 THEN
@@ -159,11 +160,31 @@ MODULE Overlays;
     END;
   END CollectOverlays;
 
+  PROCEDURE LocateMod*(loc: INTEGER): Module;
+    VAR m: Overlay; i: INTEGER;
+      result: Module;
+  BEGIN result := NIL;
+    IF loc >= Kernel.heapOrg THEN
+      i := 0;
+      WHILE (i < numGeneratedOverlays) & (result = NIL) DO
+        m := overlays[i];
+        IF (loc > m.mapped) & (loc < m.mapped + m.size)  THEN
+          result := m.mod;
+        END;
+        INC(i);
+      END;
+    ELSE
+      result := root;
+      WHILE (result # NIL) & ((loc < result.code) OR (loc >= result.imp)) DO result := result.next END ;
+    END;
+    RETURN result
+  END LocateMod;
+
   PROCEDURE EvictAllOverlays*;
     VAR i, mark: INTEGER; ov: Overlay;
   BEGIN
     FOR i := 0 TO numGeneratedOverlays-1 DO
-      ov := overlays.list[i];
+      ov := overlays[i];
       IF ov.mapped > 0 THEN
         Evict(ov);
       END;
@@ -218,10 +239,12 @@ MODULE Overlays;
   END GC;
 
   PROCEDURE Reset*(trap, loc: INTEGER);
+    VAR mod: Module;
   BEGIN
+    mod := LocateMod(loc);
     EvictAllOverlays;
     GC(0, FALSE);
-    OberonReset(trap, loc);
+    OberonReset(trap, mod);
   END Reset;
 
 
@@ -239,7 +262,7 @@ MODULE Overlays;
  *)
 
   PROCEDURE LoadOverlay(ov: Overlay);
-  VAR i: INTEGER;
+    VAR i: INTEGER;
   BEGIN
     Kernel.NewOverlay(ov.mapped, ov.heapsize);
     IF ov.mapped = 0 THEN
@@ -282,7 +305,7 @@ MODULE Overlays;
       IF SYSTEM.REG(1) >= Kernel.heapOrg THEN
         k := 0;
         WHILE (k < numGeneratedOverlays) & (old = NIL) DO
-          ov := overlays.list[k];
+          ov := overlays[k];
           IF (SYSTEM.REG(1) > ov.mapped) & (SYSTEM.REG(1) < ov.mapped + ov.size)  THEN
             old := ov;
             SYSTEM.PUT(-60, old.mod.num);
@@ -291,14 +314,14 @@ MODULE Overlays;
           INC(k);
         END;
       END;
-    ELSE old := overlays.list[k];
+    ELSE old := overlays[k];
     END;
     IF old # NIL THEN
       (*ASSERT(old.mapped # 0);*)
       offset := SYSTEM.REG(1) - old.mapped;
     END;
 
-    ov := overlays.list[SYSTEM.REG(30) DIV 2 MOD 4000H];
+    ov := overlays[SYSTEM.REG(30) DIV 2 MOD 4000H];
     IF ov.mapped = 0 THEN LoadOverlay(ov) END;
 
     SYSTEM.PUT(-60, 0EAEAH);
@@ -371,10 +394,10 @@ MODULE Overlays;
     VAR index: INTEGER;
   BEGIN
     index := numGeneratedOverlays-1;
-    WHILE (index > 0) & ((mno # overlays.list[index].mod.num) OR (pno # overlays.list[index].pno)) DO
+    WHILE (index > 0) & ((mno # overlays[index].mod.num) OR (pno # overlays[index].pno)) DO
       DEC(index)
     END;
-    ASSERT((overlays.list[index].mod.num = mno) & (overlays.list[index].pno = pno))
+    ASSERT((overlays[index].mod.num = mno) & (overlays[index].pno = pno))
     RETURN index
   END FindOverlayIndex;
 
@@ -396,7 +419,7 @@ MODULE Overlays;
       *)
 
       ov.heapsize := (ov.size+275) DIV 256 * 256;
-      overlays.list[numGeneratedOverlays] := ov;
+      overlays[numGeneratedOverlays] := ov;
       IF numGeneratedOverlays < numOverlays-1 THEN
         INC(numGeneratedOverlays);
       ELSE
@@ -412,7 +435,7 @@ MODULE Overlays;
   PROCEDURE WriteOverlay*(index, addr: INTEGER; mod: Module);
     VAR i, sec: INTEGER; ov: Overlay;
   BEGIN
-    ov := overlays.list[index];
+    ov := overlays[index];
     sec := mappedSector;
     FOR i := 0 TO ov.size BY FileDir.SectorSize DO
       Kernel.PutMemToSector(mappedSector*29, mod.code + addr + i, ov.size - i);
@@ -422,33 +445,13 @@ MODULE Overlays;
     ov.sector := sec;
   END WriteOverlay;
 
-  PROCEDURE SetReset*(reset: Kernel.ResetFunc);
+  PROCEDURE SetReset*(reset: ResetFunc);
   BEGIN OberonReset := reset;
   END SetReset;
 
   PROCEDURE SetRoot*(r: Module);
   BEGIN root := r;
   END SetRoot;
-
-  PROCEDURE LocateMod*(loc: INTEGER): Module;
-    VAR m: Overlay; i: INTEGER;
-      result: Module;
-  BEGIN result := NIL;
-    IF loc >= Kernel.heapOrg THEN
-      i := 0;
-      WHILE (i < numGeneratedOverlays) & (result = NIL) DO
-        m := overlays.list[i];
-        IF (loc > m.mapped) & (loc < m.mapped + m.size)  THEN
-          result := m.mod;
-        END;
-        INC(i);
-      END;
-    ELSE
-      result := root;
-      WHILE (result # NIL) & ((loc < result.code) OR (loc >= result.imp)) DO result := result.next END ;
-    END;
-    RETURN result
-  END LocateMod;
 
   PROCEDURE Init*;
     VAR i: INTEGER;
@@ -460,7 +463,6 @@ MODULE Overlays;
     allocated := 0;
     mappedSector := Kernel.filemapsize + 1;
     addressOVM := SYSTEM.ADR(OverlayManager);
-    NEW(l); overlays := l;
     (* load location of the overlay manager to predetermined reg *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
   END Init;

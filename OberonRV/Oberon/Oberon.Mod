@@ -359,7 +359,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR V: Viewers.Viewer; M: InputMsg; N: ControlMsg;
        prevX, prevY, X, Y, t: INTEGER; keys: SET; ch: CHAR;
   BEGIN
-    SYSTEM.EBREAK();
+    (*SYSTEM.EBREAK();*)
     REPEAT
       Input.Mouse(keys, X, Y);
       IF Input.Available() > 0 THEN Input.Read(ch);
@@ -389,10 +389,8 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     UNTIL FALSE
   END Loop;
 
-  PROCEDURE Reset*(trap, loc: INTEGER);
-    VAR mod: Overlays.Module;
+  PROCEDURE Reset*(trap: INTEGER; mod: Overlays.Module);
   BEGIN
-    mod := Overlays.LocateMod(loc);
     IF CurTask.state = active THEN Remove(CurTask) END ;
     (* Only run ResetMessage if it has been set and the heap isn't incredibly stressed *)
     IF (ResetMessage # NIL) & ~failedReset THEN
@@ -401,6 +399,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     END;
     failedReset := FALSE;
 
+	SYSTEM.PUT(-32, 0BB000000H); (* emu debug; prints stack trace *)
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 

@@ -415,7 +415,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END;
       END;
     END;
-    IF res > 0 THEN SYSTEM.EBREAK(); END;
+    (*IF res > 0 THEN SYSTEM.EBREAK(); END;*)
     newmod := mod;
   END Load;
 

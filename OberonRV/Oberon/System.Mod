@@ -425,7 +425,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     ELSE
       Texts.WriteString(W, "TRAP "); Texts.WriteHex(W, trap);
     END;
-    IF mod # NIL THEN Texts.WriteString(W, " in "); Texts.WriteString(W, mod.name) END ;
+    Texts.WriteString(W, " in ");
+    IF mod # NIL THEN Texts.WriteString(W, mod.name) 
+    ELSE Texts.WriteString(W, "NIL") END ;
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
     SYSTEM.PUT(-60, 0FAEAH);
   END ResetMessage;
@@ -436,4 +438,5 @@ BEGIN
   (*Overlays.SetReset(ResetOVM);*)
   Oberon.SetResetMessage(ResetMessage);
   (*Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);*)
+  Watch;
 END System.
