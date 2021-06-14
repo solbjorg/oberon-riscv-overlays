@@ -3,7 +3,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   CONST SectorLength* = 1024;
     timer = -64; led = -60; spiData = -48; spiCtrl = -44;
     CARD0 = 1; SPIFAST = 4;
-    dataAllocationLimit = 5000H; (* how much space on the heap is reserved for code *)
+    (*dataAllocationLimit = 5000H; (* how much space on the heap is reserved for code *)*)
+    dataAllocationLimit = 2000H; (* how much space on the heap is reserved for code *)
     FSoffset = 80000H; (*256MB in 512-byte blocks*)
     filemapsize* = 08000H; (*500 sectors, 32MB*)
     overlaymapsize = 08000H; (*500 sectors, 32MB*)
@@ -143,20 +144,27 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE NewPtr*(VAR ptr: LONGINT; tag: LONGINT);
     (*called by NEW via MT[0]; ptr and tag are pointers*)
-    VAR p, size, lim: LONGINT;
+    VAR p, size, lim: LONGINT; collected: BOOLEAN;
   BEGIN
-    ptr := 0;
+    ptr := 0; collected := FALSE;
     SYSTEM.GET(tag, size);
-    lim := heapLim - heapOrg - dataAllocationLimit;
-    (* run garbage collection if not enough space *)
-    (* note that this doesn't take into account the required contiguous space; it is a heuristic *)
-    IF allocated + size > lim THEN GC(size, TRUE) END;
-    IF allocated + size < lim THEN
+    lim := (heapLim - heapOrg) - dataAllocationLimit;
+    IF allocated + size > lim THEN GC(size, TRUE); collected := TRUE; END;
+    IF allocated + size <= lim THEN
       IF size = 32 THEN GetBlock32(p)
       ELSIF size = 64 THEN GetBlock64(p)
       ELSIF size = 128 THEN GetBlock128(p)
       ELSE GetBlock(p, (size+255) DIV 256 * 256)
       END ;
+      IF (p = 0) & ~collected THEN
+        (* run garbage collection if not enough space *)
+        GC(size, TRUE);
+        IF size = 32 THEN GetBlock32(p)
+        ELSIF size = 64 THEN GetBlock64(p)
+        ELSIF size = 128 THEN GetBlock128(p)
+        ELSE GetBlock(p, (size+255) DIV 256 * 256)
+        END ;
+      END;
       IF p # 0 THEN
         ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
         WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
@@ -297,8 +305,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       END
     UNTIL p >= heapLim;
   END Scan;
-
-
 
 (* ---------- Disk storage management ----------*)
 
@@ -541,9 +547,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     Install(SYSTEM.ADR(Abort), 0);
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H;
-    (*INC(heapOrg, 060D00H);*)
-    INC(heapOrg, 049000H);
-    heapLim := MemLim;
+    (*INC(heapOrg, 050D00H);*)
+    INC(heapOrg, 047900H);
+    heapLim := 0E0000H;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
     SYSTEM.PUT(-60, 0AH);
