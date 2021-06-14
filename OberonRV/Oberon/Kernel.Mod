@@ -238,30 +238,33 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   (* mark what looks like pointers on the stack *)
   PROCEDURE MarkStack*;
-    VAR i, lim, tag, word, p: LONGINT;
+    VAR i, lim, tag, word, p, mark: LONGINT;
   BEGIN
-    (*SYSTEM.EBREAK();*)
     (* look through the whole stack, except for this procedure *)
-    lim := SYSTEM.REG(SP)+20;
+    lim := SYSTEM.REG(SP)+28;
     SYSTEM.PUT(-60, 0F07DH);
     FOR i := stackOrg TO lim BY -4 DO
       SYSTEM.GET(i, word);
       IF (word >= heapOrg) & (word < heapLim) THEN
         SYSTEM.GET(word-4, tag);
         IF tag = 0 THEN (* can't be a dynamically allocated var if it isn't currently unmarked *)
+          SYSTEM.PUT(-60, i);
           SYSTEM.GET(word-8, tag); (* check tag to ascertain whether it's actually allocated on the heap *)
           IF (tag >= 100H) & (tag < AllocPtr) THEN
             p := heapOrg;
             WHILE (p+8 < word) & (tag > 0) DO
-              SYSTEM.GET(p, tag); SYSTEM.GET(tag, tag); INC(p, tag);
+              SYSTEM.GET(p, tag); SYSTEM.GET(p+4, mark);
+              IF mark # -1 THEN SYSTEM.GET(tag, tag); END;
+              INC(p, tag);
             END ;
-            IF p+8 = word THEN Mark(word) END;
+            IF p+8 = word THEN
+              Mark(word);
+            END;
           END;
         END;
       END;
     END;
     SYSTEM.PUT(-60, 0F17DH);
-    (*SYSTEM.EBREAK();*)
   END MarkStack;
 
   PROCEDURE Scan*;
