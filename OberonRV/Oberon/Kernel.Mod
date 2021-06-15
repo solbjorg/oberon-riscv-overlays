@@ -390,12 +390,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ASSERT(data MOD 32 = 5); SPIIdle(1) (*deselect card*)
   END WriteSDLim;
 
-  PROCEDURE WriteSD(dst, src: INTEGER);
-    VAR i, n: INTEGER; x: BYTE;
-  BEGIN
-    WriteSDLim(dst, src, 508);
-  END WriteSD;
-
   PROCEDURE InitSecMap*;
     VAR i: INTEGER;
   BEGIN NofSectors := 0; NEW(sectorMap); sectorMap.map[0] := {0 .. 31}; sectorMap.map[1] := {0 .. 31};
@@ -462,7 +456,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   PROCEDURE PutSector*(dst: INTEGER; VAR src: Sector);
   BEGIN ASSERT(dst MOD 29 = 0); dst := dst DIV 29;
     dst := dst * 2 + FSoffset;
-    WriteSD(dst, SYSTEM.ADR(src)); WriteSD(dst+1, SYSTEM.ADR(src)+512)
+    WriteSDLim(dst, SYSTEM.ADR(src), 508); WriteSDLim(dst+1, SYSTEM.ADR(src)+512, 508)
   END PutSector;
 
 (*-------- Miscellaneous procedures----------*)
