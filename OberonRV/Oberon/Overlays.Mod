@@ -1,6 +1,7 @@
 MODULE Overlays;
   IMPORT SYSTEM, Kernel, FileDir, Files;
-  CONST numOverlays = 200;
+  CONST numBaseOverlays = 200;
+    numExtendOverlays = 50;
     maxNumProcs* = 200;
     maxNumMods* = 10;
     (*regionSize* = 0D000H;*)
@@ -49,11 +50,11 @@ MODULE Overlays;
 
     (* make this a linked list, TODO *)
     OverlayListDesc = RECORD
-      list: ARRAY numOverlays OF Overlay;
+      list: ARRAY numExtendOverlays OF Overlay;
     END;
 
   VAR
-    overlays: ARRAY numOverlays OF Overlay;
+    overlays: ARRAY numBaseOverlays OF Overlay;
     numGeneratedOverlays*, allocated*, numMapped, stackLoc: INTEGER;
     overlayIndex: INTEGER;
     mappedSector, addressOVM*: INTEGER;
@@ -420,7 +421,7 @@ MODULE Overlays;
 
       ov.heapsize := (ov.size+275) DIV 256 * 256;
       overlays[numGeneratedOverlays] := ov;
-      IF numGeneratedOverlays < numOverlays-1 THEN
+      IF numGeneratedOverlays < numBaseOverlays-1 THEN
         INC(numGeneratedOverlays);
       ELSE
         (* panic! *)
