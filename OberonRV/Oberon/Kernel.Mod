@@ -351,7 +351,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     FOR i := 0 TO lim BY 4 DO
       SYSTEM.PUT(spiData, -1);
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
-      SYSTEM.GET(spiData, data); SYSTEM.PUT(dst, data); INC(dst, 4);
+      SYSTEM.GET(spiData, data);
+      SYSTEM.PUT(dst, data); INC(dst, 4);
+    END;
+    IF lim < 508 THEN
+      FOR i := lim+4 TO 508 BY 4 DO
+        SYSTEM.PUT(spiData, -1);
+        REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
+      END;
     END;
     SPI(255); SPI(255); SPIIdle(1) (*may be a checksum; deselect card*)
   END ReadSDLim;
@@ -368,7 +375,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     SPI(254); (*write start data marker*)
     SYSTEM.PUT(spiCtrl, SPIFAST + CARD0);
     FOR i := 0 TO lim BY 4 DO
-      SYSTEM.GET(src, n); INC(src, 4); SYSTEM.PUT(spiData, n);
+      IF i <= lim THEN SYSTEM.GET(src, n); INC(src, 4);
+      ELSE n := 0;
+      END;
+      SYSTEM.PUT(spiData, n);
+      REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
+    END;
+    FOR i := lim+4 TO 508 BY 4 DO
+      SYSTEM.PUT(spiData, 0);
       REPEAT UNTIL SYSTEM.BIT(spiCtrl, 0);
     END;
     SPI(255); SPI(255); (*dummy checksum*) i := 0;
@@ -502,9 +516,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE AbortTrap(trap, loc: INTEGER);
   BEGIN
-    (*REPEAT UNTIL FALSE;*)
-
-    (* this is meant to "gracefully" reset, but currently isn't very graceful... *)
     IF Reset # NIL THEN Reset(trap, loc) ELSE REPEAT UNTIL FALSE END;
   END AbortTrap;
 
@@ -548,7 +559,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H;
     (*INC(heapOrg, 050D00H);*)
-    INC(heapOrg, 047900H);
+    INC(heapOrg, 040000H);
     heapLim := 0E0000H;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
