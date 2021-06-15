@@ -92,6 +92,7 @@ MODULE Overlays;
         SYSTEM.PUT(-60, 0FAH);
         SYSTEM.EBREAK();
       END; *)
+      SYSTEM.PUT(ov.mapped-8, SYSTEM.ADR(ov.heapsize));
       SYSTEM.PUT(ov.mapped-4, 0);
       ov.mapped := 0;
       (*FillTOC(ov, TRUE);*)
@@ -153,9 +154,10 @@ MODULE Overlays;
       ov := overlays[i];
       IF ov.mapped > 0 THEN
         SYSTEM.GET(ov.mapped-4, mark);
-        IF mark = 0 THEN
-          Evict(ov);
+        IF mark = -1 THEN
           SYSTEM.PUT(-60, 0AEAEAH);
+          SYSTEM.PUT(-60, ov.mapped-8);
+          Evict(ov);
         END;
       END;
     END;
@@ -323,31 +325,39 @@ MODULE Overlays;
     END;
 
     ov := overlays[SYSTEM.REG(30) DIV 2 MOD 4000H];
-    IF ov.mapped = 0 THEN LoadOverlay(ov) END;
-
     SYSTEM.PUT(-60, 0EAEAH);
+    IF ov.mapped = 0 THEN
+      LoadOverlay(ov);
+      SYSTEM.PUT(-60, 1);
+    ELSE
+      SYSTEM.PUT(-60, 0);
+    END;
+
     SYSTEM.PUT(-60, ov.mod.num);
     SYSTEM.PUT(-60, ov.pno);
     SYSTEM.PUT(-60, ov.mapped);
-    IF old # NIL THEN
-      SYSTEM.PUT(-60, old.mapped);
-      SYSTEM.PUT(-60, old.mod.num);
-      SYSTEM.PUT(-60, old.pno);
-    END;
     body := SYSTEM.VAL(Func, ov.mapped);
     SYSTEM.GET(ov.mapped-4, mark);
+    SYSTEM.PUT(-60, mark);
     SYSTEM.PUT(ov.mapped-4, mark-1);
     SYSTEM.VIRTUALARGS(); body();
+    (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
+    SYSTEM.PUT(ov.mapped-4, mark);
     SYSTEM.PUT(-60, 01234H);
     IF old # NIL THEN
       SYSTEM.PUT(-60, old.mapped);
       SYSTEM.PUT(-60, old.mod.num);
       SYSTEM.PUT(-60, old.pno);
-      SYSTEM.PUT(-60, mark);
+      SYSTEM.PUT(-60, old.heapsize);
     END;
-    (* discard the saved registers now that they are no longer needed *)
-    SYSTEM.PUT(ov.mapped-4, mark);
+    (*
+    IF old # NIL THEN
+      SYSTEM.PUT(-60, old.mapped);
+      SYSTEM.PUT(-60, old.mod.num);
+      SYSTEM.PUT(-60, old.pno);
+      SYSTEM.PUT(-60, mark);
+    END; *)
     (*
     IF (old # NIL) & (old.mapped = 0) THEN
       LoadOverlay(old);
@@ -411,15 +421,17 @@ MODULE Overlays;
       NEW(ov); ov.mapped := 0;
       ov.mod := mod; ov.pno := procs[i].index;
       ov.size := procs[i].size;
-      (*
-      IF ov.size <= 20 THEN ov.heapsize := 32;
-      ELSIF ov.size <= 52 THEN ov.heapsize := 64
-      ELSIF ov.size <= 116 THEN ov.heapsize := 128
-      ELSE ov.heapsize := (ov.size+275) DIV 256 * 256
-      END ;
-      *)
 
-      ov.heapsize := (ov.size+275) DIV 256 * 256;
+      IF ov.size <= 24 THEN ov.heapsize := 32;
+      ELSIF ov.size <= 56 THEN ov.heapsize := 64
+      ELSIF ov.size <= 120 THEN ov.heapsize := 128
+      ELSE ov.heapsize := (ov.size+271) DIV 256 * 256
+      END ;
+
+      (*ov.heapsize := (ov.size+271) DIV 256 * 256;*)
+      SYSTEM.PUT(-60, ov.size);
+      SYSTEM.PUT(-60, ov.heapsize);
+      (*SYSTEM.EBREAK();*)
       overlays[numGeneratedOverlays] := ov;
       IF numGeneratedOverlays < numBaseOverlays-1 THEN
         INC(numGeneratedOverlays);

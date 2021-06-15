@@ -176,17 +176,16 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   PROCEDURE NewOverlay*(VAR ptr: LONGINT; VAR size: LONGINT);
     VAR s: INTEGER;
   BEGIN
-    (*
     IF size = 32 THEN GetBlock32(ptr)
     ELSIF size = 64 THEN GetBlock64(ptr)
     ELSIF size = 128 THEN GetBlock128(ptr)
     ELSE GetBlock(ptr, (size+255) DIV 256 * 256)
-    END ; *)
-    GetBlock(ptr, (size+255) DIV 256 * 256);
+    END ;
+    (*GetBlock(ptr, (size+255) DIV 256 * 256);*)
     (* if ptr = 0, then allocation failed. *)
     IF ptr # 0 THEN
-      SYSTEM.PUT(ptr, SYSTEM.ADR(size)); (* set the "tag" *)
-      SYSTEM.PUT(ptr+4, 0); (* set mark to -1, will be handled within overlay system *)
+      SYSTEM.PUT(ptr, size); (* set the "tag" *)
+      SYSTEM.PUT(ptr+4, -1); (* set mark to -1, will be handled within overlay system *)
       (*SYSTEM.PUT(ptr+8, 0); (* set timestamp to 0; will automatically be set upon calling *)*)
       ptr := ptr + 8;
       INC(allocated, size);
@@ -300,7 +299,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
           SYSTEM.PUT(q, size); SYSTEM.PUT(q+4, -1); SYSTEM.PUT(q+8, list0); list0 := q; INC(q, size)
         END
       END ;
-      IF mark > 0 THEN SYSTEM.PUT(-60, 0FECCH); SYSTEM.PUT(-60, p); SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); SYSTEM.PUT(p+4, 0); INC(p, size)
+      IF mark > 0 THEN SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); SYSTEM.PUT(p+4, 0); INC(p, size)
       ELSE (*free*) SYSTEM.GET(p, size); INC(p, size)
       END
     UNTIL p >= heapLim;
@@ -553,8 +552,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H;
     (*INC(heapOrg, 050D00H);*)
-    INC(heapOrg, 040000H);
-    heapLim := 0E0000H;
+    INC(heapOrg, 04E000H);
+    (*heapLim := 0E0000H;*)
+    heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
     SYSTEM.PUT(-60, 0AH);
