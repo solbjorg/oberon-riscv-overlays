@@ -84,7 +84,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     VAR q0, q1, q2, size: LONGINT; done: BOOLEAN;
   BEGIN
     q0 := 0; q1 := list0; done := FALSE;
-    ASSERT(q1 # 0);
     ASSERT(len MOD 256 = 0);
     WHILE ~done & (q1 # 0) DO
       SYSTEM.GET(q1, size); SYSTEM.GET(q1+8, q2);
@@ -254,14 +253,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       SYSTEM.GET(i, word);
       IF (word >= heapOrg) & (word < heapLim) THEN
         SYSTEM.GET(word-4, tag);
+        (* this check is currently failing !? *)
         IF tag = 0 THEN (* can't be a dynamically allocated var if it isn't currently unmarked *)
-          SYSTEM.PUT(-60, i);
           SYSTEM.GET(word-8, tag); (* check tag to ascertain whether it's actually allocated on the heap *)
           IF (tag >= 100H) & (tag < AllocPtr) THEN
             p := heapOrg;
             WHILE (p+8 < word) & (tag > 0) DO
               SYSTEM.GET(p, tag); SYSTEM.GET(p+4, mark);
-              IF mark # -1 THEN SYSTEM.GET(tag, tag); END;
+              IF mark >= 0 THEN SYSTEM.GET(tag, tag); END;
               INC(p, tag);
             END ;
             IF p+8 = word THEN
@@ -283,6 +282,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
         SYSTEM.GET(p, tag); SYSTEM.GET(tag, size);
         INC(p, size);
         SYSTEM.GET(p+4, mark);
+        IF p = heapLim THEN mark := -1 END;
       END ;
       size := p - q; DEC(allocated, size);  (*size of free block*)
       IF size > 0 THEN
@@ -301,8 +301,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
       END ;
       IF mark > 0 THEN SYSTEM.GET(p, tag); SYSTEM.GET(tag, size); SYSTEM.PUT(p+4, 0); INC(p, size)
       ELSE (*free*) SYSTEM.GET(p, size); INC(p, size)
-      END
+      END;
     UNTIL p >= heapLim;
+    (*SYSTEM.EBREAK();*)
   END Scan;
 
 (* ---------- Disk storage management ----------*)
@@ -552,13 +553,12 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H;
     (*INC(heapOrg, 050D00H);*)
-    INC(heapOrg, 04E000H);
-    (*heapLim := 0E0000H;*)
-    heapLim := MemLim;
+    (*INC(heapOrg, 05E000H);*)
+    INC(heapOrg, 04F000H);
+    heapLim := 0E0000H;
+    (*heapLim := MemLim;*)
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
-    SYSTEM.PUT(-60, 0AH);
-    SYSTEM.PUT(-60, heapLim - heapOrg);
     largestFreeBlock := 0; allocated := 0; clock := 0; InitSecMap
   END Init;
 
