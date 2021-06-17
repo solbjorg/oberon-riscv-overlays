@@ -294,8 +294,22 @@ MODULE Overlays;
     RETURN LSL(-1, 15) + LSL(index MOD 8000H, 1) + 1
   END GetOverlayToken;
 
+  PROCEDURE ChangeMark(ov: Overlay; increase: BOOLEAN);
+    VAR mark: INTEGER;
+  BEGIN
+    SYSTEM.GET(ov.mapped-4, mark);
+    SYSTEM.PUT(-60, mark);
+    IF increase THEN
+      IF mark < -1 THEN
+        INC(mark)
+      END;
+    ELSE DEC(mark)
+    END;
+    SYSTEM.PUT(ov.mapped-4, mark);
+  END ChangeMark;
+
   PROCEDURE OverlayManager*();
-    VAR k, mark, offset: INTEGER;
+    VAR k, offset: INTEGER;
       ov, old: Overlay; body: Func;
   BEGIN
     SYSTEM.REGSTACK(20);
@@ -337,13 +351,11 @@ MODULE Overlays;
     SYSTEM.PUT(-60, ov.pno);
     SYSTEM.PUT(-60, ov.mapped);
     body := SYSTEM.VAL(Func, ov.mapped);
-    SYSTEM.GET(ov.mapped-4, mark);
-    SYSTEM.PUT(-60, mark);
-    SYSTEM.PUT(ov.mapped-4, mark-1);
+    ChangeMark(ov, FALSE);
     SYSTEM.VIRTUALARGS(); body();
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
-    SYSTEM.PUT(ov.mapped-4, mark);
+    ChangeMark(ov, TRUE);
     SYSTEM.PUT(-60, 01234H);
     IF old # NIL THEN
       SYSTEM.PUT(-60, old.mapped);
