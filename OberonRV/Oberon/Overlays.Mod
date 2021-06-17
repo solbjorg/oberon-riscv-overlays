@@ -434,9 +434,9 @@ MODULE Overlays;
       ov.mod := mod; ov.pno := procs[i].index;
       ov.size := procs[i].size;
 
-      IF ov.size <= 24 THEN ov.heapsize := 32;
-      ELSIF ov.size <= 56 THEN ov.heapsize := 64
-      ELSIF ov.size <= 120 THEN ov.heapsize := 128
+      IF ov.size <= 20 THEN ov.heapsize := 32;
+      ELSIF ov.size <= 52 THEN ov.heapsize := 64
+      ELSIF ov.size <= 116 THEN ov.heapsize := 128
       ELSE ov.heapsize := (ov.size+271) DIV 256 * 256
       END ;
 
