@@ -5,6 +5,7 @@ MODULE Overlays;
     maxNumProcs* = 200;
     maxNumMods* = 10;
     overlayDescSize = 24;
+    overlayPrefixSize = 8;
     (*regionSize* = 0D000H;*)
     addi = 19; load = 3; store = 35;
 
@@ -41,10 +42,9 @@ MODULE Overlays;
     END;
 
     OverlayDesc = RECORD
-      sector: INTEGER;
+      sector: INTEGER; (*sector on disk*)
       mapped: INTEGER; (*address: start of mapped overlay*)
-      heapsize: INTEGER; (* size in terms of blocks in the heap (i.e. at 256B granularity)*)
-      size: INTEGER; (* size in terms of blocks in the heap (i.e. at 256B granularity)*)
+      heapsize: INTEGER; (*size in terms of blocks in the heap (i.e. at 256B granularity)*)
       mod: Module;
       pno: INTEGER;
     END;
@@ -79,7 +79,7 @@ MODULE Overlays;
         SYSTEM.PUT(-60, 0FAH);
         SYSTEM.EBREAK();
       END; *)
-      SYSTEM.PUT(ov.mapped-8, SYSTEM.ADR(ov.heapsize));
+      SYSTEM.PUT(ov.mapped-overlayPrefixSize, SYSTEM.ADR(ov.heapsize));
       SYSTEM.PUT(ov.mapped-4, 0);
       ov.mapped := 0;
       (*FillTOC(ov, TRUE);*)
@@ -276,12 +276,11 @@ MODULE Overlays;
         Reset(0, 0);
       END;
     END;
-    FOR i := 0 TO ov.size BY FileDir.SectorSize DO
-      Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.size - i);
+    FOR i := 0 TO ov.heapsize BY FileDir.SectorSize DO
+      Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.heapsize-12 - i);
     END;
     (*FillTOC(ov, FALSE);*)
     INC(allocated, ov.heapsize);
-    SYSTEM.PUT(-60, 0CC417H);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -408,16 +407,13 @@ MODULE Overlays;
       ov := SYSTEM.VAL(Overlay, overlayTableRoot + numGeneratedOverlays * overlayDescSize);
       ov.mapped := 0;
       ov.mod := mod; ov.pno := procs[i].index;
-      ov.size := procs[i].size;
 
-      IF ov.size <= 20 THEN ov.heapsize := 32;
-      ELSIF ov.size <= 52 THEN ov.heapsize := 64
-      ELSIF ov.size <= 116 THEN ov.heapsize := 128
-      ELSE ov.heapsize := (ov.size+271) DIV 256 * 256
+      IF procs[i].size <= 20 THEN ov.heapsize := 32;
+      ELSIF procs[i].size <= 52 THEN ov.heapsize := 64
+      ELSIF procs[i].size <= 116 THEN ov.heapsize := 128
+      ELSE ov.heapsize := (procs[i].size+271) DIV 256 * 256
       END ;
 
-      (*ov.heapsize := (ov.size+271) DIV 256 * 256;*)
-      SYSTEM.PUT(-60, ov.size);
       SYSTEM.PUT(-60, ov.heapsize);
       (*SYSTEM.EBREAK();*)
       (*overlays[numGeneratedOverlays] := ov;*)
@@ -438,8 +434,8 @@ MODULE Overlays;
   BEGIN
     ov := GetOverlay(index);
     sec := mappedSector;
-    FOR i := 0 TO ov.size BY FileDir.SectorSize DO
-      Kernel.PutMemToSector(mappedSector*29, mod.code + addr + i, ov.size - i);
+    FOR i := 0 TO ov.heapsize-overlayPrefixSize BY FileDir.SectorSize DO
+      Kernel.PutMemToSector(mappedSector*29, mod.code + addr + i, ov.heapsize-overlayPrefixSize - i);
       INC(mappedSector);
     END;
 
