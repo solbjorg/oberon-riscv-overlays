@@ -54,8 +54,7 @@ MODULE Overlays;
       list: ARRAY numBaseOverlays OF OverlayDesc;
     END;
 
-  VAR overlays: ARRAY numBaseOverlays OF Overlay;
-    numGeneratedOverlays*, allocated*: INTEGER;
+  VAR numGeneratedOverlays*, allocated*: INTEGER;
     overlayTableRoot: INTEGER;
     mappedSector, addressOVM*: INTEGER;
     root: Module;
@@ -71,17 +70,6 @@ MODULE Overlays;
     END;
     SYSTEM.PUT(ov.mod.procs + ov.pno * 4, addr);
   END FillTOC;
-
-  PROCEDURE WriteFixedModule*(mod: Module; size: INTEGER): INTEGER;
-    VAR i, sec: INTEGER;
-  BEGIN
-    sec := mappedSector;
-    FOR i := 0 TO size BY FileDir.SectorSize DO
-      Kernel.PutMemToSector(mappedSector*29, mod.code + i, FileDir.SectorSize);
-      INC(mappedSector);
-    END;
-    RETURN sec * 29
-  END WriteFixedModule;
 
   PROCEDURE Evict(ov: Overlay);
   BEGIN
