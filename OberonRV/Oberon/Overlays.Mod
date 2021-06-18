@@ -31,7 +31,7 @@ MODULE Overlays;
       name*: ModuleName;
       next*: Module;
       key*, num*, size*, refcnt*: INTEGER;
-      data*, procs*, stubs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
+      data*, procs*, code*, imp*, cmd*, ent*, ptr*: INTEGER  (*addresses*)
     END ;
 
     (* procedure in overlay *)

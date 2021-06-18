@@ -1,6 +1,6 @@
 MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   IMPORT SYSTEM, Kernel, Overlays, Files;
-  CONST versionkey = 1X; MT = 4; DescSize = 88;
+  CONST versionkey = 1X; MT = 4; DescSize = 84;
     addi = 19; load = 3; store = 35;
     SB = 3;
     MTOrg* = 20H;

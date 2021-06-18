@@ -1,6 +1,6 @@
 MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Corelinker for RISC-5 *)
   IMPORT SYSTEM, Files, Texts, Oberon;
-  CONST versionkey = 1X; MT = 12; MTOrg = 20H; DescSize = 88;
+  CONST versionkey = 1X; MT = 12; MTOrg = 20H; DescSize = 84;
     addi = 19; load = 3; store = 35;
     (* Useful constants for bit manip *)
     C28 = 10000000H;
@@ -20,7 +20,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         name: ModuleName;
         next: INTEGER;
         key, num, size, refcnt: INTEGER;
-        data, procs, stubs, code, imp, cmd, ent, ptr: INTEGER;
+        data, procs, code, imp, cmd, ent, ptr: INTEGER;
       END ;
 
     ModDesc = RECORD
@@ -179,7 +179,6 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; Files.ReadInt(R, w); INC(p); DEC(n, 4) END; (*procedures*)
         Files.ReadInt(R, n);
         WHILE n > 0 DO Files.ReadInt(R, w); buffer[p] := w; INC(p); DEC(n, 4) END ;  (*strings*)
-        mod.desc.stubs := p * 4;
         mod.desc.imp := p * 4;  (*copy imports*)
         i := 0;
         WHILE i < nofimps DO
