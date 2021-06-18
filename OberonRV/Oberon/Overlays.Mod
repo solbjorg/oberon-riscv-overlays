@@ -4,7 +4,7 @@ MODULE Overlays;
     numExtendOverlays = 50;
     maxNumProcs* = 200;
     maxNumMods* = 10;
-    overlayDescSize = 24;
+    overlayDescSize = 16;
     overlayPrefixSize = 8;
     (*regionSize* = 0D000H;*)
     addi = 19; load = 3; store = 35;
@@ -42,11 +42,11 @@ MODULE Overlays;
     END;
 
     OverlayDesc = RECORD
-      sector: INTEGER; (*sector on disk*)
       mapped: INTEGER; (*address: start of mapped overlay*)
+      sector: INTEGER; (*sector on disk*)
       heapsize: INTEGER; (*size in terms of blocks in the heap (i.e. at 256B granularity)*)
-      mod: Module;
-      pno: INTEGER;
+      mno: BYTE;
+      pno: BYTE;
     END;
 
     (* make this a linked list, TODO *)
@@ -60,6 +60,7 @@ MODULE Overlays;
     root: Module;
     OberonReset: ResetFunc;
 
+    (*
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER;
   BEGIN
@@ -69,7 +70,7 @@ MODULE Overlays;
       addr := ov.mapped;
     END;
     SYSTEM.PUT(ov.mod.procs + ov.pno * 4, addr);
-  END FillTOC;
+  END FillTOC; *)
 
   PROCEDURE Evict(ov: Overlay);
   BEGIN
@@ -167,7 +168,10 @@ MODULE Overlays;
       WHILE (i < numGeneratedOverlays) & (result = NIL) DO
         m := GetOverlay(i);
         IF (loc > m.mapped) & (loc < m.mapped + m.heapsize)  THEN
-          result := m.mod;
+          result := root;
+          WHILE (result # NIL) & (result.num # m.mno) DO
+            result := result.next;
+          END;
         END;
         INC(i);
       END;
@@ -321,7 +325,6 @@ MODULE Overlays;
       SYSTEM.PUT(-60, 0);
     END;
 
-    SYSTEM.PUT(-60, ov.mod.num);
     SYSTEM.PUT(-60, ov.pno);
     SYSTEM.PUT(-60, ov.mapped);
     body := SYSTEM.VAL(Func, ov.mapped);
@@ -333,7 +336,7 @@ MODULE Overlays;
     SYSTEM.PUT(-60, 01234H);
     IF old # NIL THEN
       SYSTEM.PUT(-60, old.mapped);
-      SYSTEM.PUT(-60, old.mod.num);
+      SYSTEM.PUT(-60, old.mno);
       SYSTEM.PUT(-60, old.pno);
       SYSTEM.PUT(-60, old.heapsize);
     END;
@@ -391,10 +394,10 @@ MODULE Overlays;
     VAR index: INTEGER; ov: Overlay;
   BEGIN
     index := numGeneratedOverlays-1; ov := GetOverlay(index);
-    WHILE (index > 0) & ((mno # ov.mod.num) OR (pno # ov.pno)) DO
+    WHILE (index > 0) & ((mno # ov.mno) OR (pno # ov.pno)) DO
       DEC(index); ov := GetOverlay(index);
     END;
-    ASSERT((ov.mod.num = mno) & (ov.pno = pno))
+    ASSERT((ov.mno = mno) & (ov.pno = pno))
     RETURN index
   END FindOverlayIndex;
 
@@ -406,7 +409,7 @@ MODULE Overlays;
     FOR i := 0 TO numprocs-1 DO
       ov := SYSTEM.VAL(Overlay, overlayTableRoot + numGeneratedOverlays * overlayDescSize);
       ov.mapped := 0;
-      ov.mod := mod; ov.pno := procs[i].index;
+      ov.mno := mod.num; ov.pno := procs[i].index;
 
       IF procs[i].size <= 20 THEN ov.heapsize := 32;
       ELSIF procs[i].size <= 52 THEN ov.heapsize := 64
