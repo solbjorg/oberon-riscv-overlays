@@ -4,6 +4,7 @@ MODULE Overlays;
     numExtendOverlays = 50;
     maxNumProcs* = 200;
     maxNumMods* = 10;
+    overlayDescSize = 24;
     (*regionSize* = 0D000H;*)
     addi = 19; load = 3; store = 35;
 
@@ -20,8 +21,8 @@ MODULE Overlays;
   TYPE Module* = POINTER TO ModDesc;
     Procedure* = POINTER TO ProcedureDesc;
     Func = PROCEDURE;
-    Overlay* = POINTER TO OverlayDesc;
-    OverlayList* = POINTER TO OverlayListDesc;
+    Overlay = POINTER TO OverlayDesc;
+    OverlayList = POINTER TO OverlayListDesc;
     ModuleName* = ARRAY 32 OF CHAR;
     ResetFunc = PROCEDURE(trap: INTEGER; mod: Module);
 
@@ -39,9 +40,9 @@ MODULE Overlays;
       index*: INTEGER; (* toc index of proc for module *)
     END;
 
-    OverlayDesc* = RECORD
-      mapped*: INTEGER; (*address: start of mapped overlay*)
+    OverlayDesc = RECORD
       sector: INTEGER;
+      mapped: INTEGER; (*address: start of mapped overlay*)
       heapsize: INTEGER; (* size in terms of blocks in the heap (i.e. at 256B granularity)*)
       size: INTEGER; (* size in terms of blocks in the heap (i.e. at 256B granularity)*)
       mod: Module;
@@ -50,17 +51,15 @@ MODULE Overlays;
 
     (* make this a linked list, TODO *)
     OverlayListDesc = RECORD
-      list: ARRAY numExtendOverlays OF Overlay;
+      list: ARRAY numBaseOverlays OF OverlayDesc;
     END;
 
-  VAR
-    overlays: ARRAY numBaseOverlays OF Overlay;
-    numGeneratedOverlays*, allocated*, numMapped, stackLoc: INTEGER;
-    overlayIndex: INTEGER;
+  VAR overlays: ARRAY numBaseOverlays OF Overlay;
+    numGeneratedOverlays*, allocated*: INTEGER;
+    overlayTableRoot: INTEGER;
     mappedSector, addressOVM*: INTEGER;
     root: Module;
     OberonReset: ResetFunc;
-
 
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER;
@@ -100,6 +99,7 @@ MODULE Overlays;
     END;
   END Evict;
 
+  (*
   PROCEDURE FindOutlier(minSize: INTEGER; newest: BOOLEAN): Overlay;
     VAR i, timestamp, lruTime: INTEGER; ov, lruOv: Overlay;
       found: BOOLEAN;
@@ -137,14 +137,16 @@ MODULE Overlays;
       INC(i);
     END;
     RETURN lruOv
-  END FindOutlier;
+  END FindOutlier; *)
 
+
+  (*
   PROCEDURE EvictLRUOverlay*(minSize: INTEGER);
     VAR lruOv: Overlay;
   BEGIN
     lruOv := FindOutlier(minSize, FALSE); (* find oldest *)
     IF lruOv # NIL THEN Evict(lruOv) END;
-  END EvictLRUOverlay;
+  END EvictLRUOverlay; *)
 
   PROCEDURE CollectOverlays;
     VAR mark, i: INTEGER;
@@ -430,7 +432,8 @@ MODULE Overlays;
       ov: Overlay;
   BEGIN
     FOR i := 0 TO numprocs-1 DO
-      NEW(ov); ov.mapped := 0;
+      ov := SYSTEM.VAL(Overlay, overlayTableRoot + numGeneratedOverlays * overlayDescSize);
+      ov.mapped := 0;
       ov.mod := mod; ov.pno := procs[i].index;
       ov.size := procs[i].size;
 
@@ -486,9 +489,11 @@ MODULE Overlays;
     Kernel.SetReset(SYSTEM.ADR(Reset));
     numGeneratedOverlays := 0;
     allocated := 0;
+    overlayTableRoot := Kernel.stackOrg;
     mappedSector := Kernel.filemapsize + 1;
     addressOVM := SYSTEM.ADR(OverlayManager);
     (* load location of the overlay manager to predetermined reg *)
+    (* note: needs cooperation from the compiler! *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
   END Init;
 
