@@ -1,6 +1,6 @@
 MODULE Overlays;
   IMPORT SYSTEM, Kernel, FileDir, Files;
-  CONST numBaseOverlays = 200;
+  CONST numBaseOverlays = 300;
     numExtendOverlays = 50;
     maxNumProcs* = 200;
     maxNumMods* = 10;
