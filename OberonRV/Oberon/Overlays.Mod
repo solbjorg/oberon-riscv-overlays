@@ -136,12 +136,17 @@ MODULE Overlays;
     IF lruOv # NIL THEN Evict(lruOv) END;
   END EvictLRUOverlay; *)
 
+  PROCEDURE GetOverlay(index: INTEGER): Overlay;
+  BEGIN
+    RETURN SYSTEM.VAL(Overlay, overlayTableRoot + index * overlayDescSize)
+  END GetOverlay;
+
   PROCEDURE CollectOverlays;
     VAR mark, i: INTEGER;
       ov: Overlay;
   BEGIN
     FOR i := 0 TO numGeneratedOverlays-1 DO
-      ov := overlays[i];
+      ov := GetOverlay(i);
       IF ov.mapped > 0 THEN
         SYSTEM.GET(ov.mapped-4, mark);
         IF mark = -1 THEN
@@ -160,8 +165,8 @@ MODULE Overlays;
     IF loc >= Kernel.heapOrg THEN
       i := 0;
       WHILE (i < numGeneratedOverlays) & (result = NIL) DO
-        m := overlays[i];
-        IF (loc > m.mapped) & (loc < m.mapped + m.size)  THEN
+        m := GetOverlay(i);
+        IF (loc > m.mapped) & (loc < m.mapped + m.heapsize)  THEN
           result := m.mod;
         END;
         INC(i);
@@ -177,7 +182,7 @@ MODULE Overlays;
     VAR i, mark: INTEGER; ov: Overlay;
   BEGIN
     FOR i := 0 TO numGeneratedOverlays-1 DO
-      ov := overlays[i];
+      ov := GetOverlay(i);
       IF ov.mapped > 0 THEN
         Evict(ov);
       END;
@@ -306,29 +311,9 @@ MODULE Overlays;
 
     k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)
     old := NIL;
-    (* if an indirect function call, we can't easily determine what function it was called from *)
-    (* note: this shouldn't be necessary with a "call tree" approach! *)
-    IF k < 0 THEN
-      IF SYSTEM.REG(1) >= Kernel.heapOrg THEN
-        k := 0;
-        WHILE (k < numGeneratedOverlays) & (old = NIL) DO
-          ov := overlays[k];
-          IF (SYSTEM.REG(1) > ov.mapped) & (SYSTEM.REG(1) < ov.mapped + ov.size)  THEN
-            old := ov;
-            SYSTEM.PUT(-60, old.mod.num);
-            SYSTEM.PUT(-60, old.pno);
-          END;
-          INC(k);
-        END;
-      END;
-    ELSE old := overlays[k];
-    END;
-    IF old # NIL THEN
-      (*ASSERT(old.mapped # 0);*)
-      offset := SYSTEM.REG(1) - old.mapped;
-    END;
 
-    ov := overlays[SYSTEM.REG(30) DIV 2 MOD 4000H];
+    (* calculate location of ov in overlay table *)
+    ov := SYSTEM.VAL(Overlay, overlayTableRoot + (SYSTEM.REG(30) DIV 2 MOD 4000H) * overlayDescSize);
     SYSTEM.PUT(-60, 0EAEAH);
     IF ov.mapped = 0 THEN
       LoadOverlay(ov);
@@ -404,13 +389,13 @@ MODULE Overlays;
 
   (* Return the overlay index corresponding to entry point (mno, pno) *)
   PROCEDURE FindOverlayIndex*(mno, pno: INTEGER): INTEGER;
-    VAR index: INTEGER;
+    VAR index: INTEGER; ov: Overlay;
   BEGIN
-    index := numGeneratedOverlays-1;
-    WHILE (index > 0) & ((mno # overlays[index].mod.num) OR (pno # overlays[index].pno)) DO
-      DEC(index)
+    index := numGeneratedOverlays-1; ov := GetOverlay(index);
+    WHILE (index > 0) & ((mno # ov.mod.num) OR (pno # ov.pno)) DO
+      DEC(index); ov := GetOverlay(index);
     END;
-    ASSERT((overlays[index].mod.num = mno) & (overlays[index].pno = pno))
+    ASSERT((ov.mod.num = mno) & (ov.pno = pno))
     RETURN index
   END FindOverlayIndex;
 
@@ -435,7 +420,7 @@ MODULE Overlays;
       SYSTEM.PUT(-60, ov.size);
       SYSTEM.PUT(-60, ov.heapsize);
       (*SYSTEM.EBREAK();*)
-      overlays[numGeneratedOverlays] := ov;
+      (*overlays[numGeneratedOverlays] := ov;*)
       IF numGeneratedOverlays < numBaseOverlays-1 THEN
         INC(numGeneratedOverlays);
       ELSE
@@ -451,7 +436,7 @@ MODULE Overlays;
   PROCEDURE WriteOverlay*(index, addr: INTEGER; mod: Module);
     VAR i, sec: INTEGER; ov: Overlay;
   BEGIN
-    ov := overlays[index];
+    ov := GetOverlay(index);
     sec := mappedSector;
     FOR i := 0 TO ov.size BY FileDir.SectorSize DO
       Kernel.PutMemToSector(mappedSector*29, mod.code + addr + i, ov.size - i);
@@ -481,7 +466,7 @@ MODULE Overlays;
     mappedSector := Kernel.filemapsize + 1;
     addressOVM := SYSTEM.ADR(OverlayManager);
     (* load location of the overlay manager to predetermined reg *)
-    (* note: needs cooperation from the compiler! *)
+    (* note: needs cooperation from the compiler *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
   END Init;
 
