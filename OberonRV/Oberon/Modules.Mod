@@ -20,6 +20,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     AllocPtr*, res*: INTEGER;
     importing*, imported*: Overlays.ModuleName;
     limit*: INTEGER;
+    codeFilePos: INTEGER;
 
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
   BEGIN res := n; importing := name;
@@ -146,61 +147,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END FindProcCalls;
   *)
 
-  PROCEDURE FixupOverlayTokens(mod: Overlays.Module; fixorgS, numprocs: INTEGER);
-    VAR adr, mno, pno, imm, inst, reg, callerIndex, index, callerPno, disp: INTEGER;
-      generating: BOOLEAN;
-      impmod: Overlays.Module;
-  BEGIN
-    adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)
-    WHILE adr # mod.code DO
-      SYSTEM.GET(adr, inst);
-      disp := inst DIV 10000H;
-      callerPno := inst DIV 100H MOD 100H;
-      generating := SYSTEM.VAL(BOOLEAN, inst MOD 2);
-      reg  := inst DIV 2 MOD 20H;
-      (* fixup LUI *)
-      SYSTEM.GET(adr-4, inst);
-      imm := inst DIV C12;
-      mno := imm MOD C12;
-      pno := imm DIV C12;
-      IF mno <= 0 THEN
-        mno := mod.num;
-      ELSE
-        SYSTEM.GET(mod.imp + (mno-1)*4, impmod); mno := impmod.num;
-        (* TODO: too much indirection! *)
-        SYSTEM.GET(impmod.ent + pno*4, pno);
-      END;
-      IF mno > 5 THEN
-        index := Overlays.FindOverlayIndex(mno, pno);
-        IF ~generating THEN
-          IF callerPno # 0FFH THEN callerIndex := Overlays.FindOverlayIndex(mod.num, callerPno)
-          ELSE callerIndex := -1;
-          END;
-        ELSE callerIndex := -1;
-        END;
-        (*offset := Overlays.FindProcedureOffset(mno, pno, index);*)
-      ELSE
-        (* in inner core; no overlays exist *)
-        index := 0; callerIndex := 0;
-      END;
-      (*ASSERT(offset DIV 4 < 1000H);*)
-      inst := (inst - LSL(imm MOD C20, 12)) + LSL(callerIndex, 15) + LSL(index DIV 800H MOD 8H, 12);
-      SYSTEM.PUT(adr-4, inst);
-
-      inst := LSL(index MOD 800H, 1) + 1;
-      SYSTEM.PUT(adr, Addi(reg, inst));
-      (* if MSB of the imm in the addi instruction is 1, it *)
-      (* will be sign extended; so we need to change the imm*)
-      (* in the lui instruction to compensate by adding 1   *)
-      IF inst >= 2048 THEN
-        SYSTEM.GET(adr-4, inst);
-        imm := inst DIV C12;
-        inst := (inst - LSL(imm MOD C20, 12)) + LSL(imm + 1 MOD C20, 12);
-        SYSTEM.PUT(adr-4, inst);
-      END;
-      adr := mod.code + disp*4;
-    END ;
-  END FixupOverlayTokens;
 
   PROCEDURE SetRoot(r: Overlays.Module);
   BEGIN root := r;
@@ -217,6 +163,117 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       IF (i < 32) & (ch = 0X) THEN res := 0 END
     END
   END Check;
+
+  PROCEDURE FixupOverlayTokens(mapped, adr, size: INTEGER; VAR fixorgS: INTEGER; mod: Overlays.Module);
+    VAR mno, pno, imm, inst, reg, callerIndex, index, callerPno, disp: INTEGER;
+      procVar: BOOLEAN;
+      impmod: Overlays.Module;
+  BEGIN
+    (*adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)*)
+    WHILE fixorgS > adr DO
+      SYSTEM.PUT(-60, 0FAFAH);
+      SYSTEM.PUT(-60, fixorgS);
+      SYSTEM.GET(mapped + fixorgS - adr, inst);
+      disp := inst DIV 10000H;
+        SYSTEM.PUT(-60, disp);
+      callerPno := inst DIV 100H MOD 100H;
+      procVar := SYSTEM.VAL(BOOLEAN, inst MOD 2);
+      reg  := inst DIV 2 MOD 20H;
+      (* fixup LUI *)
+      SYSTEM.GET(mapped + fixorgS - adr-4, inst);
+      imm := inst DIV C12;
+      mno := imm MOD C12;
+      pno := imm DIV C12;
+      IF mno <= 0 THEN
+        mno := mod.num;
+      ELSE
+        SYSTEM.PUT(-60, mno);
+        SYSTEM.GET(mod.imp + (mno-1)*4, impmod); mno := impmod.num;
+        SYSTEM.GET(impmod.ent + pno*4, pno);
+      END;
+      IF mno > 5 THEN
+        index := Overlays.FindOverlayIndex(mno, pno);
+        IF ~procVar THEN
+          IF callerPno # 0FFH THEN callerIndex := Overlays.FindOverlayIndex(mod.num, callerPno)
+          ELSE callerIndex := -1;
+          END;
+        ELSE callerIndex := -1;
+        END;
+        (*offset := Overlays.FindProcedureOffset(mno, pno, index);*)
+      ELSE
+        (* in inner core; no overlays exist *)
+        index := 0; callerIndex := 0;
+      END;
+      (*ASSERT(offset DIV 4 < 1000H);*)
+      SYSTEM.PUT(-60, 555H);
+      SYSTEM.PUT(-60, mod.num);
+      SYSTEM.PUT(-60, callerIndex);
+      SYSTEM.PUT(-60, index);
+      inst := (inst - LSL(imm MOD C20, 12)) + LSL(callerIndex, 15) + LSL(index DIV 800H MOD 8H, 12);
+      SYSTEM.PUT(mapped + fixorgS - adr-4, inst);
+
+      inst := LSL(index MOD 800H, 1) + 1;
+      SYSTEM.PUT(mapped + fixorgS - adr, Addi(reg, inst));
+      (* if MSB of the imm in the addi instruction is 1, it *)
+      (* will be sign extended; so we need to change the imm*)
+      (* in the lui instruction to compensate by adding 1   *)
+      IF inst >= 2048 THEN
+        SYSTEM.GET(mapped + fixorgS - adr-4, inst);
+        imm := inst DIV C12;
+        inst := (inst - LSL(imm MOD C20, 12)) + LSL(imm + 1 MOD C20, 12);
+        SYSTEM.PUT(mapped + fixorgS - adr-4, inst);
+      END;
+      fixorgS := disp*4;
+    END ;
+  END FixupOverlayTokens;
+  (* mapped: location the procedure has been written to in memory *)
+  (* adr, size: address in code in which this procedure begins, and its size *)
+  (* fixorgD,T,S: the current part of the list. VAR so that they can be preserved for next call *)
+  PROCEDURE FixupProcD(mapped, adr, size: INTEGER; VAR fixorgD: INTEGER; mod: Overlays.Module);
+    VAR v, inst, mno, disp, offset, op, vno, imm: INTEGER; impmod: Overlays.Module;
+  BEGIN
+    WHILE fixorgD > adr DO
+      SYSTEM.PUT(-60, 0AEAEH);
+      SYSTEM.PUT(-60, fixorgD);
+      (* fixorgD is given with respect to the location in the module's code file *)
+      (* To convert it from the position of the module's code file to the proc's position *)
+      (* in memory, take fixorgD - adr; as fixorgD > adr is guaranteed to hold, this gives *)
+      (* the specific location in the procedure. Add that to mapped to get the actual location *)
+      (* in memory *)
+      SYSTEM.GET(mapped + fixorgD - adr, inst);
+        SYSTEM.PUT(-60, 0FFEFEFH);
+      mno := inst DIV 10H MOD 128;
+      disp := inst DIV 10000H;
+        SYSTEM.PUT(-60, disp);
+      IF mno = 0 THEN (*global*)
+        SYSTEM.PUT(mapped + fixorgD - adr, Lw(mod.num * 4))
+      ELSE (*import*)
+        SYSTEM.GET(mod.imp + (mno-1)*4, impmod); v := impmod.num;
+        SYSTEM.PUT(-60, v);
+        SYSTEM.PUT(mapped + fixorgD - adr, Lw(v * 4));
+        SYSTEM.GET(mapped + fixorgD - adr + 4, inst);
+        op := inst MOD 80H;
+        IF (op = addi) OR (op = load) THEN
+          imm := inst DIV 100000H;
+        ELSIF op = store THEN
+          imm := LSL(inst DIV 2000000H MOD 80H, 5) + (inst DIV 80H MOD 20H);
+        END;
+        vno := imm MOD 100H;
+        SYSTEM.GET(impmod.ent + vno*4, offset);
+        (* If the bit at (imm DIV 100H) is 1, then we are referring to a procedure in a different module *)
+        IF ODD(imm DIV 100H) THEN
+          offset := offset * 4 + impmod.procs - impmod.data
+        END;
+        IF (op = store) THEN
+          SYSTEM.PUT(mapped + fixorgD - adr + 4, (inst - LSL(imm MOD 20H, 7) - LSL(imm DIV 20H, 25)) + LSL(offset MOD 20H, 7) + LSL(offset DIV 20H, 25));
+        ELSE
+          SYSTEM.PUT(mapped + fixorgD - adr + 4, (inst - LSL(imm, 20)) + LSL(offset, 20));
+        END;
+        SYSTEM.PUT(-60, offset);
+      END ;
+      fixorgD := disp*4;
+    END ;
+  END FixupProcD;
 
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Overlays.Module);
     (*search module in list; if not found, load module.
@@ -333,11 +390,15 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         SYSTEM.PUT(p, 0); INC(p, 4);
         mod.code := p;  (*program*)
         (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
-        Files.ReadInt(R, n); (*) Files.Set(R, F, Files.Pos(R) + n); (*skip code*)*)
-        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*program code*)
+        Files.ReadInt(R, n);
+        codeFilePos := Files.Pos(R);
+        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*entry code*)
+        (*Files.Set(R, F, Files.Pos(R) + n); (*skip code*)*)
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
         Files.ReadInt(R, w);
         body := SYSTEM.VAL(Command, mod.code + w);
+        (*Files.Set(R, F, codeFilePos + w);*)
+        (*WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*entry code*)*)
         (* generate node for linked module *)
         Files.Read(R, ch);
         IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
@@ -346,38 +407,28 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         Kernel.SetAllocPtr(AllocPtr);
       END ;
       IF res = 0 THEN
+        (* This has to be redone when procs aren't all in memory at once! *)
+        Overlays.NewOverlay(mod, procs, numprocs);
         (*fixup of LDR/STR/ADD*)
-        adr := mod.code + fixorgD*4;
-        WHILE adr # mod.code DO
-          SYSTEM.GET(adr, inst);
-          mno := inst DIV 10H MOD 128;
-          disp := inst DIV 10000H;
-          IF mno = 0 THEN (*global*)
-            SYSTEM.PUT(adr, Lw(mod.num * 4))
-          ELSE (*import*)
-            SYSTEM.GET(mod.imp + (mno-1)*4, impmod); v := impmod.num;
-            SYSTEM.PUT(adr, Lw(v * 4));
-            SYSTEM.GET(adr+4, inst);
-            op := inst MOD 80H;
-            IF (op = addi) OR (op = load) THEN
-              imm := inst DIV 100000H;
-            ELSIF op = store THEN
-              imm := LSL(inst DIV 2000000H MOD 80H, 5) + (inst DIV 80H MOD 20H);
-            END;
-            vno := imm MOD 100H;
-            SYSTEM.GET(impmod.ent + vno*4, offset);
-            (* If the bit at (imm DIV 100H) is 1, then we are referring to a procedure in a different module *)
-            IF ODD(imm DIV 100H) THEN
-              offset := offset * 4 + impmod.procs - impmod.data
-            END;
-            IF (op = store) THEN
-              SYSTEM.PUT(adr+4, (inst - LSL(imm MOD 20H, 7) - LSL(imm DIV 20H, 25)) + LSL(offset MOD 20H, 7) + LSL(offset DIV 20H, 25));
-            ELSE
-              SYSTEM.PUT(adr+4, (inst - LSL(imm, 20)) + LSL(offset, 20));
-            END;
-          END ;
-          adr := mod.code + disp*4
-        END ;
+        fixorgD := fixorgD * 4; fixorgS := fixorgS * 4;
+          SYSTEM.PUT(-60, 0055555H);
+          SYSTEM.PUT(-60, fixorgS);
+          SYSTEM.PUT(-60, fixorgD);
+          SYSTEM.PUT(-60, w);
+        FixupProcD(mod.code+w, w, 0, fixorgD, mod);
+        FixupOverlayTokens(mod.code+w, w, 0, fixorgS, mod);
+        SYSTEM.PUT(-60, 0A5A5H);
+        FOR i := 0 TO numprocs-1 DO
+          SYSTEM.PUT(-60, procs[i].addr);
+        END;
+        SYSTEM.PUT(-60, 0A5A5H);
+        FOR i := numprocs-1 TO 0 BY -1 DO
+          (*Files.Set(R, F, codeFilePos + procs[i].addr); (*jump to the part we want to write into memory*)*)
+
+          FixupProcD(mod.code + procs[i].addr, procs[i].addr, procs[i].size, fixorgD, mod);
+          (* fixup overlay tokens with overlay indices *)
+          FixupOverlayTokens(mod.code + procs[i].addr, procs[i].addr, procs[i].size, fixorgS, mod);
+        END;
         (* iterate over procs in module *)
         (*FindProcCalls(mod, fixorgS);*)
         (*Overlays.CollapseNode(nodes[0]);*)
@@ -385,11 +436,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         FOR i := 0 TO numprocs-1 DO
           SYSTEM.PUT(-60, procs[i].size)
         END;
-        Overlays.NewOverlay(mod, procs, numprocs);
-        (* fixup overlay tokens with overlay indices *)
-        FixupOverlayTokens(mod, fixorgS, numprocs);
-        (* write Module.fix *)
-        (*nodes[0].mods[0].sec := Overlays.WriteFixedModule(mod, w);*)
         (* after fixups are done, write overlay file *)
         FOR i := 0 TO numprocs-1 DO
           Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, i), procs[i].addr, mod);
