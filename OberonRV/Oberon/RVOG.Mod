@@ -627,7 +627,9 @@ BEGIN
   RETURN LSL(pno MOD C8, 24) + LSL(mno MOD C12, 12)
 END GenerateOverlayToken;
 
-PROCEDURE PutOverlayToken(r, pno, mno: INTEGER; generating: BOOLEAN);
+(* procVar: whether it's being saved to a variable or not; i.e., *)
+(*          procVar = TRUE: this is being saved to a variable    *)
+PROCEDURE PutOverlayToken(r, pno, mno: INTEGER; procVar: BOOLEAN);
   VAR a: INTEGER;
 BEGIN
   put(RVAssem.lui(r, GenerateOverlayToken(pno, mno)));
@@ -635,7 +637,7 @@ BEGIN
   (* Note that the linker will already know what module this call is coming from; so that information *)
   (* is useless (and impossible to know compile-time anyway). *)
   (* This will be replaced with a `addi` call in the linker. *)
-  IF generating THEN a := 1 ELSE a := 0 END;
+  IF procVar THEN a := 1 ELSE a := 0 END;
   IF entry >= 0 THEN (* special handling for caller index in entry *)
     put(LSL(fixorgS MOD C16, 16) + LSL((-1) MOD C8, 8) + LSL(r MOD 20H, 1) + a);
   ELSE
