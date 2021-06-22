@@ -246,7 +246,9 @@ MODULE Overlays;
     mod := LocateMod(loc);
     EvictAllOverlays;
     GC(0, FALSE);
-    OberonReset(trap, mod);
+    IF OberonReset # NIL THEN OberonReset(trap, mod);
+    ELSE REPEAT UNTIL FALSE
+    END;
   END Reset;
 
 
@@ -317,7 +319,6 @@ MODULE Overlays;
 
     (* calculate location of ov in overlay table *)
     ov := SYSTEM.VAL(Overlay, overlayTableRoot + (SYSTEM.REG(30) DIV 2 MOD 4000H) * overlayDescSize);
-    SYSTEM.PUT(-60, 0EAEAH);
     IF ov.mapped = 0 THEN
       LoadOverlay(ov);
       SYSTEM.PUT(-60, 1);
@@ -417,7 +418,6 @@ MODULE Overlays;
       ELSE ov.heapsize := (procs[i].size+271) DIV 256 * 256
       END ;
 
-      SYSTEM.PUT(-60, ov.heapsize);
       (*SYSTEM.EBREAK();*)
       (*overlays[numGeneratedOverlays] := ov;*)
       IF numGeneratedOverlays < numBaseOverlays-1 THEN
@@ -432,17 +432,15 @@ MODULE Overlays;
 
   (* Write Overlay.ovl based on index into overlay table *)
   (* index: index into ov table; addr: relative address within module; mod: relevant module *)
-  PROCEDURE WriteOverlay*(index, addr: INTEGER; mod: Module);
-    VAR i, sec: INTEGER; ov: Overlay;
+  PROCEDURE WriteOverlay*(index, mapped: INTEGER);
+    VAR i: INTEGER; ov: Overlay;
   BEGIN
     ov := GetOverlay(index);
-    sec := mappedSector;
+    ov.sector := mappedSector;
     FOR i := 0 TO ov.heapsize-overlayPrefixSize BY FileDir.SectorSize DO
-      Kernel.PutMemToSector(mappedSector*29, mod.code + addr + i, ov.heapsize-overlayPrefixSize - i);
+      Kernel.PutMemToSector(mappedSector*29, mapped + i, ov.heapsize-overlayPrefixSize - i);
       INC(mappedSector);
     END;
-
-    ov.sector := sec;
   END WriteOverlay;
 
   PROCEDURE SetReset*(reset: ResetFunc);
@@ -459,6 +457,7 @@ MODULE Overlays;
   BEGIN
     Kernel.SetGC(SYSTEM.ADR(GC));
     Kernel.SetReset(SYSTEM.ADR(Reset));
+    OberonReset := NIL;
     numGeneratedOverlays := 0;
     allocated := 0;
     overlayTableRoot := Kernel.stackOrg;

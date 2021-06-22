@@ -3,7 +3,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   CONST versionkey = 1X; MT = 4; DescSize = 84;
     addi = 19; load = 3; store = 35;
     SB = 3;
-    MTOrg* = 20H;
+    MTOrg* = 20H; maxProcSize = 3000;
     (* Useful constants for bit manip *)
     C28 = 10000000H;
     C24 = 1000000H;
@@ -16,11 +16,14 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   TYPE Command* = PROCEDURE;
 
+    FixupProcedure = RECORD
+      inst: ARRAY maxProcSize OF INTEGER;
+    END;
+
   VAR root*, M: Overlays.Module;
     AllocPtr*, res*: INTEGER;
     importing*, imported*: Overlays.ModuleName;
     limit*: INTEGER;
-    codeFilePos: INTEGER;
 
   PROCEDURE error(n: INTEGER; name: ARRAY OF CHAR);
   BEGIN res := n; importing := name;
@@ -164,12 +167,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END
   END Check;
 
-  PROCEDURE FixupOverlayTokens(mapped, adr, size: INTEGER; VAR fixorgS: INTEGER; mod: Overlays.Module);
+  PROCEDURE FixupOverlayTokens(mapped, adr: INTEGER; VAR fixorgS: INTEGER; mod: Overlays.Module);
     VAR mno, pno, imm, inst, reg, callerIndex, index, callerPno, disp: INTEGER;
       procVar: BOOLEAN;
       impmod: Overlays.Module;
   BEGIN
-    (*adr := mod.code + fixorgS*4; (* fixup of overlay address tokens *)*)
     WHILE fixorgS > adr DO
       SYSTEM.PUT(-60, 0FAFAH);
       SYSTEM.PUT(-60, fixorgS);
@@ -226,10 +228,11 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       fixorgS := disp*4;
     END ;
   END FixupOverlayTokens;
+
   (* mapped: location the procedure has been written to in memory *)
   (* adr, size: address in code in which this procedure begins, and its size *)
   (* fixorgD,T,S: the current part of the list. VAR so that they can be preserved for next call *)
-  PROCEDURE FixupProcD(mapped, adr, size: INTEGER; VAR fixorgD: INTEGER; mod: Overlays.Module);
+  PROCEDURE FixupProcD(mapped, adr: INTEGER; VAR fixorgD: INTEGER; mod: Overlays.Module);
     VAR v, inst, mno, disp, offset, op, vno, imm: INTEGER; impmod: Overlays.Module;
   BEGIN
     WHILE fixorgD > adr DO
@@ -241,10 +244,10 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       (* the specific location in the procedure. Add that to mapped to get the actual location *)
       (* in memory *)
       SYSTEM.GET(mapped + fixorgD - adr, inst);
-        SYSTEM.PUT(-60, 0FFEFEFH);
+      SYSTEM.PUT(-60, 0FFEFEFH);
       mno := inst DIV 10H MOD 128;
       disp := inst DIV 10000H;
-        SYSTEM.PUT(-60, disp);
+      SYSTEM.PUT(-60, disp);
       IF mno = 0 THEN (*global*)
         SYSTEM.PUT(mapped + fixorgD - adr, Lw(mod.num * 4))
       ELSE (*import*)
@@ -280,17 +283,18 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
       res = 4: bad file version; res = 5: corrupted file; res = 7: no space*)
     VAR mod, impmod: Overlays.Module;
-      i, n, m, key, impkey, mno, numprocs, nofimps, size: INTEGER;
+      i, j, n, m, key, impkey, mno, numprocs, nofimps, size: INTEGER;
       p, u, v, w: INTEGER;  (*addresses*)
       ch: CHAR;
       body: Command;
       F: Files.File; R: Files.Rider;
       fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
-      op, imm, disp, adr, inst, pno, vno, dest, offset, index: INTEGER;
+      op, imm, disp, adr, inst, pno, vno, dest, offset, index, codeFilePos, largest: INTEGER;
       name1, impname: Overlays.ModuleName;
       (* used for constructing call graph *)
       procs: ARRAY Overlays.maxNumProcs OF Overlays.Procedure;
-      tempProc: Overlays.Procedure;
+      tempProc, fixup: Overlays.Procedure;
+      dummy: POINTER TO FixupProcedure;
       import: ARRAY 16 OF Overlays.Module;
 
   BEGIN
@@ -411,34 +415,48 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         Overlays.NewOverlay(mod, procs, numprocs);
         (*fixup of LDR/STR/ADD*)
         fixorgD := fixorgD * 4; fixorgS := fixorgS * 4;
-          SYSTEM.PUT(-60, 0055555H);
-          SYSTEM.PUT(-60, fixorgS);
-          SYSTEM.PUT(-60, fixorgD);
-          SYSTEM.PUT(-60, w);
-        FixupProcD(mod.code+w, w, 0, fixorgD, mod);
-        FixupOverlayTokens(mod.code+w, w, 0, fixorgS, mod);
-        SYSTEM.PUT(-60, 0A5A5H);
-        FOR i := 0 TO numprocs-1 DO
-          SYSTEM.PUT(-60, procs[i].addr);
-        END;
-        SYSTEM.PUT(-60, 0A5A5H);
+        FixupProcD(mod.code+w, w, fixorgD, mod);
+        FixupOverlayTokens(mod.code+w, w, fixorgS, mod);
+        NEW(dummy); ASSERT(dummy # NIL);
+        m := 07FFFFFFFH; largest := 0;
         FOR i := numprocs-1 TO 0 BY -1 DO
-          (*Files.Set(R, F, codeFilePos + procs[i].addr); (*jump to the part we want to write into memory*)*)
+          (* Find the next procedure that needs to be fixed up *)
+          (* This has to be done because nested procs mess up the *)
+          (* ordering of procs[], as the outer proc will appear *before* *)
+          (* the nested procs in procs[] but *after* them in code. So we should *)
+          (* fixup the outer one before the inner ones. *)
+          (* TODO, this can be made more elegant *)
+          largest := 0;
+          FOR j := numprocs-1 TO 0 BY -1 DO
+            IF (procs[j].addr < m) & (procs[j].addr > largest) THEN
+              largest := procs[j].addr;
+              index := j;
+            END;
+          END;
+          (* need to translate this from addr to index *)
+          m := largest;
+          Files.Set(R, F, codeFilePos + (procs[index].addr)); (*jump to the part we want to write into memory*)
+          SYSTEM.PUT(-60, 0AEDEAH);
+          SYSTEM.PUT(-60, codeFilePos);
+          SYSTEM.PUT(-60, procs[index].index);
+          SYSTEM.PUT(-60, procs[index].addr);
+          SYSTEM.PUT(-60, procs[index].size);
+          FOR p := 0 TO procs[index].size BY 4 DO
+            Files.ReadInt(R, w); SYSTEM.PUT(SYSTEM.ADR(dummy.inst) + p, w);
+          END ;  (*proc code*)
 
-          FixupProcD(mod.code + procs[i].addr, procs[i].addr, procs[i].size, fixorgD, mod);
+          FixupProcD(SYSTEM.ADR(dummy.inst), procs[index].addr, fixorgD, mod);
           (* fixup overlay tokens with overlay indices *)
-          FixupOverlayTokens(mod.code + procs[i].addr, procs[i].addr, procs[i].size, fixorgS, mod);
+          FixupOverlayTokens(SYSTEM.ADR(dummy.inst), procs[index].addr, fixorgS, mod);
+          Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, procs[index].index), SYSTEM.ADR(dummy.inst));
         END;
+        dummy := NIL;
         (* iterate over procs in module *)
         (*FindProcCalls(mod, fixorgS);*)
         (*Overlays.CollapseNode(nodes[0]);*)
         SYSTEM.PUT(-60, numprocs);
         FOR i := 0 TO numprocs-1 DO
           SYSTEM.PUT(-60, procs[i].size)
-        END;
-        (* after fixups are done, write overlay file *)
-        FOR i := 0 TO numprocs-1 DO
-          Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, i), procs[i].addr, mod);
         END;
         (*fixup of type descriptors*)
         adr := mod.data + fixorgT*4;
