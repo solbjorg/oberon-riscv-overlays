@@ -393,30 +393,35 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         WHILE w >= 0 DO SYSTEM.PUT(p, mod.data + w); INC(p, 4); Files.ReadInt(R, w) END ;
         SYSTEM.PUT(p, 0); INC(p, 4);
         mod.code := p;  (*program*)
+        body := SYSTEM.VAL(Command, mod.code);
+        AllocPtr := mod.code;
+        Kernel.SetAllocPtr(AllocPtr);
         (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
         Files.ReadInt(R, n);
         codeFilePos := Files.Pos(R);
-        WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*entry code*)
-        (*Files.Set(R, F, Files.Pos(R) + n); (*skip code*)*)
+        Files.Set(R, F, codeFilePos + n * 4); (*jump past all code  *)
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
         Files.ReadInt(R, w);
-        body := SYSTEM.VAL(Command, mod.code + w);
-        (*Files.Set(R, F, codeFilePos + w);*)
-        (*WHILE n > 0 DO Files.ReadInt(R, w); SYSTEM.PUT(p, w); INC(p, 4); DEC(n) END ;  (*entry code*)*)
-        (* generate node for linked module *)
         Files.Read(R, ch);
+        SYSTEM.PUT(-60, fixorgD);
+        Files.Set(R, F, codeFilePos + w); (*jump to entry *)
+        size := n*4 - w;
+        SYSTEM.PUT(-60, size);
+        WHILE size < n*4 DO Files.ReadInt(R, m); SYSTEM.PUT(p, m);
+          SYSTEM.PUT(-60, size);
+          INC(p, 4); INC(size, 4) END ;  (*entry code*)
+        (* generate node for linked module *)
         IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
         (* set alloc ptr such that the next loaded module will overwrite this one *)
-        AllocPtr := mod.code;
-        Kernel.SetAllocPtr(AllocPtr);
       END ;
       IF res = 0 THEN
-        (* This has to be redone when procs aren't all in memory at once! *)
         Overlays.NewOverlay(mod, procs, numprocs);
         (*fixup of LDR/STR/ADD*)
         fixorgD := fixorgD * 4; fixorgS := fixorgS * 4;
-        FixupProcD(mod.code+w, w, fixorgD, mod);
-        FixupOverlayTokens(mod.code+w, w, fixorgS, mod);
+        SYSTEM.PUT(-60, 0FFFEEH);
+        FixupProcD(mod.code, w, fixorgD, mod);
+        FixupOverlayTokens(mod.code, w, fixorgS, mod);
+        SYSTEM.PUT(-60, 0FFFEEH);
         NEW(dummy); ASSERT(dummy # NIL);
         m := 07FFFFFFFH; largest := 0;
         FOR i := numprocs-1 TO 0 BY -1 DO
