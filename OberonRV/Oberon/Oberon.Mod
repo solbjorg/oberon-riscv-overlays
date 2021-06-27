@@ -71,6 +71,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     Mod: Overlays.Module;
     ResetMessage: PROCEDURE(trap: INTEGER; mod: Overlays.Module);
     failedReset: BOOLEAN; (* true when system has failed once to reset itself *)
+    res: INTEGER;
 
   (*user identification*)
 
@@ -407,14 +408,15 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   END SetResetMessage;
 
   PROCEDURE Init;
-    VAR i: INTEGER;
   BEGIN
-    SYSTEM.PUT(-60, 70H);
-    Modules.Load("System", Mod);
     Overlays.SetReset(Reset);
+    SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*)
+    Modules.Load("System", Mod);
     failedReset := FALSE;
     Mod := NIL;
-    SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
+    Overlays.EvictAllOverlays();
+    SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*)
+    Loop
   END Init;
 
 BEGIN

@@ -8,6 +8,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   VAR W: Texts.Writer;
     pat: ARRAY 32 OF CHAR;
+    systemtool: Display.Frame;
 
   PROCEDURE GetArg(VAR S: Texts.Scanner);
     VAR T: Texts.Text; beg, end, time: LONGINT;
@@ -374,6 +375,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     Oberon.AllocateSystemViewer(0, X, Y);
     menu := TextFrames.NewMenu("System.Tool", StandardMenu);
     main := TextFrames.NewText(TextFrames.Text("System.Tool"), 0);
+    systemtool := main;
     toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y)
   END OpenViewers;
 
@@ -432,11 +434,16 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     SYSTEM.PUT(-60, 0FAEAH);
   END ResetMessage;
 
+  PROCEDURE RunTest;
+  BEGIN
+    TextFrames.Call(SYSTEM.VAL(TextFrames.Frame, systemtool), 0, FALSE);
+  END RunTest;
+
 BEGIN
   Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
   (*Overlays.SetReset(ResetOVM);*)
   Oberon.SetResetMessage(ResetMessage);
   (*Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);*)
-  Watch;
+  RunTest;
 END System.
