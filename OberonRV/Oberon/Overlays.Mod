@@ -1,6 +1,6 @@
 MODULE Overlays;
   IMPORT SYSTEM, Kernel, FileDir, Files;
-  CONST numBaseOverlays = 300;
+  CONST numBaseOverlays = 500;
     numExtendOverlays = 50;
     maxNumProcs* = 200;
     maxNumMods* = 10;
@@ -59,6 +59,7 @@ MODULE Overlays;
     mappedSector, addressOVM*: INTEGER;
     root: Module;
     OberonReset: ResetFunc;
+    loadedOverlays*: INTEGER;
 
     (*
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
@@ -213,7 +214,7 @@ MODULE Overlays;
   PROCEDURE GC*(blockSizeNeeded: INTEGER; isData: BOOLEAN);
     VAR mod: Module; ov: Overlay;
   BEGIN
-    SYSTEM.PUT(-60, 06CH);
+    SYSTEM.PUT(-60, 06C6C6C6CH);
     (*SYSTEM.EBREAK();*)
     mod := root;
     WHILE mod # NIL DO
@@ -237,7 +238,7 @@ MODULE Overlays;
         GC(blockSizeNeeded, isData);
       END;
     END; *)
-    SYSTEM.PUT(-60, 0C6H);
+    SYSTEM.PUT(-60, 0C6C6C6C6H);
   END GC;
 
   PROCEDURE Reset*(trap, loc: INTEGER);
@@ -279,6 +280,7 @@ MODULE Overlays;
       Kernel.NewOverlay(ov.mapped, ov.heapsize);
       IF ov.mapped = 0 THEN
         (* allocation failed again - no contiguous memory can be allocated. panic. *)
+        SYSTEM.EBREAK();
         Reset(0, 0);
       END;
     END;
@@ -287,6 +289,7 @@ MODULE Overlays;
     END;
     (*FillTOC(ov, FALSE);*)
     INC(allocated, ov.heapsize);
+    INC(loadedOverlays);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -294,60 +297,28 @@ MODULE Overlays;
     RETURN LSL(-1, 15) + LSL(index MOD 8000H, 1) + 1
   END GetOverlayToken;
 
-  PROCEDURE ChangeMark(ov: Overlay; increase: BOOLEAN);
-    VAR mark: INTEGER;
-  BEGIN
-    SYSTEM.GET(ov.mapped-4, mark);
-    SYSTEM.PUT(-60, mark);
-    IF increase THEN
-      IF mark < -1 THEN
-        INC(mark)
-      END;
-    ELSE DEC(mark)
-    END;
-    SYSTEM.PUT(ov.mapped-4, mark);
-  END ChangeMark;
-
   PROCEDURE OverlayManager*();
     VAR k, offset: INTEGER;
       ov, old: Overlay; body: Func;
   BEGIN
     SYSTEM.REGSTACK(20);
 
-    k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)
-    old := NIL;
+    (*k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)*)
 
     (* calculate location of ov in overlay table *)
     ov := SYSTEM.VAL(Overlay, overlayTableRoot + (SYSTEM.REG(30) DIV 2 MOD 4000H) * overlayDescSize);
-    IF ov.mapped = 0 THEN
-      LoadOverlay(ov);
-      SYSTEM.PUT(-60, 1);
-    ELSE
-      SYSTEM.PUT(-60, 0);
-    END;
+    IF ov.mapped = 0 THEN LoadOverlay(ov); END;
 
-    SYSTEM.PUT(-60, ov.pno);
-    SYSTEM.PUT(-60, ov.mapped);
     body := SYSTEM.VAL(Func, ov.mapped);
-    ChangeMark(ov, FALSE);
+    (*ChangeMark(ov, FALSE);*)
+    SYSTEM.GET(ov.mapped - 4, k);
+    SYSTEM.PUT(ov.mapped - 4, k-1);
     SYSTEM.VIRTUALARGS(); body();
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
-    ChangeMark(ov, TRUE);
-    SYSTEM.PUT(-60, 01234H);
-    IF old # NIL THEN
-      SYSTEM.PUT(-60, old.mapped);
-      SYSTEM.PUT(-60, old.mno);
-      SYSTEM.PUT(-60, old.pno);
-      SYSTEM.PUT(-60, old.heapsize);
-    END;
-    (*
-    IF old # NIL THEN
-      SYSTEM.PUT(-60, old.mapped);
-      SYSTEM.PUT(-60, old.mod.num);
-      SYSTEM.PUT(-60, old.pno);
-      SYSTEM.PUT(-60, mark);
-    END; *)
+    SYSTEM.GET(ov.mapped - 4, k);
+    SYSTEM.PUT(ov.mapped - 4, k+1);
+    (*ChangeMark(ov, TRUE);*)
     (*
     IF (old # NIL) & (old.mapped = 0) THEN
       LoadOverlay(old);
@@ -466,6 +437,7 @@ MODULE Overlays;
     (* load location of the overlay manager to predetermined reg *)
     (* note: needs cooperation from the compiler *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
+    loadedOverlays := 0;
   END Init;
 
 END Overlays.
