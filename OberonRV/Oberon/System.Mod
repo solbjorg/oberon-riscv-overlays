@@ -8,6 +8,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
 
   VAR W: Texts.Writer;
     pat: ARRAY 32 OF CHAR;
+    dummytext*: Texts.Text;
     systemtool: Display.Frame;
 
   PROCEDURE GetArg(VAR S: Texts.Scanner);
@@ -373,8 +374,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     main := TextFrames.NewText(Oberon.Log, 0);
     logV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y);
     Oberon.AllocateSystemViewer(0, X, Y);
+    dummytext := TextFrames.Text("System.Tool");
     menu := TextFrames.NewMenu("System.Tool", StandardMenu);
-    main := TextFrames.NewText(TextFrames.Text("System.Tool"), 0);
+    main := TextFrames.NewText(dummytext, 0);
     systemtool := main;
     toolV := MenuViewers.New(menu, main, TextFrames.menuH, X, Y)
   END OpenViewers;
