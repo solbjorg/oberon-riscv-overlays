@@ -87,9 +87,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END Lw;
 
   (* Linking functions *)
-
-  (* create a file to hold the fixed-up version of a module *)
-  (* TODO: verify that this works if the file already exists! *)
   PROCEDURE ThisFile(name, extension: ARRAY OF CHAR; new: BOOLEAN): Files.File;
     VAR i: INTEGER;
       F: Files.File;
@@ -101,7 +98,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     IF new THEN F := Files.New(filename);
     ELSE F := Files.Old(filename);
     END;
-
     RETURN F
   END ThisFile;
 
@@ -173,11 +169,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       impmod: Overlays.Module;
   BEGIN
     WHILE fixorgS > adr DO
-      SYSTEM.PUT(-60, 0FAFAH);
-      SYSTEM.PUT(-60, fixorgS);
       SYSTEM.GET(mapped + fixorgS - adr, inst);
       disp := inst DIV 10000H;
-        SYSTEM.PUT(-60, disp);
       callerPno := inst DIV 100H MOD 100H;
       procVar := SYSTEM.VAL(BOOLEAN, inst MOD 2);
       reg  := inst DIV 2 MOD 20H;
@@ -189,7 +182,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       IF mno <= 0 THEN
         mno := mod.num;
       ELSE
-        SYSTEM.PUT(-60, mno);
         SYSTEM.GET(mod.imp + (mno-1)*4, impmod); mno := impmod.num;
         SYSTEM.GET(impmod.ent + pno*4, pno);
       END;
@@ -207,10 +199,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         index := 0; callerIndex := 0;
       END;
       (*ASSERT(offset DIV 4 < 1000H);*)
-      SYSTEM.PUT(-60, 555H);
-      SYSTEM.PUT(-60, mod.num);
-      SYSTEM.PUT(-60, callerIndex);
-      SYSTEM.PUT(-60, index);
       inst := (inst - LSL(imm MOD C20, 12)) + LSL(callerIndex, 15) + LSL(index DIV 800H MOD 8H, 12);
       SYSTEM.PUT(mapped + fixorgS - adr-4, inst);
 
@@ -236,23 +224,18 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     VAR v, inst, mno, disp, offset, op, vno, imm: INTEGER; impmod: Overlays.Module;
   BEGIN
     WHILE fixorgD > adr DO
-      SYSTEM.PUT(-60, 0AEAEH);
-      SYSTEM.PUT(-60, fixorgD);
       (* fixorgD is given with respect to the location in the module's code file *)
       (* To convert it from the position of the module's code file to the proc's position *)
       (* in memory, take fixorgD - adr; as fixorgD > adr is guaranteed to hold, this gives *)
       (* the specific location in the procedure. Add that to mapped to get the actual location *)
       (* in memory *)
       SYSTEM.GET(mapped + fixorgD - adr, inst);
-      SYSTEM.PUT(-60, 0FFEFEFH);
       mno := inst DIV 10H MOD 128;
       disp := inst DIV 10000H;
-      SYSTEM.PUT(-60, disp);
       IF mno = 0 THEN (*global*)
         SYSTEM.PUT(mapped + fixorgD - adr, Lw(mod.num * 4))
       ELSE (*import*)
         SYSTEM.GET(mod.imp + (mno-1)*4, impmod); v := impmod.num;
-        SYSTEM.PUT(-60, v);
         SYSTEM.PUT(mapped + fixorgD - adr, Lw(v * 4));
         SYSTEM.GET(mapped + fixorgD - adr + 4, inst);
         op := inst MOD 80H;
@@ -272,7 +255,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         ELSE
           SYSTEM.PUT(mapped + fixorgD - adr + 4, (inst - LSL(imm, 20)) + LSL(offset, 20));
         END;
-        SYSTEM.PUT(-60, offset);
       END ;
       fixorgD := disp*4;
     END ;
@@ -403,12 +385,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
         Files.ReadInt(R, w);
         Files.Read(R, ch);
-        SYSTEM.PUT(-60, fixorgD);
         Files.Set(R, F, codeFilePos + w); (*jump to entry *)
         size := n*4 - w;
-        SYSTEM.PUT(-60, size);
         WHILE size < n*4 DO Files.ReadInt(R, m); SYSTEM.PUT(p, m);
-          SYSTEM.PUT(-60, size);
           INC(p, 4); INC(size, 4) END ;  (*entry code*)
         (* generate node for linked module *)
         IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
@@ -418,10 +397,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         Overlays.NewOverlay(mod, procs, numprocs);
         (*fixup of LDR/STR/ADD*)
         fixorgD := fixorgD * 4; fixorgS := fixorgS * 4;
-        SYSTEM.PUT(-60, 0FFFEEH);
         FixupProcD(mod.code, w, fixorgD, mod);
         FixupOverlayTokens(mod.code, w, fixorgS, mod);
-        SYSTEM.PUT(-60, 0FFFEEH);
         NEW(dummy); ASSERT(dummy # NIL);
         m := 07FFFFFFFH; largest := 0;
         FOR i := numprocs-1 TO 0 BY -1 DO
@@ -441,11 +418,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           (* need to translate this from addr to index *)
           m := largest;
           Files.Set(R, F, codeFilePos + (procs[index].addr)); (*jump to the part we want to write into memory*)
-          SYSTEM.PUT(-60, 0AEDEAH);
-          SYSTEM.PUT(-60, codeFilePos);
-          SYSTEM.PUT(-60, procs[index].index);
-          SYSTEM.PUT(-60, procs[index].addr);
-          SYSTEM.PUT(-60, procs[index].size);
           FOR p := 0 TO procs[index].size BY 4 DO
             Files.ReadInt(R, w); SYSTEM.PUT(SYSTEM.ADR(dummy.inst) + p, w);
           END ;  (*proc code*)
@@ -459,10 +431,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         (* iterate over procs in module *)
         (*FindProcCalls(mod, fixorgS);*)
         (*Overlays.CollapseNode(nodes[0]);*)
-        SYSTEM.PUT(-60, numprocs);
-        FOR i := 0 TO numprocs-1 DO
-          SYSTEM.PUT(-60, procs[i].size)
-        END;
         (*fixup of type descriptors*)
         adr := mod.data + fixorgT*4;
         WHILE adr # mod.data DO

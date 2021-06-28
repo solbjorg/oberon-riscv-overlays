@@ -197,9 +197,6 @@ MODULE MenuViewers; (*JG 26.8.90 / 16.9.93 / NW 10.3.2013*)
         END |
       Display.FrameMsg:
         Menu.handle(Menu, M);
-        SYSTEM.PUT(-60, SYSTEM.ADR(Main^));
-        SYSTEM.PUT(-60, SYSTEM.ADR(Main.handle));
-        SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, Main.handle));
         Main.handle(Main, M)
       END
   END Handle;

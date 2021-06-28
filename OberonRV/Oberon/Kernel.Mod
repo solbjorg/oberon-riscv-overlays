@@ -5,7 +5,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     CARD0 = 1; SPIFAST = 4;
     (*dataAllocationLimit = 5000H; (* how much space on the heap is reserved for code *)*)
     dataAllocationLimit = 2000H; (* how much space on the heap is reserved for code *)
-    FSoffset = 80000H; (*256MB in 512-byte blocks*)
+    FSoffset* = 80000H; (*256MB in 512-byte blocks*)
     filemapsize* = 08000H; (*500 sectors, 32MB*)
     overlaymapsize = 08000H; (*500 sectors, 32MB*)
     RA = 1; SP = 2;
@@ -215,12 +215,10 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
           SYSTEM.GET(p+offset, r); SYSTEM.GET(r-4, offadr);
           IF (r >= heapOrg) & (offadr = 0) THEN
             SYSTEM.PUT(p+offset, q); q := p; p := r;
-            SYSTEM.PUT(-60, 0D0H);
           END
         ELSE (*up*) SYSTEM.GET(q-4, offadr); SYSTEM.GET(offadr, offset);
           IF p # q THEN
             SYSTEM.GET(q+offset, r); SYSTEM.PUT(q+offset, p); p := q; q := r;
-            SYSTEM.PUT(-60, 0F00H);
           END
         END
       UNTIL (p = q) & (offset = -1)
@@ -233,10 +231,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     off := 0;
     WHILE pvadr # 0 DO
       SYSTEM.GET(pvadr, p);
-      SYSTEM.PUT(-60, off);
       SYSTEM.GET(p-8, tag); SYSTEM.GET(tag, tag);
-      SYSTEM.PUT(-60, tag);
-      SYSTEM.PUT(-60, p);
       Mark(p);
       INC(off, 4); SYSTEM.GET(pref+off, pvadr)
     END
@@ -248,7 +243,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     (* look through the whole stack, except for this procedure *)
     lim := SYSTEM.REG(SP)+28;
-    SYSTEM.PUT(-60, 0F07DH);
     FOR i := stackOrg TO lim BY -4 DO
       SYSTEM.GET(i, word);
       IF (word >= heapOrg) & (word < heapLim) THEN
@@ -270,7 +264,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
         END;
       END;
     END;
-    SYSTEM.PUT(-60, 0F17DH);
   END MarkStack;
 
   PROCEDURE Scan*;
@@ -510,11 +503,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE AbortTrap(trap, loc: INTEGER);
   BEGIN
-    IF Reset # NIL THEN Reset(trap, loc) ELSE REPEAT UNTIL FALSE END;
+    IF Reset # NIL THEN
+      Reset(trap, loc)
+    ELSE REPEAT UNTIL FALSE END;
   END AbortTrap;
 
   PROCEDURE Abort;
-  BEGIN Reset(0, 0);
+  BEGIN
+    Reset(10, 0);
   END Abort;
 
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
@@ -554,12 +550,13 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     stackOrg := heapOrg; stackSize := 8000H;
     (*INC(heapOrg, 050D00H);*)
     (*INC(heapOrg, 05E000H);*)
-    INC(heapOrg, 04F000H);
-    heapLim := 0E0000H;
-    (*heapLim := MemLim;*)
+    INC(heapOrg, 500 * 16);
+    (*INC(heapOrg, 049000H);*)
+    Reset := NIL;
+    heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
-    largestFreeBlock := 0; allocated := 0; clock := 0; InitSecMap
+    largestFreeBlock := 0; allocated := 0; clock := 0; InitSecMap;
   END Init;
 
 END Kernel.
