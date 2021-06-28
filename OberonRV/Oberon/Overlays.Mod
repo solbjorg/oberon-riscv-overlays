@@ -320,8 +320,6 @@ MODULE Overlays;
     SYSTEM.VIRTUALARGS(); body();
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
-    SYSTEM.GET(ov.mapped - 4, k);
-    SYSTEM.PUT(ov.mapped - 4, k+1);
     (*ChangeMark(ov, TRUE);*)
     (*
     IF (old # NIL) & (old.mapped = 0) THEN
