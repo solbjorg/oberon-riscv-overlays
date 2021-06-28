@@ -22,6 +22,7 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
     dc: LONGINT;    (*data counter*)
     level, exno, version: INTEGER;
     newSF: BOOLEAN;  (*option flag*)
+    innerCore: BOOLEAN;  (*option flag*)
     expression: PROCEDURE (VAR x: RVOG.Item);  (*to avoid forward reference*)
     Type: PROCEDURE (VAR type: RVOB.Type);
     FormalType: PROCEDURE (VAR typ: RVOB.Type; dim: INTEGER);
@@ -352,7 +353,7 @@ END RoundUp;
           IF (x.type.form = RVOB.Proc) & (x.type.base.form # RVOB.NoTyp) THEN
             RVOG.PrepCall(x, rx);
 
-            ParamList(x); RVOG.Call(x, rx); x.type := x.type.base
+            ParamList(x); RVOG.Call(x, rx, innerCore); x.type := x.type.base
           ELSE RVOS.Mark("not a function"); ParamList(x)
           END
         END
@@ -545,12 +546,12 @@ END RoundUp;
             IF (x.type.form = RVOB.Proc) & (x.type.base.form = RVOB.NoTyp) THEN
               RVOG.PrepCall(x, rx);
 
-              ParamList(x); RVOG.Call(x, rx);
+              ParamList(x); RVOG.Call(x, rx, innerCore);
             ELSE RVOS.Mark("not a procedure"); ParamList(x)
             END
           ELSIF x.type.form = RVOB.Proc THEN (*procedure call without parameters*)
             IF x.type.nofpar > 0 THEN RVOS.Mark("missing parameters") END ;
-            IF x.type.base.form = RVOB.NoTyp THEN RVOG.PrepCall(x, rx); RVOG.Call(x, rx) ELSE RVOS.Mark("not a procedure") END
+            IF x.type.base.form = RVOB.NoTyp THEN RVOG.PrepCall(x, rx); RVOG.Call(x, rx, innerCore) ELSE RVOS.Mark("not a procedure") END
           ELSIF x.mode = RVOB.Typ THEN RVOS.Mark("illegal assignment")
           ELSE RVOS.Mark("not a procedure")
           END
@@ -993,10 +994,14 @@ END RoundUp;
   END Module;
 
   PROCEDURE Option(VAR S: Texts.Scanner);
-  BEGIN newSF := FALSE;
+  BEGIN
     IF S.nextCh = "/" THEN
       Texts.Scan(S); Texts.Scan(S);
-      IF (S.class = Texts.Name) & (S.s[0] = "s") THEN newSF := TRUE END
+      IF (S.class = Texts.Name) & (S.s[0] = "s") THEN newSF := TRUE
+      ELSIF (S.class = Texts.Name) & (S.s[0] = "i") THEN
+        Texts.WriteLn(W); Texts.WriteString(W, "inner core "); Texts.Append(Oberon.Log, W.buf);
+        innerCore := TRUE
+      END;
     END
   END Option;
 
@@ -1024,7 +1029,12 @@ END RoundUp;
       ELSE
         WHILE S.class = Texts.Name DO
           NEW(T); Texts.Open(T, S.s);
-          IF T.len > 0 THEN Option(S); RVOS.Init(T, 0); Module
+          IF T.len > 0 THEN
+            WHILE S.nextCh = "/" DO
+              Option(S);
+            END;
+            RVOS.Init(T, 0); Module;
+            newSF := FALSE; innerCore := FALSE;
           ELSE Texts.WriteString(W, S.s); Texts.WriteString(W, " not found");
             Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
           END ;
@@ -1038,5 +1048,6 @@ END RoundUp;
 BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "RISC-V Compiler  2020-12-07");
   Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
   NEW(dummy); dummy.class := RVOB.Var; dummy.type := RVOB.intType;
-  expression := expression0; Type := Type0; FormalType := FormalType0
+  expression := expression0; Type := Type0; FormalType := FormalType0;
+  innerCore := FALSE; newSF := FALSE;
 END RVOP.

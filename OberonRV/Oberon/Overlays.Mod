@@ -61,17 +61,21 @@ MODULE Overlays;
     OberonReset: ResetFunc;
     loadedOverlays*: INTEGER;
 
-    (*
   PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
-    VAR addr: INTEGER;
+    VAR addr: INTEGER; mod: Module;
   BEGIN
+    mod := root;
+    WHILE mod.num # ov.mno DO
+      SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, mod));
+      mod := mod.next;
+    END;
     IF evict THEN
       addr := addressOVM;
     ELSE
       addr := ov.mapped;
     END;
-    SYSTEM.PUT(ov.mod.procs + ov.pno * 4, addr);
-  END FillTOC; *)
+    SYSTEM.PUT(mod.procs + ov.pno * 4, addr);
+  END FillTOC;
 
   PROCEDURE Evict(ov: Overlay);
   BEGIN
@@ -84,7 +88,7 @@ MODULE Overlays;
       SYSTEM.PUT(ov.mapped-overlayPrefixSize, SYSTEM.ADR(ov.heapsize));
       SYSTEM.PUT(ov.mapped-4, 0);
       ov.mapped := 0;
-      (*FillTOC(ov, TRUE);*)
+      FillTOC(ov, TRUE);
       DEC(allocated, ov.heapsize);
     END;
   END Evict;
@@ -287,7 +291,7 @@ MODULE Overlays;
     FOR i := 0 TO ov.heapsize BY FileDir.SectorSize DO
       Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.heapsize-12 - i);
     END;
-    (*FillTOC(ov, FALSE);*)
+    FillTOC(ov, FALSE);
     INC(allocated, ov.heapsize);
     INC(loadedOverlays);
   END LoadOverlay;

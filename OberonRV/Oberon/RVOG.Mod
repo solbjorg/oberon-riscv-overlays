@@ -160,8 +160,6 @@ VAR
   curSB: INTEGER;         (* current static base in SB (module table index) *)
   frame: INTEGER;         (* frame offset changed in SaveRegs, RestoreRegs *)
   check: BOOLEAN;         (* emit run-time checks *)
-  stacktrace: BOOLEAN;    (* add a stack trace *)
-  version: INTEGER;       (* ABI Version: 0 = boot ROM, 1 = Oberon System *)
   modid: RVOS.Ident;
 
   sym2rel: ARRAY 6 OF INTEGER;
@@ -171,6 +169,13 @@ VAR
 
   (* Origins of lists of relocations to be fixed up by the loader *)
   fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
+
+  (*compilation settings*)
+  stacktrace: BOOLEAN;    (* add a stack trace *)
+  version: INTEGER;       (* ABI Version: 0 = boot ROM, 1 = Oberon System *)
+  fixupToken: BOOLEAN;    (* Whether to fix-up the token with which overlay token is being *)
+                          (* called from or not *)
+  compiledSize: INTEGER;
 
 PROCEDURE put*(w: INTEGER);
 BEGIN
@@ -485,7 +490,7 @@ END MakeLoadSB;
 PROCEDURE GetSB(base: INTEGER);
 BEGIN
   IF (version # 0) & ((base # curSB) OR (base # 0)) THEN
-    put(MakeLoadSB(base));  fixorgD := pc-1;  curSB := base
+    put(MakeLoadSB(base));  fixorgD := pc-1;  curSB := base;
   END
 END GetSB;
 
@@ -724,12 +729,21 @@ PROCEDURE loadToken(reg: INTEGER);
 BEGIN
   (* check if it is a token; if it is, then LSB is 1 *)
   put(RVAssem.andi(RH, reg, 1));
-  put(RVAssem.beq(RH, 0, 16));
-  (* if it is a token *)
-  (* move the token to the token register *)
-  put(RVAssem.addi(30, reg, 0));
-  put(RVAssem.jalr(RA, 31, 0));
-  put(RVAssem.beq(0, 0, 8));
+  IF (~fixupToken) THEN
+    put(RVAssem.beq(RH, 0, 16));
+    (* if it is a token *)
+    (* move the token to the token register *)
+    put(RVAssem.addi(30, reg, 0));
+    put(RVAssem.jalr(RA, 31, 0));
+    put(RVAssem.beq(0, 0, 8));
+  ELSE
+    put(RVAssem.beq(RH, 0, 16));
+    (* if it is a token *)
+    (* move the token to the token register *)
+    put(RVAssem.addi(30, reg, 0));
+    put(RVAssem.jalr(RA, 31, 0));
+    put(RVAssem.beq(0, 0, 8));
+  END;
   (*
   (* load data pointer from module table... *)
   put(RVAssem.srai(RH, x.r, 12));
@@ -1648,7 +1662,7 @@ END PrepCall;
   It is up to the module loader or linker to replace these pseudo-instructions
   with the appropriate JAL instruction.
 *)
-PROCEDURE Call*(VAR x: Item; r: INTEGER);
+PROCEDURE Call*(VAR x: Item; r: INTEGER; innerCore: BOOLEAN);
   VAR i: INTEGER; found: BOOLEAN;
 BEGIN (*x.type.form = RVOB.Proc*)
   (* Store where we call the function to a magic IO port - for debugging purposes *)
@@ -1678,7 +1692,29 @@ BEGIN (*x.type.form = RVOB.Proc*)
     (*
     put(RVAssem.csrrs(RH+1, 0, 0C00H)); (* get CYCLERD(L) into RH *)
     put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *) *)
+    IF ~innerCore THEN
+      put(RVAssem.lw(RH+1, RH, -4)); (* get mark into RH+1 *)
+      put(RVAssem.addi(RH+1, RH+1, -1)); (* get mark into RH+1 *)
+      put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *)
+    END;
     put(RVAssem.jalr(RA, RH, 0));
+    invalSB;
+    IF ~innerCore THEN
+      INC(RH);
+      IF x.r >= 0 THEN
+        (* todo make this better... *)
+        i := FindProcIndexGivenAddress(x.a);
+        GetSB(0);
+        Fetch(SB, varsize + i * 4);
+      ELSE (*imported*)
+        GetSB(x.r);
+        Fetch(SB, x.a+C8);
+      END;
+      put(RVAssem.lw(RH+1, RH, -4)); (* get mark into RH+1 *)
+      put(RVAssem.addi(RH+1, RH+1, 1)); (* get mark into RH+1 *)
+      put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *)
+      DEC(RH);
+    END;
   ELSE
     IF x.mode <= RVOB.Par THEN
       load(x);
@@ -1733,7 +1769,7 @@ END UpdateProc;
 PROCEDURE Enter*(parblksize, locblksize: INTEGER; int: BOOLEAN);
   VAR a, r, freereg, i: INTEGER;
 BEGIN
-  put(RVAssem.addi(0, 0, 0));
+  put(RVAssem.addi(0, 0, 0)); (* filler word ...*)
   invalSB; frame := 0;
   (*
   IF expo THEN
@@ -2126,6 +2162,7 @@ PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
 BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; stubx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; fixorgS := 0; check := v # 0; version := v;
   entry := -1; regStackHack := FALSE; virtualArgs := FALSE;
   stacktrace := TRUE;
+  fixupToken := FALSE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
 END Open;
@@ -2217,6 +2254,8 @@ BEGIN
     END ;
     obj := obj.next
   END ;
+  INC(compiledSize, pc);
+  Texts.WriteLn(W); Texts.WriteString(W, "Compiled size "); Texts.WriteHex(W, compiledSize); Texts.Append(Oberon.Log, W.buf);
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
       (pc + nofimps + nofent + nofptrs + RVOS.proccnt + 1)*4;
 
@@ -2349,5 +2388,6 @@ BEGIN
   sym2uRel[RVOS.gtr-RVOS.eql] := LTU; (* not a typo; swap args first! *)
   sym2uRel[RVOS.geq-RVOS.eql] := GEU;
 
+  compiledSize := 0;
   Texts.OpenWriter(W);
 END RVOG.
