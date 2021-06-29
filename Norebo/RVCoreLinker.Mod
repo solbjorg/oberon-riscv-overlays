@@ -287,7 +287,7 @@ MODULE RVCoreLinker;  (*derived from NW 20.10.2013, and pdewacht's Norebo Coreli
         WHILE adr # mod.desc.code DO
           inst := buffer[adr DIV 4];
           disp := inst DIV 10000H;
-          buffer[adr DIV 4] := Addi(inst MOD 20H, 1); adr := mod.desc.code + disp*4;
+          buffer[adr DIV 4] := Addi(inst DIV 2 MOD 20H, 1); adr := mod.desc.code + disp*4;
         END ;
         (*fixup of type descriptors*)
         adr := mod.desc.data + fixorgT*4;
