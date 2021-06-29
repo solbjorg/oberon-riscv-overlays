@@ -2,7 +2,7 @@ MODULE Overlays;
   IMPORT SYSTEM, Kernel, FileDir, Files;
   CONST numBaseOverlays = 500;
     numExtendOverlays = 50;
-    maxNumProcs* = 200;
+    maxNumProcs* = 60;
     maxNumMods* = 10;
     overlayDescSize = 16;
     overlayPrefixSize = 8;
@@ -66,7 +66,6 @@ MODULE Overlays;
   BEGIN
     mod := root;
     WHILE mod.num # ov.mno DO
-      SYSTEM.PUT(-60, SYSTEM.VAL(INTEGER, mod));
       mod := mod.next;
     END;
     IF evict THEN
@@ -156,8 +155,6 @@ MODULE Overlays;
       IF ov.mapped > 0 THEN
         SYSTEM.GET(ov.mapped-4, mark);
         IF mark = -1 THEN
-          SYSTEM.PUT(-60, 0AEAEAH);
-          SYSTEM.PUT(-60, ov.mapped-8);
           Evict(ov);
         END;
       END;
@@ -218,13 +215,10 @@ MODULE Overlays;
   PROCEDURE GC*(blockSizeNeeded: INTEGER; isData: BOOLEAN);
     VAR mod: Module; ov: Overlay;
   BEGIN
-    SYSTEM.PUT(-60, 06C6C6C6CH);
     (*SYSTEM.EBREAK();*)
     mod := root;
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN
-        SYSTEM.PUT(-60, 0ABCDEFH);
-        SYSTEM.PUT(-60, mod.num);
         Kernel.MarkMod(mod.ptr)
       END ;
       mod := mod.next
@@ -232,7 +226,6 @@ MODULE Overlays;
     Kernel.MarkStack;
     Files.RestoreList;
     CollectOverlays;
-    SYSTEM.PUT(-60, 5C43H);
     Kernel.Scan;
     (*
     IF Kernel.largestFreeBlock < blockSizeNeeded THEN
@@ -242,7 +235,6 @@ MODULE Overlays;
         GC(blockSizeNeeded, isData);
       END;
     END; *)
-    SYSTEM.PUT(-60, 0C6C6C6C6H);
   END GC;
 
   PROCEDURE Reset*(trap, loc: INTEGER);
@@ -276,11 +268,8 @@ MODULE Overlays;
     Kernel.NewOverlay(ov.mapped, ov.heapsize);
     IF ov.mapped = 0 THEN
       (* allocation failed - run garbage collection and try again *)
-      SYSTEM.PUT(-60, 0F417H);
       (*EvictLRUOverlay(ov.heapsize);*)
       GC(ov.heapsize, FALSE);
-      SYSTEM.PUT(-60, 0E417H);
-      SYSTEM.PUT(-60, allocated);
       Kernel.NewOverlay(ov.mapped, ov.heapsize);
       IF ov.mapped = 0 THEN
         (* allocation failed again - no contiguous memory can be allocated. panic. *)
