@@ -3,7 +3,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   CONST versionkey = 1X; MT = 4; DescSize = 84;
     addi = 19; load = 3; store = 35;
     SB = 3;
-    MTOrg* = 20H; maxProcSize = 3000;
+    MTOrg* = 20H; maxProcSize = 1134H; maxProcSizeSmall = 89AH;
     (* Useful constants for bit manip *)
     C28 = 10000000H;
     C24 = 1000000H;
@@ -16,8 +16,12 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   TYPE Command* = PROCEDURE;
 
-    FixupProcedure = RECORD
-      inst: ARRAY maxProcSize OF INTEGER;
+    FixupProcedureLarge = RECORD
+      inst: ARRAY maxProcSize DIV 4 OF INTEGER;
+    END;
+
+    FixupProcedureSmall = RECORD
+      inst: ARRAY maxProcSizeSmall DIV 4 OF INTEGER;
     END;
 
   VAR root*, M: Overlays.Module;
@@ -260,6 +264,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END ;
   END FixupProcD;
 
+  (* confusing variable naming is due to trying to compress space on stack; TODO fix *)
   PROCEDURE Load*(name: ARRAY OF CHAR; VAR newmod: Overlays.Module);
     (*search module in list; if not found, load module.
       res = 0: already present or loaded; res = 2: file not available; res = 3: key conflict;
@@ -271,12 +276,13 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       body: Command;
       F: Files.File; R: Files.Rider;
       fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
-      op, imm, disp, adr, inst, pno, vno, dest, offset, index, codeFilePos, largest: INTEGER;
+      mapped, op, imm, disp, adr, inst, pno, vno, dest, offset, index, codeFilePos, largest: INTEGER;
       name1, impname: Overlays.ModuleName;
       (* used for constructing call graph *)
       procs: ARRAY Overlays.maxNumProcs OF Overlays.Procedure;
       tempProc, fixup: Overlays.Procedure;
-      dummy: POINTER TO FixupProcedure;
+      dummyLarge: POINTER TO FixupProcedureLarge;
+      dummySmall: POINTER TO FixupProcedureSmall;
       import: ARRAY 16 OF Overlays.Module;
 
   BEGIN
@@ -336,7 +342,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         (* use u both to calculate the size of each procedure, *)
         (* as well as to ensure that the procedure list is monotonically *)
         (* increasing. This is necessary, because there may be certain _padding words_ *)
-        i := 0; u := -1;
+        i := 0; u := -1; j := 0; (* j = largest proc, i = index*)
         WHILE (n > 0) DO
           Files.ReadInt(R, w);
           (* until a proc is in a loaded overlay, all calls should go *)
@@ -346,6 +352,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
             NEW(tempProc); tempProc.addr := w; tempProc.index := i;
             Files.ReadInt(R, disp); (* size *)
             tempProc.size := disp;
+            IF disp > j THEN j := disp END;
             procs[i] := tempProc; INC(i);
           ELSE DEC(numprocs); (* padding word *)
             Files.ReadInt(R, w); (* throwaway result in disp *)
@@ -399,7 +406,14 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         fixorgD := fixorgD * 4; fixorgS := fixorgS * 4;
         FixupProcD(mod.code, w, fixorgD, mod);
         FixupOverlayTokens(mod.code, w, fixorgS, mod);
-        NEW(dummy); ASSERT(dummy # NIL);
+        (* j = largest proc *)
+        IF j > maxProcSizeSmall THEN
+          NEW(dummyLarge); ASSERT(dummyLarge # NIL);
+          mapped := SYSTEM.ADR(dummyLarge.inst);
+        ELSE
+          NEW(dummySmall); ASSERT(dummySmall # NIL);
+          mapped := SYSTEM.ADR(dummySmall.inst);
+        END;
         m := 07FFFFFFFH; largest := 0;
         FOR i := numprocs-1 TO 0 BY -1 DO
           (* Find the next procedure that needs to be fixed up *)
@@ -419,15 +433,15 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           m := largest;
           Files.Set(R, F, codeFilePos + (procs[index].addr)); (*jump to the part we want to write into memory*)
           FOR p := 0 TO procs[index].size BY 4 DO
-            Files.ReadInt(R, w); SYSTEM.PUT(SYSTEM.ADR(dummy.inst) + p, w);
+            Files.ReadInt(R, w); SYSTEM.PUT(mapped + p, w);
           END ;  (*proc code*)
 
-          FixupProcD(SYSTEM.ADR(dummy.inst), procs[index].addr, fixorgD, mod);
+          FixupProcD(mapped, procs[index].addr, fixorgD, mod);
           (* fixup overlay tokens with overlay indices *)
-          FixupOverlayTokens(SYSTEM.ADR(dummy.inst), procs[index].addr, fixorgS, mod);
-          Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, procs[index].index), SYSTEM.ADR(dummy.inst));
+          FixupOverlayTokens(mapped, procs[index].addr, fixorgS, mod);
+          Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, procs[index].index), mapped);
         END;
-        dummy := NIL;
+        dummySmall := NIL; dummyLarge := NIL;
         (* iterate over procs in module *)
         (*FindProcCalls(mod, fixorgS);*)
         (*Overlays.CollapseNode(nodes[0]);*)
