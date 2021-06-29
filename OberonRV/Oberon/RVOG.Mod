@@ -175,7 +175,9 @@ VAR
   version: INTEGER;       (* ABI Version: 0 = boot ROM, 1 = Oberon System *)
   fixupToken: BOOLEAN;    (* Whether to fix-up the token with which overlay token is being *)
                           (* called from or not *)
+  (*debug*)
   compiledSize: INTEGER;
+  largestProc: INTEGER;
 
 PROCEDURE put*(w: INTEGER);
 BEGIN
@@ -1827,6 +1829,9 @@ BEGIN
   *)  RVOS.Mark("Interrupt procedures not yet supported")
   END ;
   program.procs.size[procnum] := pc * 4 - program.procs.addr[procnum] - 4;
+  IF program.procs.size[procnum] > largestProc THEN
+    largestProc := program.procs.size[procnum];
+  END;
 
   RH := firstReg; regStackHack := FALSE;
 END Return;
@@ -2161,7 +2166,7 @@ PROCEDURE Open*(v: INTEGER; id: RVOS.Ident);
   VAR success: BOOLEAN;
 BEGIN pc := 0; tdx := 0; strx := 0; procx := 0; expoprocx := 0; stubx := 0; RH := firstReg; fixorgP := 0; fixorgD := 0; fixorgT := 0; fixorgS := 0; check := v # 0; version := v;
   entry := -1; regStackHack := FALSE; virtualArgs := FALSE;
-  stacktrace := TRUE;
+  stacktrace := FALSE;
   fixupToken := FALSE;
   IF v = 0 THEN pc := 8 END;
   modid := id;
@@ -2255,7 +2260,9 @@ BEGIN
     obj := obj.next
   END ;
   INC(compiledSize, pc);
-  Texts.WriteLn(W); Texts.WriteString(W, "Compiled size "); Texts.WriteHex(W, compiledSize); Texts.Append(Oberon.Log, W.buf);
+  Texts.WriteLn(W); Texts.WriteString(W, "Compiled size "); Texts.WriteHex(W, compiledSize*4); Texts.Append(Oberon.Log, W.buf);
+  Texts.WriteLn(W); Texts.WriteString(W, "Largest proc"); Texts.WriteHex(W, largestProc); Texts.Append(Oberon.Log, W.buf);
+  largestProc := 0;
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
       (pc + nofimps + nofent + nofptrs + RVOS.proccnt + 1)*4;
 
@@ -2389,5 +2396,6 @@ BEGIN
   sym2uRel[RVOS.geq-RVOS.eql] := GEU;
 
   compiledSize := 0;
+  largestProc := 0;
   Texts.OpenWriter(W);
 END RVOG.
