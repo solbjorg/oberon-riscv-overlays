@@ -21,8 +21,7 @@ MODULE RVOP; (*N. Wirth 1.7.97 / 7.6.2014  Oberon compiler for RISC in Oberon-07
   VAR sym: INTEGER;   (*last symbol read*)
     dc: LONGINT;    (*data counter*)
     level, exno, version: INTEGER;
-    newSF: BOOLEAN;  (*option flag*)
-    innerCore: BOOLEAN;  (*option flag*)
+    newSF, innerCore, markPrefix: BOOLEAN;  (*option flag*)
     expression: PROCEDURE (VAR x: RVOG.Item);  (*to avoid forward reference*)
     Type: PROCEDURE (VAR type: RVOB.Type);
     FormalType: PROCEDURE (VAR typ: RVOB.Type; dim: INTEGER);
@@ -353,7 +352,7 @@ END RoundUp;
           IF (x.type.form = RVOB.Proc) & (x.type.base.form # RVOB.NoTyp) THEN
             RVOG.PrepCall(x, rx);
 
-            ParamList(x); RVOG.Call(x, rx, innerCore); x.type := x.type.base
+            ParamList(x); RVOG.Call(x, rx, innerCore, markPrefix); x.type := x.type.base
           ELSE RVOS.Mark("not a function"); ParamList(x)
           END
         END
@@ -546,12 +545,12 @@ END RoundUp;
             IF (x.type.form = RVOB.Proc) & (x.type.base.form = RVOB.NoTyp) THEN
               RVOG.PrepCall(x, rx);
 
-              ParamList(x); RVOG.Call(x, rx, innerCore);
+              ParamList(x); RVOG.Call(x, rx, innerCore, markPrefix);
             ELSE RVOS.Mark("not a procedure"); ParamList(x)
             END
           ELSIF x.type.form = RVOB.Proc THEN (*procedure call without parameters*)
             IF x.type.nofpar > 0 THEN RVOS.Mark("missing parameters") END ;
-            IF x.type.base.form = RVOB.NoTyp THEN RVOG.PrepCall(x, rx); RVOG.Call(x, rx, innerCore) ELSE RVOS.Mark("not a procedure") END
+            IF x.type.base.form = RVOB.NoTyp THEN RVOG.PrepCall(x, rx); RVOG.Call(x, rx, innerCore, markPrefix) ELSE RVOS.Mark("not a procedure") END
           ELSIF x.mode = RVOB.Typ THEN RVOS.Mark("illegal assignment")
           ELSE RVOS.Mark("not a procedure")
           END
@@ -1034,7 +1033,7 @@ END RoundUp;
               Option(S);
             END;
             RVOS.Init(T, 0); Module;
-            newSF := FALSE; innerCore := FALSE;
+            newSF := FALSE; innerCore := FALSE; markPrefix := FALSE;
           ELSE Texts.WriteString(W, S.s); Texts.WriteString(W, " not found");
             Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf)
           END ;
@@ -1049,5 +1048,5 @@ BEGIN Texts.OpenWriter(W); Texts.WriteString(W, "RISC-V Compiler  2020-12-07");
   Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
   NEW(dummy); dummy.class := RVOB.Var; dummy.type := RVOB.intType;
   expression := expression0; Type := Type0; FormalType := FormalType0;
-  innerCore := FALSE; newSF := FALSE;
+  innerCore := FALSE; newSF := FALSE; markPrefix := FALSE;
 END RVOP.

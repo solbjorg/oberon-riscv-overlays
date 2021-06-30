@@ -1664,7 +1664,7 @@ END PrepCall;
   It is up to the module loader or linker to replace these pseudo-instructions
   with the appropriate JAL instruction.
 *)
-PROCEDURE Call*(VAR x: Item; r: INTEGER; innerCore: BOOLEAN);
+PROCEDURE Call*(VAR x: Item; r: INTEGER; innerCore, markPrefix: BOOLEAN);
   VAR i: INTEGER; found: BOOLEAN;
 BEGIN (*x.type.form = RVOB.Proc*)
   (* Store where we call the function to a magic IO port - for debugging purposes *)
@@ -1683,25 +1683,29 @@ BEGIN (*x.type.form = RVOB.Proc*)
     IF x.r >= 0 THEN
       (* todo make this better... *)
       i := FindProcIndexGivenAddress(x.a);
-      LoadOverlayRegister(i, -x.r);
+      IF ~innerCore THEN
+        LoadOverlayRegister(i, -x.r);
+      END;
       GetSB(0);
       Fetch(SB, varsize + i * 4);
     ELSE (*imported*)
-      LoadOverlayRegister(x.a, -x.r);
+      IF ~innerCore THEN
+        LoadOverlayRegister(x.a, -x.r);
+      END;
       GetSB(x.r);
       Fetch(SB, x.a+C8);
     END;
     (*
     put(RVAssem.csrrs(RH+1, 0, 0C00H)); (* get CYCLERD(L) into RH *)
     put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *) *)
-    IF ~innerCore THEN
+    IF markPrefix THEN
       put(RVAssem.lw(RH+1, RH, -4)); (* get mark into RH+1 *)
       put(RVAssem.addi(RH+1, RH+1, -1)); (* get mark into RH+1 *)
       put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *)
     END;
     put(RVAssem.jalr(RA, RH, 0));
     invalSB;
-    IF ~innerCore THEN
+    IF markPrefix THEN
       INC(RH);
       IF x.r >= 0 THEN
         (* todo make this better... *)
@@ -2259,8 +2263,8 @@ BEGIN
     END ;
     obj := obj.next
   END ;
-  INC(compiledSize, pc);
-  Texts.WriteLn(W); Texts.WriteString(W, "Compiled size "); Texts.WriteHex(W, compiledSize*4); Texts.Append(Oberon.Log, W.buf);
+  compiledSize := pc;
+  Texts.WriteLn(W); Texts.WriteString(W, "Compiled size "); Texts.WriteInt(W, compiledSize*4, 8); Texts.Append(Oberon.Log, W.buf);
   Texts.WriteLn(W); Texts.WriteString(W, "Largest proc"); Texts.WriteHex(W, largestProc); Texts.Append(Oberon.Log, W.buf);
   largestProc := 0;
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
