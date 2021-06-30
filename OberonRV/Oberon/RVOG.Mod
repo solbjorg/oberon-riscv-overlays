@@ -1683,11 +1683,15 @@ BEGIN (*x.type.form = RVOB.Proc*)
     IF x.r >= 0 THEN
       (* todo make this better... *)
       i := FindProcIndexGivenAddress(x.a);
-      LoadOverlayRegister(i, -x.r);
+      IF ~innerCore THEN
+        LoadOverlayRegister(i, -x.r);
+      END;
       GetSB(0);
       Fetch(SB, varsize + i * 4);
     ELSE (*imported*)
-      LoadOverlayRegister(x.a, -x.r);
+      IF ~innerCore THEN
+        LoadOverlayRegister(x.a, -x.r);
+      END;
       GetSB(x.r);
       Fetch(SB, x.a+C8);
     END;
