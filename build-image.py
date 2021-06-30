@@ -47,6 +47,9 @@ def compile(modules, **kwargs):
 def rv_compile(modules, **kwargs):
     norebo(['RVOP.Compile'] + [m+'/s' for m in modules], **kwargs)
 
+def rv_compile_innercore(modules, **kwargs):
+    norebo(['RVOP.Compile'] + [m+'/i' for m in modules], **kwargs)
+
 def rv_build_norebo(target_dir):
     compile(['Norebo.Mod', 'Kernel.Mod', 'FileDir.Mod', 'Files.Mod',
              'Modules.Mod', 'Fonts.Mod', 'Texts.Mod', 'RS232.Mod', 'Oberon.Mod',
@@ -108,6 +111,9 @@ def rv_build_image(sources_dir):
     bulk_delete(compiler_dir, 'smb')
 
     logging.info('Compiling the complete Project Oberon 2013')
+    rv_compile_innercore(["Kernel.Mod","FileDir.Mod","Files.Mod","Overlays.Mod","Modules.Mod"],
+            working_directory=oberon_dir,
+            search_path=search_path)
     rv_compile([fi['filename'] for fi in FILE_LIST if fi['mode'] == 'source'],
             working_directory=oberon_dir,
             search_path=search_path)

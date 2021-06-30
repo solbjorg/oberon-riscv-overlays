@@ -999,7 +999,6 @@ END RoundUp;
       Texts.Scan(S); Texts.Scan(S);
       IF (S.class = Texts.Name) & (S.s[0] = "s") THEN newSF := TRUE
       ELSIF (S.class = Texts.Name) & (S.s[0] = "i") THEN
-        Texts.WriteLn(W); Texts.WriteString(W, "inner core "); Texts.Append(Oberon.Log, W.buf);
         innerCore := TRUE
       END;
     END
