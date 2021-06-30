@@ -389,6 +389,12 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     UNTIL FALSE
   END Loop;
 
+  PROCEDURE EnterLoop*;
+  BEGIN
+    Overlays.EvictAllOverlays();
+    SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
+  END EnterLoop;
+
   PROCEDURE Reset*(trap: INTEGER; mod: Overlays.Module);
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
@@ -400,7 +406,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     failedReset := FALSE;
 
 	SYSTEM.PUT(-32, 0BB000000H); (* emu debug; prints stack trace *)
-    SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
+    EnterLoop;
   END Reset;
 
   PROCEDURE SetResetMessage*(msg: PROCEDURE(trap: INTEGER; mod: Overlays.Module));
@@ -414,9 +420,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     Modules.Load("System", Mod);
     failedReset := FALSE;
     Mod := NIL;
-    Overlays.EvictAllOverlays();
-    SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*)
-    Loop
+    EnterLoop;
   END Init;
 
 BEGIN

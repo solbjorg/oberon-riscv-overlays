@@ -28,13 +28,9 @@ MODULE PrimeNumbers;  (*NW 6.9.07; Tabulate prime numbers; for Oberon-07  NW 25.
     IF m > 0 THEN Texts.WriteLn(W) END;
   END Primes;
 
-  PROCEDURE Generate*;
+  PROCEDURE run;
     VAR S: Texts.Scanner;
   BEGIN
-    Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
-    IF S.i < 400 THEN
-      Primes(S.i); Texts.Append(System.dummytext, W.buf);
-    END;
     SYSTEM.PUT(-60, Overlays.loadedOverlays);
     SYSTEM.EBREAK();
     Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
@@ -43,6 +39,12 @@ MODULE PrimeNumbers;  (*NW 6.9.07; Tabulate prime numbers; for Oberon-07  NW 25.
     END;
     SYSTEM.PUT(-60, Overlays.loadedOverlays);
     SYSTEM.EBREAK();
+    Oberon.EnterLoop;
+  END run;
+
+  PROCEDURE Generate*;
+  BEGIN
+    Overlays.EvictAllOverlays(); Overlays.GC(0, FALSE); run;
   END Generate;
 
 BEGIN Texts.OpenWriter(W);
