@@ -414,7 +414,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     Modules.Load("System", Mod);
     failedReset := FALSE;
     Mod := NIL;
-    Overlays.EvictAllOverlays();
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*)
     Loop
   END Init;

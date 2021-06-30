@@ -8,6 +8,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     FSoffset* = 80000H; (*256MB in 512-byte blocks*)
     filemapsize* = 08000H; (*500 sectors, 32MB*)
     overlaymapsize = 08000H; (*500 sectors, 32MB*)
+    overlayRegion* = 526288; (* 80000H + 250*8 *)
+    overlayRegionSize = 10000H;
     RA = 1; SP = 2;
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
@@ -21,9 +23,10 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     END;
 
   VAR allocated*, NofSectors*: INTEGER;
-    heapOrg*, heapLim*: INTEGER; 
+    heapOrg*, heapLim*: INTEGER;
     stackOrg*, stackSize*, MemLim*: INTEGER;
     clock, AllocPtr: INTEGER;
+    overlayRegionVar*: INTEGER;
     list0, list1, list2, list3: INTEGER;  (*lists of free blocks of size n*256, 128, 64, 32 bytes*)
     largestFreeBlock*: INTEGER;
     data: INTEGER; (*SPI data in*)
@@ -503,6 +506,9 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE AbortTrap(trap, loc: INTEGER);
   BEGIN
+    SYSTEM.PUT(-60, 0FFFFFFH);
+    REPEAT UNTIL FALSE;
+
     IF Reset # NIL THEN
       Reset(trap, loc)
     ELSE REPEAT UNTIL FALSE END;
@@ -550,9 +556,10 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     stackOrg := heapOrg; stackSize := 8000H;
     (*INC(heapOrg, 050D00H);*)
     (*INC(heapOrg, 05E000H);*)
-    INC(heapOrg, 500 * 16);
+    heapOrg := heapOrg + 250 * 16 + overlayRegionSize;
     (*INC(heapOrg, 049000H);*)
     Reset := NIL;
+    overlayRegionVar := overlayRegion;
     heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
