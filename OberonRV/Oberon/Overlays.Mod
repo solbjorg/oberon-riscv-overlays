@@ -216,6 +216,7 @@ MODULE Overlays;
     VAR mod: Module; ov: Overlay;
   BEGIN
     (*SYSTEM.EBREAK();*)
+    SYSTEM.PUT(-60, 0EH);
     mod := root;
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN
@@ -281,8 +282,6 @@ MODULE Overlays;
       Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.heapsize-12 - i);
     END;
     FillTOC(ov, FALSE);
-    INC(allocated, ov.heapsize);
-    INC(loadedOverlays);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -291,8 +290,8 @@ MODULE Overlays;
   END GetOverlayToken;
 
   PROCEDURE OverlayManager*();
-    VAR k, offset: INTEGER;
-      ov, old: Overlay; body: Func;
+    VAR k: INTEGER;
+      ov: Overlay;
   BEGIN
     SYSTEM.REGSTACK(20);
 
@@ -302,11 +301,10 @@ MODULE Overlays;
     ov := SYSTEM.VAL(Overlay, overlayTableRoot + (SYSTEM.REG(30) DIV 2 MOD 4000H) * overlayDescSize);
     IF ov.mapped = 0 THEN LoadOverlay(ov); END;
 
-    body := SYSTEM.VAL(Func, ov.mapped);
     (*ChangeMark(ov, FALSE);*)
     SYSTEM.GET(ov.mapped - 4, k);
     SYSTEM.PUT(ov.mapped - 4, k-1);
-    SYSTEM.VIRTUALARGS(); body();
+    SYSTEM.JUMP(ov.mapped);
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
     (*ChangeMark(ov, TRUE);*)
