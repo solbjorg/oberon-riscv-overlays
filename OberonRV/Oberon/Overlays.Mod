@@ -53,8 +53,8 @@ MODULE Overlays;
     root: Module;
     OberonReset: ResetFunc;
     loadedOverlays*: INTEGER;
-    ovJump: Func;
     justloaded: Overlay;
+    ovJump: INTEGER;
 
     (*PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER; mod: Module;
@@ -218,7 +218,6 @@ MODULE Overlays;
       Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, Kernel.overlayRegion + i, size - i);
     END;
     ov.mapped := TRUE;
-    INC(loadedOverlays);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -239,7 +238,7 @@ MODULE Overlays;
     justloaded := ov;
     IF ~ov.mapped THEN LoadOverlay(ov); old.mapped := FALSE; END;
 
-    SYSTEM.VIRTUALARGS(); ovJump();
+    SYSTEM.JUMP(ovJump);
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
     IF ~old.mapped THEN LoadOverlay(old); ov.mapped := FALSE; END;
@@ -353,7 +352,7 @@ MODULE Overlays;
     overlayTableRoot := Kernel.stackOrg;
     mappedSector := Kernel.filemapsize + 1;
     addressOVM := SYSTEM.ADR(OverlayManager);
-    ovJump := SYSTEM.VAL(Func, Kernel.overlayRegionVar);
+    ovJump := Kernel.overlayRegionVar;
     (* load location of the overlay manager to predetermined reg *)
     (* note: needs cooperation from the compiler *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
