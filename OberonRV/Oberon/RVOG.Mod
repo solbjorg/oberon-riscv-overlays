@@ -2147,6 +2147,10 @@ PROCEDURE VIRTUALARGS*;
 BEGIN virtualArgs := TRUE;
 END VIRTUALARGS;
 
+PROCEDURE JUMP*(VAR x: Item);
+BEGIN load(x); put(RVAssem.jalr(RA, x.r, 0));
+END JUMP;
+
 (* end in-line functions *)
 
 PROCEDURE Init*(VAR success: BOOLEAN);
@@ -2361,6 +2365,8 @@ BEGIN
   Files.WriteInt(R, pc);  (*code len*)
   FOR i := 0 TO pc-1 DO Files.WriteInt(R, program.code.c[i]); END ;  (*program*)
   Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, fixorgS); Files.WriteInt(R, entry);
+  Texts.WriteLn(W); Texts.WriteString(W, "entry "); Texts.WriteHex(W, entry); Texts.Append(Oberon.Log, W.buf);
+
   Files.Write(R, "O"); Files.Register(F);
   program.code := NIL; program.strings := NIL; program.data := NIL;
   program := NIL;
