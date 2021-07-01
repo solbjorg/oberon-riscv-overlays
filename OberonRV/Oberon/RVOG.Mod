@@ -2147,6 +2147,11 @@ PROCEDURE VIRTUALARGS*;
 BEGIN virtualArgs := TRUE;
 END VIRTUALARGS;
 
+PROCEDURE JUMP*(VAR x: Item);
+BEGIN load(x); put(RVAssem.jalr(RA, x.r, 0));
+END JUMP;
+
+
 (* end in-line functions *)
 
 PROCEDURE Init*(VAR success: BOOLEAN);
@@ -2263,8 +2268,9 @@ BEGIN
     END ;
     obj := obj.next
   END ;
-  INC(compiledSize, pc);
-  Texts.WriteLn(W); Texts.WriteString(W, "Compiled size "); Texts.WriteHex(W, compiledSize*4); Texts.Append(Oberon.Log, W.buf);
+  (*INC(compiledSize, pc);*)
+  compiledSize := pc;
+  Texts.WriteLn(W); Texts.WriteString(W, "Compiled size "); Texts.WriteInt(W, compiledSize*4, 8); Texts.Append(Oberon.Log, W.buf);
   Texts.WriteLn(W); Texts.WriteString(W, "Largest proc"); Texts.WriteHex(W, largestProc); Texts.Append(Oberon.Log, W.buf);
   largestProc := 0;
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
