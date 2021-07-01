@@ -61,7 +61,7 @@ MODULE Overlays;
     OberonReset: ResetFunc;
     loadedOverlays*: INTEGER;
 
-  PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
+  (*PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
     VAR addr: INTEGER; mod: Module;
   BEGIN
     mod := root;
@@ -74,7 +74,7 @@ MODULE Overlays;
       addr := ov.mapped;
     END;
     SYSTEM.PUT(mod.procs + ov.pno * 4, addr);
-  END FillTOC;
+  END FillTOC;*)
 
   PROCEDURE Evict(ov: Overlay);
   BEGIN
@@ -87,7 +87,7 @@ MODULE Overlays;
       SYSTEM.PUT(ov.mapped-overlayPrefixSize, SYSTEM.ADR(ov.heapsize));
       SYSTEM.PUT(ov.mapped-4, 0);
       ov.mapped := 0;
-      FillTOC(ov, TRUE);
+      (*FillTOC(ov, TRUE);*)
       DEC(allocated, ov.heapsize);
     END;
   END Evict;
@@ -216,6 +216,7 @@ MODULE Overlays;
     VAR mod: Module; ov: Overlay;
   BEGIN
     (*SYSTEM.EBREAK();*)
+    SYSTEM.PUT(-60, 0EH);
     mod := root;
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN
@@ -280,7 +281,7 @@ MODULE Overlays;
     FOR i := 0 TO ov.heapsize BY FileDir.SectorSize DO
       Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.heapsize-12 - i);
     END;
-    FillTOC(ov, FALSE);
+    (*FillTOC(ov, FALSE);*)
     INC(allocated, ov.heapsize);
     INC(loadedOverlays);
   END LoadOverlay;
@@ -309,6 +310,8 @@ MODULE Overlays;
     SYSTEM.VIRTUALARGS(); body();
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
+    SYSTEM.GET(ov.mapped - 4, k);
+    SYSTEM.PUT(ov.mapped - 4, k+1);
     (*ChangeMark(ov, TRUE);*)
     (*
     IF (old # NIL) & (old.mapped = 0) THEN
