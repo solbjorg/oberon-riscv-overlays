@@ -284,6 +284,7 @@ MODULE Overlays;
     (*FillTOC(ov, FALSE);*)
     INC(allocated, ov.heapsize);
     INC(loadedOverlays);
+    SYSTEM.PUT(-60, ov.mapped);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -292,8 +293,8 @@ MODULE Overlays;
   END GetOverlayToken;
 
   PROCEDURE OverlayManager*();
-    VAR k, offset: INTEGER;
-      ov, old: Overlay; body: Func;
+    VAR k: INTEGER;
+      ov: Overlay; body: Func;
   BEGIN
     SYSTEM.REGSTACK(20);
 
@@ -303,11 +304,11 @@ MODULE Overlays;
     ov := SYSTEM.VAL(Overlay, overlayTableRoot + (SYSTEM.REG(30) DIV 2 MOD 4000H) * overlayDescSize);
     IF ov.mapped = 0 THEN LoadOverlay(ov); END;
 
-    body := SYSTEM.VAL(Func, ov.mapped);
     (*ChangeMark(ov, FALSE);*)
     SYSTEM.GET(ov.mapped - 4, k);
     SYSTEM.PUT(ov.mapped - 4, k-1);
-    SYSTEM.VIRTUALARGS(); body();
+    (*SYSTEM.VIRTUALARGS(); body();*)
+    SYSTEM.JUMP(ov.mapped);
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
     SYSTEM.GET(ov.mapped - 4, k);
