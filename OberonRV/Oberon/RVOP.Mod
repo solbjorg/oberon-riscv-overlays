@@ -489,6 +489,7 @@ END RoundUp;
       ELSIF pno = 15 THEN RVOG.EBREAK;
       ELSIF pno = 16 THEN CheckConst(x); CheckInt(x); RVOG.REGSTACK(x);
       ELSIF pno = 17 THEN RVOG.VIRTUALARGS;
+      ELSIF pno = 18 THEN CheckInt(x); RVOG.JUMP(x);
       END
     ELSE RVOS.Mark("wrong nof parameters")
     END

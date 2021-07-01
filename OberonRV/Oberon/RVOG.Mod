@@ -1683,25 +1683,30 @@ BEGIN (*x.type.form = RVOB.Proc*)
     IF x.r >= 0 THEN
       (* todo make this better... *)
       i := FindProcIndexGivenAddress(x.a);
-      LoadOverlayRegister(i, -x.r);
+      IF ~innerCore THEN
+        LoadOverlayRegister(i, -x.r);
+      END;
       GetSB(0);
       Fetch(SB, varsize + i * 4);
     ELSE (*imported*)
-      LoadOverlayRegister(x.a, -x.r);
+      IF ~innerCore THEN
+        LoadOverlayRegister(x.a, -x.r);
+      END;
       GetSB(x.r);
       Fetch(SB, x.a+C8);
     END;
     (*
     put(RVAssem.csrrs(RH+1, 0, 0C00H)); (* get CYCLERD(L) into RH *)
     put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *) *)
-    IF ~innerCore THEN
+    (*
+    IF markPrefix THEN
       put(RVAssem.lw(RH+1, RH, -4)); (* get mark into RH+1 *)
       put(RVAssem.addi(RH+1, RH+1, -1)); (* get mark into RH+1 *)
       put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *)
-    END;
+    END; *)
     put(RVAssem.jalr(RA, RH, 0));
-    invalSB;
-    IF ~innerCore THEN
+    (*
+    IF markPrefix THEN
       INC(RH);
       IF x.r >= 0 THEN
         (* todo make this better... *)
@@ -1716,7 +1721,7 @@ BEGIN (*x.type.form = RVOB.Proc*)
       put(RVAssem.addi(RH+1, RH+1, 1)); (* get mark into RH+1 *)
       put(RVAssem.sw(RH+1, RH, -4)); (* write timestamp into mark *)
       DEC(RH);
-    END;
+    END; *)
   ELSE
     IF x.mode <= RVOB.Par THEN
       load(x);
@@ -2142,6 +2147,13 @@ END REGSTACK;
 PROCEDURE VIRTUALARGS*;
 BEGIN virtualArgs := TRUE;
 END VIRTUALARGS;
+
+PROCEDURE JUMP*(VAR x: Item);
+BEGIN
+  Texts.WriteLn(W); Texts.WriteString(W, "JUMP"); Texts.Append(Oberon.Log, W.buf);
+
+  load(x); put(RVAssem.jalr(RA, x.r, 0));
+END JUMP;
 
 (* end in-line functions *)
 
