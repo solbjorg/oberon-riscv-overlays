@@ -281,8 +281,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       (* used for constructing call graph *)
       procs: ARRAY Overlays.maxNumProcs OF Overlays.Procedure;
       tempProc, fixup: Overlays.Procedure;
-      dummyLarge: POINTER TO FixupProcedureLarge;
-      dummySmall: POINTER TO FixupProcedureSmall;
       import: ARRAY 16 OF Overlays.Module;
 
   BEGIN
@@ -407,14 +405,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         fixorgD := fixorgD * 4; fixorgS := fixorgS * 4;
         FixupProcD(mod.code, w, fixorgD, mod);
         FixupOverlayTokens(mod.code, w, fixorgS, mod);
-        (* j = largest proc *)
-        IF j > maxProcSizeSmall THEN
-          NEW(dummyLarge); ASSERT(dummyLarge # NIL);
-          mapped := SYSTEM.ADR(dummyLarge.inst);
-        ELSE
-          NEW(dummySmall); ASSERT(dummySmall # NIL);
-          mapped := SYSTEM.ADR(dummySmall.inst);
-        END;
+        mapped := Kernel.overlayRegionVar;
         m := 07FFFFFFFH; largest := 0;
         FOR i := numprocs-1 TO 0 BY -1 DO
           (* Find the next procedure that needs to be fixed up *)
@@ -442,7 +433,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           FixupOverlayTokens(mapped, procs[index].addr, fixorgS, mod);
           Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, procs[index].index), mapped);
         END;
-        dummySmall := NIL; dummyLarge := NIL;
         (* iterate over procs in module *)
         (*FindProcCalls(mod, fixorgS);*)
         (*Overlays.CollapseNode(nodes[0]);*)

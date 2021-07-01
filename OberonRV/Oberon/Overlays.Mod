@@ -1,6 +1,6 @@
 MODULE Overlays;
   IMPORT SYSTEM, Kernel, FileDir, Files;
-  CONST numBaseOverlays = 250;
+  CONST numBaseOverlays = 198;
     numExtendOverlays = 50;
     maxNumProcs* = 60;
     maxNumMods* = 10;
@@ -154,7 +154,6 @@ MODULE Overlays;
   PROCEDURE GC*(blockSizeNeeded: INTEGER; isData: BOOLEAN);
     VAR mod: Module; ov: Overlay;
   BEGIN
-    (*SYSTEM.EBREAK();*)
     mod := root;
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN

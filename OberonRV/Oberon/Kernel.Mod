@@ -8,8 +8,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     FSoffset* = 80000H; (*256MB in 512-byte blocks*)
     filemapsize* = 08000H; (*500 sectors, 32MB*)
     overlaymapsize = 08000H; (*500 sectors, 32MB*)
-    overlayRegion* = 526288; (* 80000H + 250*8 *)
-    overlayRegionSize = 10000H;
+    overlayRegion* = 64816; (* heapOrg + 250*8 *)
+    overlayRegionSize = 4256;
     RA = 1; SP = 2;
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
@@ -151,26 +151,23 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ptr := 0; collected := FALSE;
     SYSTEM.GET(tag, size);
     lim := (heapLim - heapOrg) - dataAllocationLimit;
-    IF allocated + size > lim THEN GC(size, TRUE); collected := TRUE; END;
-    IF allocated + size <= lim THEN
+    IF size = 32 THEN GetBlock32(p)
+    ELSIF size = 64 THEN GetBlock64(p)
+    ELSIF size = 128 THEN GetBlock128(p)
+    ELSE GetBlock(p, (size+255) DIV 256 * 256)
+    END ;
+    IF p = 0 THEN
+      (* run garbage collection if not enough space *)
+      GC(size, TRUE);
       IF size = 32 THEN GetBlock32(p)
       ELSIF size = 64 THEN GetBlock64(p)
       ELSIF size = 128 THEN GetBlock128(p)
       ELSE GetBlock(p, (size+255) DIV 256 * 256)
       END ;
-      IF (p = 0) & ~collected THEN
-        (* run garbage collection if not enough space *)
-        GC(size, TRUE);
-        IF size = 32 THEN GetBlock32(p)
-        ELSIF size = 64 THEN GetBlock64(p)
-        ELSIF size = 128 THEN GetBlock128(p)
-        ELSE GetBlock(p, (size+255) DIV 256 * 256)
-        END ;
-      END;
-      IF p # 0 THEN
-        ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
-        WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
-      END;
+    END;
+    IF p # 0 THEN
+      ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
+      WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
     END;
   END NewPtr;
 
@@ -506,7 +503,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE AbortTrap(trap, loc: INTEGER);
   BEGIN
-    SYSTEM.PUT(-60, 0FFFFFFH);
     REPEAT UNTIL FALSE;
 
     IF Reset # NIL THEN
@@ -531,7 +527,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     (* Note: 192 sets the top two LEDs. This indicates that a trap was hit. *)
     (* Note on the note: I currently put the whole trap in the LEDs, for easier debugging *)
     (* with my emulator that supports 32-bit LED output. *)
-    ELSE (*stop*) SYSTEM.PUT(led, heapLim - heapOrg); SYSTEM.PUT(led, allocated); SYSTEM.PUT(led, v);
+    ELSE (*stop*) SYSTEM.PUT(led, v);
       (* freeze system *)
       AbortTrap(v, u);
     END;
@@ -552,15 +548,19 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
   BEGIN
     Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap; replaced later by System.Mod*)
     Install(SYSTEM.ADR(Abort), 0);
-    SYSTEM.GET(12, MemLim); SYSTEM.GET(24, heapOrg);
+    SYSTEM.GET(12, MemLim);
+    (*SYSTEM.GET(24, heapOrg);*)
+    heapOrg := 0F700H;
     stackOrg := heapOrg; stackSize := 8000H;
     (*INC(heapOrg, 050D00H);*)
     (*INC(heapOrg, 05E000H);*)
-    heapOrg := heapOrg + 250 * 16 + overlayRegionSize;
+    heapOrg := heapOrg + 198 * 8 + overlayRegionSize;
     (*INC(heapOrg, 049000H);*)
+    (*INC(heapOrg, 58F00H);*)
+
     Reset := NIL;
     overlayRegionVar := overlayRegion;
-    heapLim := MemLim;
+    heapLim := 17900H;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
     largestFreeBlock := 0; allocated := 0; clock := 0; InitSecMap;
