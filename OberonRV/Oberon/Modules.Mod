@@ -316,12 +316,12 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         INC(size, DescSize); mod := root;
         WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END ;
         IF mod = NIL THEN (*no large enough hole was found*)
-          IF AllocPtr + size < limit THEN (*allocate*)
+          (*IF AllocPtr + size < limit THEN (*allocate*)*)
             p := AllocPtr; mod := SYSTEM.VAL(Overlays.Module, p);
             AllocPtr := (p + size) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
             mod.next := root; SetRoot(mod);
-          ELSE error(7, name)
-          END
+            (*ELSE error(7, name)*)
+            (*END*)
         ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
         END
       END ;
@@ -393,9 +393,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         Files.ReadInt(R, w);
         Files.Read(R, ch);
         Files.Set(R, F, codeFilePos + w); (*jump to entry *)
-        size := n*4 - w;
-        WHILE size < n*4 DO Files.ReadInt(R, m); SYSTEM.PUT(p, m);
-          INC(p, 4); INC(size, 4) END ;  (*entry code*)
+        i := w;
+        WHILE i < n*4 DO Files.ReadInt(R, m); SYSTEM.PUT(p, m);
+          INC(p, 4); INC(i, 4) END ;  (*entry code*)
         (* generate node for linked module *)
         IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
         (* set alloc ptr such that the next loaded module will overwrite this one *)

@@ -360,6 +360,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR V: Viewers.Viewer; M: InputMsg; N: ControlMsg;
        prevX, prevY, X, Y, t: INTEGER; keys: SET; ch: CHAR;
   BEGIN
+    SYSTEM.EBREAK();
     REPEAT
       Input.Mouse(keys, X, Y);
       IF Input.Available() > 0 THEN Input.Read(ch);
@@ -389,6 +390,12 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     UNTIL FALSE
   END Loop;
 
+  PROCEDURE EnterLoop*;
+  BEGIN
+    Overlays.EvictAllOverlays();
+    SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
+  END EnterLoop;
+
   PROCEDURE Reset*(trap: INTEGER; mod: Overlays.Module);
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
@@ -403,10 +410,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 
-  PROCEDURE SetResetMessage*(msg: PROCEDURE(trap: INTEGER; mod: Overlays.Module));
-  BEGIN ResetMessage := msg;
-  END SetResetMessage;
-
   PROCEDURE Init;
   BEGIN
     Overlays.SetReset(Reset);
@@ -418,6 +421,11 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*)
     Loop
   END Init;
+
+  PROCEDURE SetResetMessage*(msg: PROCEDURE(trap: INTEGER; mod: Overlays.Module));
+  BEGIN ResetMessage := msg;
+  END SetResetMessage;
+
 
 BEGIN
   User[0] := 0X;

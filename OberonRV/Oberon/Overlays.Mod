@@ -282,9 +282,6 @@ MODULE Overlays;
       Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.heapsize-12 - i);
     END;
     (*FillTOC(ov, FALSE);*)
-    INC(allocated, ov.heapsize);
-    INC(loadedOverlays);
-    SYSTEM.PUT(-60, ov.mapped);
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
