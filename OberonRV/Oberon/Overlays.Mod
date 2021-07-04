@@ -10,6 +10,7 @@ MODULE Overlays;
     addi = 19; load = 3; store = 35;
 
     (* Useful constants for bit manip *)
+    C30 = 40000000H;
     C28 = 10000000H;
     C24 = 1000000H;
     C20 = 100000H;
@@ -298,15 +299,21 @@ MODULE Overlays;
     (*k := SYSTEM.REG(30) DIV 8000H; (* k = the overlay index of the calling function *)*)
 
     (* calculate location of ov in overlay table *)
-    ov := SYSTEM.VAL(Overlay, overlayTableRoot + (SYSTEM.REG(30) DIV 2 MOD 4000H) * overlayDescSize);
+    ov := SYSTEM.VAL(Overlay, overlayTableRoot + (SYSTEM.REG(30) DIV 4 MOD 200H) * overlayDescSize);
     IF ov.mapped = 0 THEN LoadOverlay(ov); END;
 
     (*ChangeMark(ov, FALSE);*)
     SYSTEM.GET(ov.mapped - 4, k);
     SYSTEM.PUT(ov.mapped - 4, k-1);
+    k := SYSTEM.REG(30) DIV 2;
+    (*SYSTEM.EBREAK();*)
     SYSTEM.JUMP(ov.mapped);
     (* discard the saved registers now that they are no longer needed *)
     SYSTEM.REGSTACK(9);
+    IF ODD(k) THEN
+      SYSTEM.GET(ov.mapped - 4, k);
+      SYSTEM.PUT(ov.mapped - 4, k+1);
+    END;
     (*ChangeMark(ov, TRUE);*)
     (*
     IF (old # NIL) & (old.mapped = 0) THEN

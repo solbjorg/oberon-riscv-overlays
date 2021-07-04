@@ -206,7 +206,9 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       inst := (inst - LSL(imm MOD C20, 12)) + LSL(callerIndex, 15) + LSL(index DIV 800H MOD 8H, 12);
       SYSTEM.PUT(mapped + fixorgS - adr-4, inst);
 
-      inst := LSL(index MOD 800H, 1) + 1;
+      inst := LSL(index MOD 200H, 2) + 1;
+      IF procVar THEN INC(inst, 2) END;
+
       SYSTEM.PUT(mapped + fixorgS - adr, Addi(reg, inst));
       (* if MSB of the imm in the addi instruction is 1, it *)
       (* will be sign extended; so we need to change the imm*)
