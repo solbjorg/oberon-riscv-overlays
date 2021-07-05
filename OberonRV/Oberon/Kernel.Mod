@@ -8,8 +8,8 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     FSoffset* = 80000H; (*256MB in 512-byte blocks*)
     filemapsize* = 08000H; (*500 sectors, 32MB*)
     overlaymapsize = 08000H; (*500 sectors, 32MB*)
-    overlayRegion* = 64816; (* heapOrg + 250*8 *)
-    overlayRegionSize = 4256;
+    overlayRegion* = 526288; (* heapOrg + 250*8 *)
+    overlayRegionSize = 50000;
     RA = 1; SP = 2;
 
   TYPE Sector* = ARRAY SectorLength OF BYTE;
@@ -477,8 +477,6 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
   PROCEDURE SetAllocPtr*(ap: INTEGER);
   BEGIN AllocPtr := ap;
-    SYSTEM.PUT(-60, 0BEA7H);
-    SYSTEM.PUT(-60, ap);
   END SetAllocPtr;
 
   (* Deposits a relative offset jump to `Padr` in location `at` *)
@@ -549,8 +547,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     Install(SYSTEM.ADR(Trap), 20H);  (*install temporary trap; replaced later by System.Mod*)
     Install(SYSTEM.ADR(Abort), 0);
     SYSTEM.GET(12, MemLim);
-    (*SYSTEM.GET(24, heapOrg);*)
-    heapOrg := 0F700H;
+    SYSTEM.GET(24, heapOrg);
     stackOrg := heapOrg; stackSize := 8000H;
     (*INC(heapOrg, 050D00H);*)
     (*INC(heapOrg, 05E000H);*)
@@ -560,7 +557,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
 
     Reset := NIL;
     overlayRegionVar := overlayRegion;
-    heapLim := 17900H;
+    heapLim := MemLim;
     list1 := 0; list2 := 0; list3 := 0; list0 := heapOrg;
     SYSTEM.PUT(list0, heapLim - heapOrg); SYSTEM.PUT(list0+4, -1); SYSTEM.PUT(list0+8, 0);
     largestFreeBlock := 0; allocated := 0; clock := 0; InitSecMap;

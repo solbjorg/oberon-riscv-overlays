@@ -454,6 +454,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         END ;
         (* allow GC to clean these up *)
         FOR i := 0 TO numprocs DO procs[i] := NIL END;
+        Overlays.LoadOverlay(Overlays.GetCurrentOverlay());
         body();
       ELSIF res >= 3 THEN importing := name;
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END;
