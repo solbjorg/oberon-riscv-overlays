@@ -148,14 +148,14 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
     ptr := 0; collected := FALSE;
     SYSTEM.GET(tag, size);
     lim := (heapLim - heapOrg) - dataAllocationLimit;
-    IF allocated + size > lim THEN GC(size, TRUE); collected := TRUE; END;
-    IF allocated + size <= lim THEN
+    (*IF allocated + size > lim THEN GC(size, TRUE); collected := TRUE; END;*)
+    (*IF allocated + size <= lim THEN*)
       IF size = 32 THEN GetBlock32(p)
       ELSIF size = 64 THEN GetBlock64(p)
       ELSIF size = 128 THEN GetBlock128(p)
       ELSE GetBlock(p, (size+255) DIV 256 * 256)
       END ;
-      IF (p = 0) & ~collected THEN
+      IF (p = 0) THEN
         (* run garbage collection if not enough space *)
         GC(size, TRUE);
         IF size = 32 THEN GetBlock32(p)
@@ -168,7 +168,7 @@ MODULE Kernel;  (*NW/PR  11.4.86 / 27.12.95 / 4.2.2014*)
         ptr := p+8; SYSTEM.PUT(p, tag); lim := p + size; INC(p, 4); INC(allocated, size);
         WHILE p < lim DO SYSTEM.PUT(p, 0); INC(p, 4) END
       END;
-    END;
+      (*END;*)
   END NewPtr;
 
   (* allocates a block of `size` to heap and writes this address to `ptr` *)
