@@ -1,52 +1,22 @@
-# Project Oberon 2013 on RISC-V
-This respository contains everything necessary to create a working RISC-V image of Project Oberon 2013, including a working RV32IM compiler as well as a port of Oberon itself.
+# Code overlays for Project Oberon 2013 on RISC-V
+This repository is a fork of my project last year, which ported the Oberon system to RISC-V. It adds code overlays to the Oberon system, meaning unused code is written to disk, and read into memory when it is needed. In doing so, the memory requirements of the Oberon system are reduced, though with a performance cost. (The performance is still usually acceptable in the emulator, though it may vary from program to program.) It is able to link and load the entire Oberon system, as well as run programs on top of it, including tasks such as Stars. Additionally, improvements have been made to heap allocation and garbage collection. Garbage collection can now run at any moment during program execution, and not only as a Task when no other program is executing.
 
-## Contents
+Note that this is intended as a prototype, and not as a system for daily use. For instance, as generation of overlays has to occur in runtime, booting is considerably slower than in an unmodified RISC-V Oberon system.
 
-* `Runtime/` RISC5 emulator and operating system interface.
-* `Oberon/` Unmodified source code from Project Oberon 2013.
-* `OberonRV/` RISC-V modified source code.
-* `Norebo/` Norebo-specific and new modules.
-* `Bootstrap/` Pre-compiled modules to bootstrap Norebo.
+## How to run Oberon with code overlays
+Run `make imagerv` to create a disk image `imagebuild/Oberon.dsk`. This can be run by the RISC-V emulator that can be found [here](https://github.com/solbjorg/oberon-riscv-emu). More details on the build process can be found in the [original RISC-V port repository](https://github.com/solbjorg/oberon-riscv).
 
-## How to run Oberon on RISC-V
-If you don't want to figure out how to build an image, and you just want to try this out, clone [the repository for the RISC-V Oberon emulator](https://github.com/solbjorg/oberon-riscv-emu) instead, as it includes an example RISC-V image.
+## Overview
+Overlays.Mod contains the core of the overlay system. The version of this project in the master branch is one using the system heap to store code segments. These code segments are organised as an overlay tree, such that, when garbage collection is run, procedures not currently in the call tree are freed from the heap.
 
-### How to build an image
-To build a RISC-V image, simply run:
-``` shell
-make imagerv
-```
-
-This will deposit a disk image: `imagebuild/Oberon.dsk`. This can be used for the emulator.
-
-If you wish more control over the process, here is how to generate one with a different manifest, from whichever folder you prefer:
-``` shell
-rm -rf imagebuild
-./build-image.py -r OberonRV/Oberon -m manifests/manifest.csv
-```
-
-The `-r` flag specifies the creation of a RISC-V image. By default, build-image will select the `manifests/manifest.csv` manifest; but there are a few other manifests in that folder, and you can use a `-m` flag to specify using them instead. Editing the manifest to include whichever files you wish to include should be fairly straight-forward; just remember to add the corresponding `.Mod` files in the `OberonRV/Oberon` folder. You can specify a different folder than OberonRV/Oberon, but an unedited PO2013 repository will not work without some significant changes.
-
-### How to change the bootloader 
-The bootloader is embedded in the emulator. Thus, changing it is a separate process from building the image. You *probably* don't need to change the bootloader, but if you desire to:
-- Compile your bootloader using the RISC-V compiler. To make this easier for yourself, running `cd OberonRV; source functions.sh` will source the `roc` and `nor` commands. You can then run `roc BootLoad.mod`, and the compiled program can be found in `BootLoad.rsc`.
-- Use `ORX.Mod` in andreaspirklbauer's `Oberon-building-tools`, included as a submodule, to write a file that can be used as bootloader: `nor ORX.WriteFile BootLoad.rsc BootLoad.code`. BootLoad.code now contains a list of RISC-V instructions.
-- Currently, the emulator won't understand this format. You need to add `0x` to the start of every line, and a comma to the end. You can look at `src/emu/bootloader.inc` in the emulator for an example of the formatting. (I use vim to do this, and that's quick enough that I never bothered to write a script for it. So, this part is left as an exercise to the reader.) Then, replace bootloader.inc with your own bootloader.
+It is possible to change the strategy determining which overlays should be evicted. This can be done by tinkering with Overlays.OverlayManager, which governs what occurs in a procedure call to an overlaid procedure.
 
 ## TODO
-- Test it on an FPGA; should be doable
-- Support REALs and interrupts
-- 64-bit support. This is rather easy, as to my knowledge it only requires minor changes.
-- Bootstrap Norebo using a RISC-V emulator rather than RISC-5
+- Improve documentation, as currently it is rather bare-bones.
+- Freeing modules is currently not integrated into the overlay system. This means that modules can be freed, but they are not removed from the overlay table. This can be improved most easily by only allowing modules on the top of the overlay table to be removed, and decrementing `numGeneratedOverlays` in the Overlays module by however many procedures that module contained (essentially creating a stack).
+- Outer core support is enough to make the system functional, but helper functions beyond what is necessary have not been written. It may be useful to have commands in System that e.g. report the current state of the overlay table, the number of remaining available entries, etc.
 
 ### Known Bugs
-- For some reason, the compiler incorrectly reads symbol tables within Project Oberon. It reads parameter lengths of 0FFFFFFFFH as 07FH; probably due to reading only a byte instead of the full word. Currently, there is a workaround in the parser that allows parameter lengths of 07FH to be treated the same as 0FFFFFFFFH.
+- The overlay system is currently unable to run the compiler.
 
-## Credits
-Several open-source projects were used to create this port.
-- Of course, [Project Oberon](https://people.inf.ethz.ch/wirth/ProjectOberon/) itself.
-- sam-falvo's [Oberon-RV compiler](https://github.com/sam-falvo/project-norebo), of which this repository is a fork. It could compile many programs, but had bugs that prevented it from being able to compile the full Oberon system. I've patched most of these, such that it is now self-compiling. Some modules, such as RVAssem, RVDis, and RVOTool, remain either entirely or mostly unchanged.
-- pdewacht's [Project Norebo](https://github.com/pdewacht/project-norebo), used to create the RISC-V image, of which this repository is also a fork.
-- pdewacht's [Oberon emulator](https://github.com/pdewacht/oberon-risc-emu), used to emulate the created images. My port of the emulator to RISC-V can be found [here](https://github.com/solbjorg/oberon-riscv-emu).
-- andreaspirklbauer's [Oberon-building-tools](https://github.com/andreaspirklbauer/Oberon-building-tools), which is included as a submodule of this repository. The documentation on Oberon's boot process is very useful, as is the tooling.
+Of course, feel free to report any additional bugs!
