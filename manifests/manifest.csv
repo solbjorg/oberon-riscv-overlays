@@ -19,5 +19,7 @@ source,Powers.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/S
 source,Sierpinski.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/System.Mod.txt
 source,Edit.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/System.Mod.txt
 source,Stars.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/System.Mod.txt
+source,Permutations.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/System.Mod.txt
+source,MagicSquares.Mod,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/System.Mod.txt
 text,Oberon10.Scn.Fnt,http://www.paddedcell.com/projectoberon/wirth/Sources/apptools.zip
 text,System.Tool,https://www.inf.ethz.ch/personal/wirth/ProjectOberon/Sources/System.Tool.txt
