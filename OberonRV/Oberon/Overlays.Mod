@@ -55,97 +55,33 @@ MODULE Overlays;
     END;
 
   VAR numGeneratedOverlays*, allocated*: INTEGER;
-    overlayTableRoot: INTEGER;
-    mappedSector, addressOVM*: INTEGER;
+    overlayTableRoot: INTEGER; (* base of the overlay table, which is placed between the stack and the heap *)
+    (* current sector on the disk that overlays have been written into *)
+    (* incremented whenever a new overlay is written *)
+    mappedSector: INTEGER;
+    addressOVM*: INTEGER; (* address of the overlay manager. constant *)
     root: Module;
     OberonReset: ResetFunc;
-    loadedOverlays*: INTEGER;
 
-  (*PROCEDURE FillTOC(ov: Overlay; evict: BOOLEAN);
-    VAR addr: INTEGER; mod: Module;
-  BEGIN
-    mod := root;
-    WHILE mod.num # ov.mno DO
-      mod := mod.next;
-    END;
-    IF evict THEN
-      addr := addressOVM;
-    ELSE
-      addr := ov.mapped;
-    END;
-    SYSTEM.PUT(mod.procs + ov.pno * 4, addr);
-  END FillTOC;*)
-
+  (* evict overlay `ov`, marking it as garbage and marking it as not mapped *)
+  (* in the overlay table *)
   PROCEDURE Evict(ov: Overlay);
   BEGIN
     IF ov.mapped > 0 THEN
-      (*
-      IF (ov.mod.num = 11) & (ov.pno = 40) THEN
-        SYSTEM.PUT(-60, 0FAH);
-        SYSTEM.EBREAK();
-      END; *)
       SYSTEM.PUT(ov.mapped-overlayPrefixSize, SYSTEM.ADR(ov.heapsize));
       SYSTEM.PUT(ov.mapped-4, 0);
       ov.mapped := 0;
-      (*FillTOC(ov, TRUE);*)
       DEC(allocated, ov.heapsize);
     END;
   END Evict;
 
-  (*
-  PROCEDURE FindOutlier(minSize: INTEGER; newest: BOOLEAN): Overlay;
-    VAR i, timestamp, lruTime: INTEGER; ov, lruOv: Overlay;
-      found: BOOLEAN;
-  BEGIN
-    (* first find a baseline for "oldest", doesn't matter what it is *)
-    (* it might as well be 0, in which case this part can be cut out *)
-    found := FALSE; i := 0; lruOv := NIL;
-    SYSTEM.PUT(-60, 0FFFF4321H);
-    REPEAT
-      ov := overlays[i];
-      IF (ov # NIL) & (ov.mapped > 0) & (ov.heapsize >= minSize) THEN
-        found := TRUE;
-        lruOv := ov;
-        SYSTEM.GET(lruOv.mapped-4, lruTime);
-      END;
-      INC(i);
-    UNTIL (found) OR (i = numGeneratedOverlays);
-    (* iterate through every overlay from then on, to find the least recently used *)
-    WHILE i < numGeneratedOverlays DO
-      ov := overlays[i];
-      IF ov # NIL THEN
-        IF (ov.mapped > 0) & (ov.heapsize >= minSize) THEN
-          SYSTEM.GET(ov.mapped-4, timestamp);
-          IF ((lruTime < 0) & (newest)) OR ((lruTime > 0) & (~newest)) THEN
-            IF timestamp < lruTime THEN
-              lruTime := timestamp;
-            END;
-          ELSE
-            IF timestamp > lruTime THEN
-              lruTime := timestamp;
-            END;
-          END;
-        END;
-      END;
-      INC(i);
-    END;
-    RETURN lruOv
-  END FindOutlier; *)
-
-
-  (*
-  PROCEDURE EvictLRUOverlay*(minSize: INTEGER);
-    VAR lruOv: Overlay;
-  BEGIN
-    lruOv := FindOutlier(minSize, FALSE); (* find oldest *)
-    IF lruOv # NIL THEN Evict(lruOv) END;
-  END EvictLRUOverlay; *)
-
+  (* get the Overlay record of the overlay at `index` in the table *)
   PROCEDURE GetOverlay(index: INTEGER): Overlay;
   BEGIN
     RETURN SYSTEM.VAL(Overlay, overlayTableRoot + index * overlayDescSize)
   END GetOverlay;
 
+  (* mark overlays not in the call tree as garbage, evict them *)
   PROCEDURE CollectOverlays;
     VAR mark, i: INTEGER;
       ov: Overlay;
@@ -161,6 +97,8 @@ MODULE Overlays;
     END;
   END CollectOverlays;
 
+  (* find out which module a trap occured in; only used for error reporting. *)
+  (* takes a `loc` which indicates the position of PC in memory *)
   PROCEDURE LocateMod*(loc: INTEGER): Module;
     VAR m: Overlay; i: INTEGER;
       result: Module;
@@ -184,6 +122,7 @@ MODULE Overlays;
     RETURN result
   END LocateMod;
 
+  (* evicts all currently mapped overlays *)
   PROCEDURE EvictAllOverlays*;
     VAR i, mark: INTEGER; ov: Overlay;
   BEGIN
@@ -195,73 +134,39 @@ MODULE Overlays;
     END;
   END EvictAllOverlays;
 
-  (*
-  PROCEDURE EvictCollectedOverlays*();
-    VAR i, mark: INTEGER; ov: Overlay;
-  BEGIN
-    FOR i := 0 TO numGeneratedOverlays-1 DO
-      ov := overlays.list[i];
-      IF ov.mapped > 0 THEN
-        SYSTEM.GET(ov.mapped-8, mark);
-        IF mark = 0 THEN
-          ov.mapped := 0;
-          FillTOC(ov, TRUE);
-          DEC(allocated, ov.heapsize);
-        END;
-      END;
-    END;
-  END EvictCollectedOverlays; *)
-
-  PROCEDURE GC*(blockSizeNeeded: INTEGER; isData: BOOLEAN);
+  (* garbage collection *)
+  PROCEDURE GC*();
     VAR mod: Module; ov: Overlay;
   BEGIN
-    (*SYSTEM.EBREAK();*)
-    SYSTEM.PUT(-60, 0EH);
     mod := root;
+    (* mark every loaded module *)
     WHILE mod # NIL DO
       IF mod.name[0] # 0X THEN
-        Kernel.MarkMod(mod.ptr)
+        Kernel.MarkMod(mod.ptr);
       END ;
       mod := mod.next
     END ;
+    (* mark the stack *)
     Kernel.MarkStack;
+    (* special handling for the files list *)
     Files.RestoreList;
+    (* remove currently unmarked overlays *)
     CollectOverlays;
     Kernel.Scan;
-    (*
-    IF Kernel.largestFreeBlock < blockSizeNeeded THEN
-      ov := FindOutlier(blockSizeNeeded, FALSE);
-      IF ov # NIL THEN
-        Evict(ov);
-        GC(blockSizeNeeded, isData);
-      END;
-    END; *)
   END GC;
 
   PROCEDURE Reset*(trap, loc: INTEGER);
     VAR mod: Module;
   BEGIN
+    (* find module in which the trap occured (may be NIL) *)
     mod := LocateMod(loc);
+    (* reset state *)
     EvictAllOverlays;
-    GC(0, FALSE);
+    GC;
     IF OberonReset # NIL THEN OberonReset(trap, mod);
     ELSE REPEAT UNTIL FALSE
     END;
   END Reset;
-
-
-  (* TODO remove this procedure, it is just for debugging *)
-  (*
-  PROCEDURE FreeModule*(mno: INTEGER);
-    VAR i: INTEGER; ov: Overlay;
-  BEGIN
-    FOR i := numGeneratedOverlays-1 TO 0 DO
-      IF overlays.list[i].mod.num = mno THEN
-        overlays.list[i] := NIL;
-      END;
-    END;
-  END FreeModule;
- *)
 
   PROCEDURE LoadOverlay(ov: Overlay);
     VAR i: INTEGER;
@@ -269,19 +174,18 @@ MODULE Overlays;
     Kernel.NewOverlay(ov.mapped, ov.heapsize);
     IF ov.mapped = 0 THEN
       (* allocation failed - run garbage collection and try again *)
-      (*EvictLRUOverlay(ov.heapsize);*)
-      GC(ov.heapsize, FALSE);
+      GC;
       Kernel.NewOverlay(ov.mapped, ov.heapsize);
       IF ov.mapped = 0 THEN
-        (* allocation failed again - no contiguous memory can be allocated. panic. *)
-        SYSTEM.EBREAK();
+        (* allocation failed again - no contiguous memory can be allocated on the heap. panic *)
+        (* uncomment the below line if you want to inspect system state in the emulator upon panic: *)
+        (*SYSTEM.EBREAK();*)
         Reset(0, 0);
       END;
     END;
     FOR i := 0 TO ov.heapsize BY FileDir.SectorSize DO
       Kernel.GetSectorToMem((ov.sector + i DIV FileDir.SectorSize) * 29, ov.mapped + i, ov.heapsize-12 - i);
     END;
-    (*FillTOC(ov, FALSE);*)
   END LoadOverlay;
 
   PROCEDURE GetOverlayToken*(index: INTEGER): LONGINT;
@@ -290,8 +194,7 @@ MODULE Overlays;
   END GetOverlayToken;
 
   PROCEDURE OverlayManager*();
-    VAR k: INTEGER;
-      ov: Overlay; body: Func;
+    VAR ov: Overlay; k: INTEGER;
   BEGIN
     SYSTEM.REGSTACK(20);
 
@@ -393,8 +296,8 @@ MODULE Overlays;
     END;
   END NewOverlay;
 
-  (* Write Overlay.ovl based on index into overlay table *)
-  (* index: index into ov table; addr: relative address within module; mod: relevant module *)
+  (* Write overlay currently at memory address `mapped` into overlay table *)
+  (* index: index into ov table; mapped: memory address overlay is loaded into *)
   PROCEDURE WriteOverlay*(index, mapped: INTEGER);
     VAR i: INTEGER; ov: Overlay;
   BEGIN
@@ -429,7 +332,6 @@ MODULE Overlays;
     (* load location of the overlay manager to predetermined reg *)
     (* note: needs cooperation from the compiler *)
     SYSTEM.LDREG(31, SYSTEM.ADR(OverlayManager));
-    loadedOverlays := 0;
   END Init;
 
 END Overlays.

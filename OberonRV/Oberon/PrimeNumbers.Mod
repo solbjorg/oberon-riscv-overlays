@@ -1,5 +1,5 @@
 MODULE PrimeNumbers;  (*NW 6.9.07; Tabulate prime numbers; for Oberon-07  NW 25.1.2013*)
-  IMPORT SYSTEM, Overlays, Texts, Oberon, System;
+  IMPORT Texts, Oberon, System;
 
   VAR n: INTEGER;
     W: Texts.Writer;
@@ -33,16 +33,8 @@ MODULE PrimeNumbers;  (*NW 6.9.07; Tabulate prime numbers; for Oberon-07  NW 25.
   BEGIN
     Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
     IF S.i < 400 THEN
-      Primes(S.i); Texts.Append(System.dummytext, W.buf);
-    END;
-    SYSTEM.PUT(-60, Overlays.loadedOverlays);
-    SYSTEM.EBREAK();
-    Texts.OpenScanner(S, Oberon.Par.text, Oberon.Par.pos); Texts.Scan(S);
-    IF S.i < 400 THEN
       Primes(S.i); Texts.Append(Oberon.Log, W.buf)
     END;
-    SYSTEM.PUT(-60, Overlays.loadedOverlays);
-    SYSTEM.EBREAK();
   END Generate;
 
 BEGIN Texts.OpenWriter(W);

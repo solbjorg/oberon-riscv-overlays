@@ -308,8 +308,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     IF time >= 0 THEN text := M.text; beg := M.beg; end := M.end END
   END GetSelection;
 
+  (* since GC is now run when a program needs it, it only exists as a dummy task now, as the system *)
+  (* requires at least one task to function properly *)
   PROCEDURE GC;
-    VAR mod: Overlays.Module;
   BEGIN
     (*
     IF (ActCnt <= 0) THEN
@@ -360,7 +361,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     VAR V: Viewers.Viewer; M: InputMsg; N: ControlMsg;
        prevX, prevY, X, Y, t: INTEGER; keys: SET; ch: CHAR;
   BEGIN
-    SYSTEM.EBREAK();
     REPEAT
       Input.Mouse(keys, X, Y);
       IF Input.Available() > 0 THEN Input.Read(ch);
@@ -390,6 +390,7 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     UNTIL FALSE
   END Loop;
 
+  (* can be used by programs on top *)
   PROCEDURE EnterLoop*;
   BEGIN
     Overlays.EvictAllOverlays();
@@ -399,7 +400,9 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE Reset*(trap: INTEGER; mod: Overlays.Module);
   BEGIN
     IF CurTask.state = active THEN Remove(CurTask) END ;
-    (* Only run ResetMessage if it has been set and the heap isn't incredibly stressed *)
+    (* Only run ResetMessage if it has been set and the heap isn't incredibly stressed. *)
+    (* If ResetMessage fails to run to completion and incurs another reset - because *)
+    (* Texts is quite heavy - then it will not run again upon next reset *)
     IF (ResetMessage # NIL) & ~failedReset THEN
       failedReset := TRUE;
       ResetMessage(trap, mod);
@@ -407,16 +410,20 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
     failedReset := FALSE;
 
 	SYSTEM.PUT(-32, 0BB000000H); (* emu debug; prints stack trace *)
+    (* this can be replaced by EnterLoop if it is desired to evict Reset *)
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*) Loop
   END Reset;
 
   PROCEDURE Init;
   BEGIN
     Overlays.SetReset(Reset);
+    (* reset stack pointer, as it is unnecessarily deep due to Modules.Load *)
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*)
     Modules.Load("System", Mod);
     failedReset := FALSE;
     Mod := NIL;
+    (* create "clean slate" for the loop *)
+    (* this avoids Init always being in the overlay tree despite never being returned to *)
     Overlays.EvictAllOverlays();
     SYSTEM.LDREG(SP, Kernel.stackOrg); (*reset stack pointer*)
     Loop
@@ -425,7 +432,6 @@ MODULE Oberon; (*JG 6.9.90 / 23.9.93 / 13.8.94 / NW 14.4.2013 / 22.12.2015*)
   PROCEDURE SetResetMessage*(msg: PROCEDURE(trap: INTEGER; mod: Overlays.Module));
   BEGIN ResetMessage := msg;
   END SetResetMessage;
-
 
 BEGIN
   User[0] := 0X;

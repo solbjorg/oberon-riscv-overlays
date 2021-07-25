@@ -397,6 +397,9 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     END
   END ExtendDisplay;
 
+  (* Traps outside the inner core don't work properly in an overlaid system; *)
+  (* these two functions are replaced by ResetMessage *)
+
   (*
   PROCEDURE Trap(VAR a: INTEGER; b: INTEGER);
     VAR u, v, w: INTEGER; mod: Overlays.Module;
@@ -412,8 +415,7 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
       Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf); Oberon.Reset
     END
   END Trap;
- *)
-  (*
+
   PROCEDURE Abort;
     VAR n: INTEGER;
   BEGIN n := SYSTEM.REG(RA); Texts.WriteString(W, "  ABORT  "); Texts.WriteHex(W, n);
@@ -433,19 +435,17 @@ MODULE System; (*JG 3.10.90 / NW 12.10.93 / NW 20.6.2016*)
     IF mod # NIL THEN Texts.WriteString(W, mod.name) 
     ELSE Texts.WriteString(W, "NIL") END ;
     Texts.WriteLn(W); Texts.Append(Oberon.Log, W.buf);
-    SYSTEM.PUT(-60, 0FAEAH);
   END ResetMessage;
 
+  (*
   PROCEDURE RunTest;
   BEGIN
     TextFrames.Call(SYSTEM.VAL(TextFrames.Frame, systemtool), 0, FALSE);
-  END RunTest;
+  END RunTest; *)
 
 BEGIN
   Texts.OpenWriter(W);
   Oberon.OpenLog(TextFrames.Text("")); OpenViewers;
-  (*Overlays.SetReset(ResetOVM);*)
   Oberon.SetResetMessage(ResetMessage);
   (*Kernel.Install(SYSTEM.ADR(Trap), 20H); Kernel.Install(SYSTEM.ADR(Abort), 0);*)
-  RunTest;
 END System.

@@ -16,6 +16,13 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
 
   TYPE Command* = PROCEDURE;
 
+    (* To avoid stressing the heap too much while loading, we would ideally only allocate as *)
+    (* much space as is needed on the heap to load each procedure in the module, i.e. the size *)
+    (* of the largest procedure in the module. However, as Oberon does not support allocating *)
+    (* blocks of variable size on the heap, a workaround is needed. maxProcSize represents the *)
+    (* largest procedure size of which linking is supported; maxProcSizeSmall is a more average *)
+    (* case which works for most modules. Depending on the module being loaded, one or the other *)
+    (* can be used, with a preference towards allocating a smaller block. *)
     FixupProcedureLarge = RECORD
       inst: ARRAY maxProcSize DIV 4 OF INTEGER;
     END;
@@ -36,29 +43,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END;
   END error;
 
-  (* writes a file Module.fix from fixed-up memory *)
-  (*
-  PROCEDURE WriteFixedModule*(mod: Overlays.Module; size: INTEGER);
-    VAR i, u: INTEGER;
-      F: Files.File; R: Files.Rider;
-      filename: Overlays.FileName;
-  BEGIN
-    i := 0;
-    WHILE mod.name[i] # 0X DO filename[i] := mod.name[i]; INC(i) END;
-    filename[i] := "."; filename[i+1] := "f"; filename[i+2] := "i"; filename[i+3] := "x";
-    filename[i+4] := 0X;
-    (*copy contents of module in memory into an overlay file*)
-    F := Files.New(filename);
-    Files.Set(R, F, 0);
-    i := mod.code;
-    WHILE i < mod.code + size DO
-      SYSTEM.GET(i, u); Files.WriteInt(R, u); INC(i, 4)
-    END;
-    Files.Register(F);
-  END WriteFixedModule;
-  *)
-
   (* ---------- Linker helper functions ----------*)
+
   (* Returns a `jal ra, imm` instruction. *)
   PROCEDURE Jal(imm: INTEGER) : INTEGER;
     VAR imm20, imm19to12, imm11, imm10to1: INTEGER;
@@ -76,8 +62,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     RETURN ((((imm + 20H) * 20H + 0) * 8H + 2) * 20H + 3) * 80H + 67 (*jalr opcode = 67*)
   END Jalr;
 
-  (* TODO remove these simple helper functions? readability vs compact code *)
-  (* ideally they should be in-lined, but Oberon doesn't support that *)
   PROCEDURE Addi(reg, imm: INTEGER) : INTEGER;
   BEGIN
     (*addi reg, reg, imm*)
@@ -104,52 +88,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     END;
     RETURN F
   END ThisFile;
-
-  (* Linearly search through procs (assumed sorted) to find the index of *)
-  (* the proc that PC is currently at. *)
-  (* procs is an address *)
-  (*
-  PROCEDURE FindIndex(pc, procs, numprocs: INTEGER): INTEGER;
-    VAR i, p: INTEGER; found: BOOLEAN;
-  BEGIN
-    i := 0;
-    WHILE (~found) & (i < numprocs) DO
-      SYSTEM.GET(procs + i * 4, p);
-      IF pc > p THEN
-        found := TRUE;
-      END
-    END;
-    RETURN p
-  END FindIndex;
-
-  PROCEDURE FindProcCalls(mod: Overlays.Module; fixorgS: INTEGER);
-    VAR adr, imm, mno, pno, inst, index, disp: INTEGER;
-      impmod: Overlays.Module;
-  BEGIN
-    adr := mod.code + fixorgS*4;
-    WHILE adr # mod.code DO
-      SYSTEM.GET(adr-4, inst);
-      imm := inst DIV C12;
-      mno := imm MOD C12;
-      pno := imm DIV C12;
-      IF mno <= 0 THEN
-        mno := mod.num;
-      ELSE
-        SYSTEM.GET(mod.imp + (mno-1)*4, impmod); mno := impmod.num;
-        (* TODO: too much indirection! *)
-        SYSTEM.GET(impmod.ent + pno*4, pno);
-        (*pno := (mod.procs - mod.data) + pno * 4;*)
-        (*SYSTEM.PUT(-60, 0E000000H + pno);*)
-      END;
-
-      SYSTEM.GET(adr, inst);
-
-      disp := inst DIV 10000H;
-      adr := mod.code + disp*4;
-    END ;
-  END FindProcCalls;
-  *)
-
 
   PROCEDURE SetRoot(r: Overlays.Module);
   BEGIN root := r;
@@ -222,8 +160,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
   END FixupOverlayTokens;
 
   (* mapped: location the procedure has been written to in memory *)
-  (* adr, size: address in code in which this procedure begins, and its size *)
-  (* fixorgD,T,S: the current part of the list. VAR so that they can be preserved for next call *)
+  (* adr: address in code in which this procedure begins *)
+  (* fixorgD: the current part of the list. VAR so that they can be preserved for next call *)
   PROCEDURE FixupProcD(mapped, adr: INTEGER; VAR fixorgD: INTEGER; mod: Overlays.Module);
     VAR v, inst, mno, disp, offset, op, vno, imm: INTEGER; impmod: Overlays.Module;
   BEGIN
@@ -278,9 +216,8 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       fixorgP, fixorgD, fixorgT, fixorgS: INTEGER;
       mapped, op, imm, disp, adr, inst, pno, vno, dest, offset, index, codeFilePos, largest: INTEGER;
       name1, impname: Overlays.ModuleName;
-      (* used for constructing call graph *)
       procs: ARRAY Overlays.maxNumProcs OF Overlays.Procedure;
-      tempProc, fixup: Overlays.Procedure;
+      tempProc: Overlays.Procedure;
       dummyLarge: POINTER TO FixupProcedureLarge;
       dummySmall: POINTER TO FixupProcedureSmall;
       import: ARRAY 16 OF Overlays.Module;
@@ -314,14 +251,13 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
       END;
       IF res = 0 THEN (*search for a hole in the list allocate and link*)
         INC(size, DescSize); mod := root;
+        (* TODO: Since mod.size is no longer a good indication of the actual size required in static data section, *)
+        (* this will no longer accurately locate potential holes. *)
         WHILE (mod # NIL) & ~((mod.name[0] = 0X) & (mod.size >= size)) DO mod := mod.next END ;
         IF mod = NIL THEN (*no large enough hole was found*)
-          (*IF AllocPtr + size < limit THEN (*allocate*)*)
-            p := AllocPtr; mod := SYSTEM.VAL(Overlays.Module, p);
-            AllocPtr := (p + size) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
-            mod.next := root; SetRoot(mod);
-            (*ELSE error(7, name)*)
-            (*END*)
+          p := AllocPtr; mod := SYSTEM.VAL(Overlays.Module, p);
+          AllocPtr := (p + size) DIV 20H * 20H; mod.size := AllocPtr - p; mod.num := root.num + 1;
+          mod.next := root; SetRoot(mod);
         ELSE (*fill hole*) p := SYSTEM.VAL(INTEGER, mod)
         END
       END ;
@@ -339,10 +275,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         mod.procs := p;
         Files.ReadInt(R, n);
         numprocs := n DIV 4;
-        (* use u both to calculate the size of each procedure, *)
-        (* as well as to ensure that the procedure list is monotonically *)
-        (* increasing. This is necessary, because there may be certain _padding words_ *)
-        i := 0; u := -1; j := 0; (* j = largest proc, i = index*)
+        i := 0; j := 0; (* j = largest proc, i = index*)
         WHILE (n > 0) DO
           Files.ReadInt(R, w);
           (* until a proc is in a loaded overlay, all calls should go *)
@@ -383,30 +316,37 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         SYSTEM.PUT(p, 0); INC(p, 4);
         mod.code := p;  (*program*)
         body := SYSTEM.VAL(Command, mod.code);
+        (* set AllocPtr here so that entry code gets overwritten by the next module that is loaded *)
         AllocPtr := mod.code;
         Kernel.SetAllocPtr(AllocPtr);
-        (* WHILE m > 0 DO SYSTEM.GET(u, w); SYSTEM.PUT(u, w + p); INC(u, 4); DEC(m, 4) END ;   (*procedures fixup*) *)
         Files.ReadInt(R, n);
         codeFilePos := Files.Pos(R);
-        Files.Set(R, F, codeFilePos + n * 4); (*jump past all code  *)
+        (* TODO: This can be made more elegant by reorganising the order in which data is given in the header/footer *)
+        Files.Set(R, F, codeFilePos + n * 4); (* jump past all code *)
         Files.ReadInt(R, fixorgP); Files.ReadInt(R, fixorgD); Files.ReadInt(R, fixorgT); Files.ReadInt(R, fixorgS);
         Files.ReadInt(R, w);
         Files.Read(R, ch);
-        Files.Set(R, F, codeFilePos + w); (*jump to entry *)
+        Files.Set(R, F, codeFilePos + w); (* jump to entry *)
+        (* write entry into end of linker space *)
         i := w;
-        WHILE i < n*4 DO Files.ReadInt(R, m); SYSTEM.PUT(p, m);
-          INC(p, 4); INC(i, 4) END ;  (*entry code*)
+        WHILE i < n*4 DO
+          Files.ReadInt(R, m); SYSTEM.PUT(p, m);
+          INC(p, 4); INC(i, 4)
+        END ;  (*entry code*)
         (* generate node for linked module *)
         IF ch # "O" THEN (*corrupted file*) mod := NIL; error(4, name) END;
-        (* set alloc ptr such that the next loaded module will overwrite this one *)
       END ;
+      (* - fixups - *)
       IF res = 0 THEN
+        (* generate an overlay for each procedure in the module *)
         Overlays.NewOverlay(mod, procs, numprocs);
         (*fixup of LDR/STR/ADD*)
         fixorgD := fixorgD * 4; fixorgS := fixorgS * 4;
+        (* fixup entry code *)
         FixupProcD(mod.code, w, fixorgD, mod);
         FixupOverlayTokens(mod.code, w, fixorgS, mod);
         (* j = largest proc *)
+        (* allocate space on the heap into which procedures that will be fixed up are written *)
         IF j > maxProcSizeSmall THEN
           NEW(dummyLarge); ASSERT(dummyLarge # NIL);
           mapped := SYSTEM.ADR(dummyLarge.inst);
@@ -421,6 +361,7 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
           (* ordering of procs[], as the outer proc will appear *before* *)
           (* the nested procs in procs[] but *after* them in code. So we should *)
           (* fixup the outer one before the inner ones. *)
+          (* Nested procedures cause a lot of trouble. *)
           (* TODO, this can be made more elegant *)
           largest := 0;
           FOR j := numprocs-1 TO 0 BY -1 DO
@@ -429,22 +370,21 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
               index := j;
             END;
           END;
-          (* need to translate this from addr to index *)
           m := largest;
           Files.Set(R, F, codeFilePos + (procs[index].addr)); (*jump to the part we want to write into memory*)
+          (* read procedure into memory *)
           FOR p := 0 TO procs[index].size BY 4 DO
             Files.ReadInt(R, w); SYSTEM.PUT(mapped + p, w);
-          END ;  (*proc code*)
+          END ;
 
+          (* fixups for that procedure *)
           FixupProcD(mapped, procs[index].addr, fixorgD, mod);
-          (* fixup overlay tokens with overlay indices *)
           FixupOverlayTokens(mapped, procs[index].addr, fixorgS, mod);
+          (* write that procedure onto disk as an overlay *)
           Overlays.WriteOverlay(Overlays.FindOverlayIndex(mod.num, procs[index].index), mapped);
         END;
+        (* set these to NIL so GC can clean them up *)
         dummySmall := NIL; dummyLarge := NIL;
-        (* iterate over procs in module *)
-        (*FindProcCalls(mod, fixorgS);*)
-        (*Overlays.CollapseNode(nodes[0]);*)
         (*fixup of type descriptors*)
         adr := mod.data + fixorgT*4;
         WHILE adr # mod.data DO
@@ -468,7 +408,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
         WHILE nofimps > 0 DO DEC(nofimps); DEC(import[nofimps].refcnt) END;
       END;
     END;
-    (*IF res > 0 THEN SYSTEM.EBREAK(); END;*)
     newmod := mod;
   END Load;
 
@@ -500,7 +439,6 @@ MODULE Modules;  (*Link and load on RISC; NW 20.10.2013 / 8.1.2019*)
     IF mod # NIL THEN
       IF mod.refcnt = 0 THEN
         mod.name[0] := 0X; p := mod.imp; q := mod.cmd;
-        (*Overlays.FreeModule(mod.num);*)
         WHILE p < q DO SYSTEM.GET(p, imp); DEC(imp.refcnt); INC(p, 4) END ;
       ELSE res := 1
       END

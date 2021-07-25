@@ -669,14 +669,8 @@ BEGIN
         IF x.r > 0 THEN RVOS.Mark("not allowed")
         ELSIF x.r = 0 THEN  (* Answer address of procedure in current module *)
           PutOverlayToken(RH, FindProcIndexGivenAddress(x.a), 0, TRUE);
-
-          (* GetSB(0); AddImm(SB, x.a+C8); *)
-          (* put(RVAssem.auipc(RH, 0));
-          LoadImmTo(RH+1, (pc-1)*InsnSize - x.a);
-          put(RVAssem.sub(RH, RH, RH+1)); *)
         ELSE  (* Answer address of procedure in a different module *)
           PutOverlayToken(RH, x.a, -x.r, TRUE);
-          (* GetSB(x.r); AddImm(SB, x.a+C8); *)
         END;
       ELSE LoadImm(x.a)
       END;
@@ -1681,7 +1675,7 @@ BEGIN (*x.type.form = RVOB.Proc*)
 
   IF x.mode = RVOB.Const THEN
     IF x.r >= 0 THEN
-      (* todo make this better... *)
+      (* TODO this is pretty roundabout and inefficient *)
       i := FindProcIndexGivenAddress(x.a);
       IF ~innerCore THEN
         LoadOverlayRegister(i, -x.r);
@@ -2150,8 +2144,6 @@ END VIRTUALARGS;
 
 PROCEDURE JUMP*(VAR x: Item);
 BEGIN
-  Texts.WriteLn(W); Texts.WriteString(W, "JUMP"); Texts.Append(Oberon.Log, W.buf);
-
   load(x); put(RVAssem.jalr(RA, x.r, 0));
 END JUMP;
 
@@ -2278,9 +2270,9 @@ BEGIN
   size := varsize + strx + comsize +    (* varsize includes type descriptors *)
       (pc + nofimps + nofent + nofptrs + RVOS.proccnt + 1)*4;
 
-  IF (varsize > 2048) THEN
-    Texts.WriteLn(W); Texts.WriteString(W, "Warning! Global variable size too large at "); Texts.WriteInt(W, varsize, 1);
-    Texts.WriteString(W, " bytes. Maximum is 2048 bytes. Other modules will be unable to access exported variables; such access will cause undefined behaviour."); Texts.WriteInt(W, varsize, 1); Texts.Append(Oberon.Log, W.buf);
+  IF (varsize + procx*4 > 2048) THEN
+    Texts.WriteLn(W); Texts.WriteString(W, "Warning! Globals table too large at "); Texts.WriteInt(W, varsize+procx*4, 1);
+    Texts.WriteString(W, " bytes. Maximum is 2048 bytes. Other modules will potentially be unable to access exported variables and procedures; such access will cause undefined behaviour."); Texts.WriteInt(W, varsize, 1); Texts.Append(Oberon.Log, W.buf);
   END;
 
   RVOB.MakeFileName(name, modid, ".rsc"); (*write code file*)
@@ -2369,6 +2361,7 @@ BEGIN
   Files.WriteInt(R, pc);  (*code len*)
   FOR i := 0 TO pc-1 DO Files.WriteInt(R, program.code.c[i]); END ;  (*program*)
   Files.WriteInt(R, fixorgP); Files.WriteInt(R, fixorgD); Files.WriteInt(R, fixorgT); Files.WriteInt(R, fixorgS); Files.WriteInt(R, entry);
+  Texts.WriteLn(W); Texts.WriteString(W, "Entry size"); Texts.WriteInt(W, pc*4-entry, 6); Texts.Append(Oberon.Log, W.buf);
   Files.Write(R, "O"); Files.Register(F);
   program.code := NIL; program.strings := NIL; program.data := NIL;
   program := NIL;

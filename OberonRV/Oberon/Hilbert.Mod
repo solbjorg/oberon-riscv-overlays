@@ -63,7 +63,8 @@ MODULE Hilbert;  (*NW 8.1.2013  for RISC*)
         Oberon.DrawMouseArrow(M(Oberon.InputMsg).X, M(Oberon.InputMsg).Y)
       END
     ELSIF M IS MenuViewers.ModifyMsg THEN
-      F.Y := M(MenuViewers.ModifyMsg).Y; F.H := M(MenuViewers.ModifyMsg).H; DrawHilbert(F)
+      F.Y := M(MenuViewers.ModifyMsg).Y; F.H := M(MenuViewers.ModifyMsg).H;
+      DrawHilbert(F)
     ELSIF M IS Oberon.ControlMsg THEN
       IF M(Oberon.ControlMsg).id = Oberon.neutralize THEN Oberon.RemoveMarks(F.X, F.Y, F.W, F.H) END
     ELSIF M IS Oberon.CopyMsg THEN
@@ -78,8 +79,9 @@ MODULE Hilbert;  (*NW 8.1.2013  for RISC*)
 
   PROCEDURE Draw*;
     VAR V: Viewers.Viewer; X, Y: INTEGER;
-  BEGIN Oberon.AllocateUserViewer(Oberon.Par.vwr.X, X, Y);
-    V := MenuViewers.New(TextFrames.NewMenu("Hilbert", Menu), New(), TextFrames.menuH, X, Y)
+  BEGIN
+    Oberon.AllocateUserViewer(Oberon.Par.vwr.X, X, Y);
+    V := MenuViewers.New(TextFrames.NewMenu("Hilbert", Menu), New(), TextFrames.menuH, X, Y);
   END Draw;
 
 BEGIN A := HA; B := HB; C := HC; D := HD
