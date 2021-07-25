@@ -6,7 +6,7 @@ norebo: Runtime/norebo.c Runtime/risc-cpu.c Runtime/risc-cpu.h
 
 imagerv: norebo
 	make clean; make
-	./build-image.py -r OberonRV/Oberon -m manifests/manifest_testing.csv
+	./build-image.py -r OberonRV/Oberon -m manifests/manifest.csv
 
 imager5: norebo
 	make clean; make
